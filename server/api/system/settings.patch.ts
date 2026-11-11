@@ -1,0 +1,62 @@
+import type { AppSettings } from '#shared/types'
+
+const MAX_INDEX_DIMENSIONS = 8192
+
+export default defineEventHandler(async (event) => {
+  const admin = await requireAdmin(event)
+  const input = await readZodBody(event, settingsPatchSchema)
+  const current = await getAppSettings({ fresh: true })
+  const patch: Partial<AppSettings> = {}
+  if (input.codeSummaryModel !== undefined) patch.codeSummaryModel = input.codeSummaryModel
+  if (input.userAgent !== undefined) patch.userAgent = input.userAgent
+  if (input.requestIntervalMs !== undefined) patch.requestIntervalMs = input.requestIntervalMs
+  if (input.syncHistoryDays !== undefined) patch.syncHistoryDays = input.syncHistoryDays
+
+  let embeddingChanged = false
+  if (input.embeddingModel !== undefined || input.embeddingDimensions !== undefined) {
+    const model = input.embeddingModel ?? current.embeddingModel
+    // null = the model's native vector size
+    const requested = input.embeddingDimensions !== undefined
+      ? input.embeddingDimensions
+      : current.embeddingDimensionsParam ? current.embeddingDimensions : null
+    const unchanged = model === current.embeddingModel
+      && (requested === null ? !current.embeddingDimensionsParam : current.embeddingDimensionsParam && requested === current.embeddingDimensions)
+    if (!unchanged) {
+      // Try the model before switching, and learn its vector size
+      let vector: number[] | undefined
+      try {
+        const { embeddings } = await createEmbeddings(['RAGPulse embedding model check'], { model, dimensions: requested ?? undefined })
+        vector = embeddings[0]
+      }
+      catch (err: any) {
+        throw createError({ statusCode: 400, statusMessage: `Could not use embedding model "${model}": ${err?.statusMessage || err?.message || err}`.slice(0, 300) })
+      }
+      if (!vector?.length) throw createError({ statusCode: 400, statusMessage: `"${model}" returned no embedding` })
+      if (requested && vector.length !== requested) {
+        throw createError({ statusCode: 400, statusMessage: `"${model}" returns ${vector.length}-dimensional vectors and does not support ${requested} dimensions. Leave dimensions empty to use its native size.` })
+      }
+      if (vector.length > MAX_INDEX_DIMENSIONS) {
+        throw createError({ statusCode: 400, statusMessage: `"${model}" returns ${vector.length}-dimensional vectors, the vector index supports at most ${MAX_INDEX_DIMENSIONS}. Set fewer dimensions.` })
+      }
+      patch.embeddingModel = model
+      patch.embeddingDimensions = vector.length
+      patch.embeddingDimensionsParam = !!requested
+      embeddingChanged = true
+    }
+  }
+
+  if (Object.keys(patch).length) {
+    const saved = await saveAppSettings(patch, admin._id)
+    if (input.syncHistoryDays !== undefined && input.syncHistoryDays !== current.syncHistoryDays) {
+      await purgeOldSyncRuns(await useCollections(), saved.syncHistoryDays)
+        .catch(err => console.warn(`[settings] sync history cleanup failed: ${err?.message || err}`))
+    }
+    if (embeddingChanged) {
+      await refreshVectorIndex(saved.embeddingDimensions)
+      console.info(`[settings] embedding model changed to ${saved.embeddingModel} (${saved.embeddingDimensions} dims) by ${admin.email}, re-embedding all knowledge`)
+      // The scheduler re-embeds stored chunks in the background
+      syncEvents.emit('kick')
+    }
+  }
+  return settingsResponse()
+})

@@ -1,0 +1,41 @@
+services:
+  mongodb:
+    # MongoDB with Atlas Search / Vector Search support, fully local
+    image: mongodb/mongodb-atlas-local:8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+
+  admin:
+    build:
+      context: .
+      target: admin
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    env_file: .env
+    environment: &urls
+      NUXT_MONGODB_URI: mongodb://mongodb:27017/ragpulse?directConnection=true
+      NUXT_PUBLIC_ADMIN_URL: ${NUXT_PUBLIC_ADMIN_URL:-http://localhost:3000}
+      NUXT_PUBLIC_CHAT_URL: ${NUXT_PUBLIC_CHAT_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+
+  chat:
+    build:
+      context: .
+      target: chat
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    env_file: .env
+    environment: *urls
+    ports:
+      - "3001:3000"
+
+volumes:
+  mongo-data:
+  mongo-config:

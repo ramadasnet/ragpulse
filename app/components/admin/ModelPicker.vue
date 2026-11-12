@@ -33,8 +33,11 @@ const open = ref(false)
 const search = ref('')
 const active = ref(0)
 const root = ref<HTMLElement>()
+const triggerEl = ref<HTMLElement>()
+const popEl = ref<HTMLElement>()
 const searchInput = ref<HTMLInputElement>()
 const listEl = ref<HTMLElement>()
+const popStyle = ref<Record<string, string>>({})
 const uid = useId()
 
 async function load() {
@@ -70,6 +73,27 @@ const customId = computed(() => {
 const optionCount = computed(() => filtered.value.length + (customId.value ? 1 : 0))
 
 watch(search, () => (active.value = 0))
+watch(models, () => open.value && nextTick(place))
+
+function place() {
+  const t = triggerEl.value
+  if (!t || !open.value) return
+  const r = t.getBoundingClientRect()
+  const gap = 6
+  const edge = 8
+  const height = popEl.value?.offsetHeight ?? 424
+  const below = window.innerHeight - r.bottom - gap - edge
+  const above = r.top - gap - edge
+  const up = below < height && above > below
+  const width = Math.min(r.width, window.innerWidth - edge * 2)
+  popStyle.value = {
+    top: up ? 'auto' : `${r.bottom + gap}px`,
+    bottom: up ? `${window.innerHeight - r.top + gap}px` : 'auto',
+    left: `${Math.min(Math.max(edge, r.left), window.innerWidth - edge - width)}px`,
+    width: `${width}px`,
+    '--list-max': `${Math.max(140, Math.min(320, (up ? above : below) - 104))}px`
+  }
+}
 
 function toggle() {
   if (props.disabled) return
@@ -78,12 +102,25 @@ function toggle() {
     search.value = ''
     active.value = Math.max(0, filtered.value.findIndex(m => m.id === model.value))
     load()
+    place()
     nextTick(() => {
+      place()
       searchInput.value?.focus()
       scrollActive()
     })
   }
 }
+
+watch(open, (isOpen) => {
+  if (isOpen) {
+    window.addEventListener('scroll', place, { capture: true, passive: true })
+    window.addEventListener('resize', place)
+  }
+  else {
+    window.removeEventListener('scroll', place, true)
+    window.removeEventListener('resize', place)
+  }
+})
 
 function priceLabel(m: ModelInfo) {
   return isEmbedding.value ? formatModelPrice(m.promptPrice) : `${formatModelPrice(m.promptPrice)} / ${formatModelPrice(m.completionPrice)}`
@@ -118,10 +155,15 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 function onOutside(e: MouseEvent) {
-  if (open.value && root.value && !root.value.contains(e.target as Node)) open.value = false
+  const target = e.target as Node
+  if (open.value && !root.value?.contains(target) && !popEl.value?.contains(target)) open.value = false
 }
 onMounted(() => document.addEventListener('mousedown', onOutside))
-onBeforeUnmount(() => document.removeEventListener('mousedown', onOutside))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onOutside)
+  window.removeEventListener('scroll', place, true)
+  window.removeEventListener('resize', place)
+})
 </script>
 
 <template>
@@ -129,6 +171,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onOutside))
     <div ref="root" class="picker">
       <button
         :id="uid"
+        ref="triggerEl"
         type="button"
         class="control trigger"
         :disabled="disabled"
@@ -149,68 +192,70 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onOutside))
         <ChevronDown :size="15" class="dim" />
       </button>
 
-      <div v-if="open" class="pop panel fade-in" @keydown="onKeydown">
-        <div class="search">
-          <Search :size="15" class="dim" />
-          <input
-            ref="searchInput"
-            v-model="search"
-            class="search-input"
-            :placeholder="isEmbedding ? 'Search models, e.g. openai, qwen, voyage…' : 'Search models, e.g. claude, gpt-4o, llama…'"
-            aria-label="Search models"
-            role="combobox"
-            :aria-expanded="true"
-            :aria-controls="`${uid}-list`"
-          >
-        </div>
-        <div class="list-head tiny dim">
-          <span>Model</span>
-          <span class="nowrap">Context</span>
-          <span class="nowrap">{{ isEmbedding ? 'Per 1M tokens' : 'In / out per 1M' }}</span>
-        </div>
-        <div :id="`${uid}-list`" ref="listEl" class="list" role="listbox">
-          <div v-if="loading" class="state"><UiSpinner :size="16" /> Loading models…</div>
-          <p v-else-if="loadError" class="state small">
-            <span class="danger-text">Could not load models.</span> <span class="dim">Type a model id (e.g. {{ isEmbedding ? 'openai/text-embedding-3-small' : 'openai/gpt-4o-mini' }}) to use it anyway.</span>
-          </p>
-          <button
-            v-for="(m, i) in filtered"
-            :key="m.id"
-            type="button"
-            role="option"
-            class="option"
-            :data-index="i"
-            :aria-selected="m.id === model"
-            :class="{ active: i === active }"
-            @mouseenter="active = i"
-            @click="choose(m.id)"
-          >
-            <span class="opt-main">
-              <span class="row" style="--gap: 6px">
-                <span class="truncate">{{ m.name }}</span>
-                <Check v-if="m.id === model" :size="14" class="accent" />
+      <Teleport to="body">
+        <div v-if="open" ref="popEl" class="pop panel fade-in" :style="popStyle" @keydown="onKeydown">
+          <div class="search">
+            <Search :size="15" class="dim" />
+            <input
+              ref="searchInput"
+              v-model="search"
+              class="search-input"
+              :placeholder="isEmbedding ? 'Search models, e.g. openai, qwen, voyage…' : 'Search models, e.g. claude, gpt-4o, llama…'"
+              aria-label="Search models"
+              role="combobox"
+              :aria-expanded="true"
+              :aria-controls="`${uid}-list`"
+            >
+          </div>
+          <div class="list-head tiny dim">
+            <span>Model</span>
+            <span class="nowrap">Context</span>
+            <span class="nowrap">{{ isEmbedding ? 'Per 1M tokens' : 'In / out per 1M' }}</span>
+          </div>
+          <div :id="`${uid}-list`" ref="listEl" class="list" role="listbox">
+            <div v-if="loading" class="state"><UiSpinner :size="16" /> Loading models…</div>
+            <p v-else-if="loadError" class="state small">
+              <span class="danger-text">Could not load models.</span> <span class="dim">Type a model id (e.g. {{ isEmbedding ? 'openai/text-embedding-3-small' : 'openrouter/free' }}) to use it anyway.</span>
+            </p>
+            <button
+              v-for="(m, i) in filtered"
+              :key="m.id"
+              type="button"
+              role="option"
+              class="option"
+              :data-index="i"
+              :aria-selected="m.id === model"
+              :class="{ active: i === active }"
+              @mouseenter="active = i"
+              @click="choose(m.id)"
+            >
+              <span class="opt-main">
+                <span class="row" style="--gap: 6px">
+                  <span class="truncate">{{ m.name }}</span>
+                  <Check v-if="m.id === model" :size="14" class="accent" />
+                </span>
+                <span class="truncate mono tiny dim">{{ m.id }}</span>
               </span>
-              <span class="truncate mono tiny dim">{{ m.id }}</span>
-            </span>
-            <span class="tiny muted nowrap">{{ formatContext(m.contextLength) }}</span>
-            <span class="tiny muted nowrap price">{{ priceLabel(m) }}</span>
-          </button>
-          <button
-            v-if="customId"
-            type="button"
-            role="option"
-            class="option"
-            :data-index="filtered.length"
-            :aria-selected="false"
-            :class="{ active: active === filtered.length }"
-            @mouseenter="active = filtered.length"
-            @click="choose(customId)"
-          >
-            <span class="opt-main"><span>Use custom id</span><span class="mono tiny dim truncate">{{ customId }}</span></span>
-          </button>
-          <p v-if="!loading && !loadError && !filtered.length && !customId" class="state small dim">No models match “{{ search }}”.</p>
+              <span class="tiny muted nowrap">{{ formatContext(m.contextLength) }}</span>
+              <span class="tiny muted nowrap price">{{ priceLabel(m) }}</span>
+            </button>
+            <button
+              v-if="customId"
+              type="button"
+              role="option"
+              class="option"
+              :data-index="filtered.length"
+              :aria-selected="false"
+              :class="{ active: active === filtered.length }"
+              @mouseenter="active = filtered.length"
+              @click="choose(customId)"
+            >
+              <span class="opt-main"><span>Use custom id</span><span class="mono tiny dim truncate">{{ customId }}</span></span>
+            </button>
+            <p v-if="!loading && !loadError && !filtered.length && !customId" class="state small dim">No models match “{{ search }}”.</p>
+          </div>
         </div>
-      </div>
+      </Teleport>
     </div>
   </UiField>
 </template>
@@ -220,14 +265,14 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onOutside))
 .trigger { display: flex; align-items: center; gap: 10px; text-align: left; min-height: 48px; padding: 6px 12px; cursor: pointer; }
 .trigger-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .trigger-meta { font-variant-numeric: tabular-nums; }
-.pop { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0; box-shadow: var(--shadow-lg); background: var(--bg-elev); overflow: hidden; min-width: min(100%, 360px); }
+.pop { position: fixed; z-index: 60; box-shadow: var(--shadow-lg); background: var(--bg-elev); overflow: hidden; }
 .search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .search-input { flex: 1; background: none; border: 0; outline: none; min-width: 0; }
 .search-input:focus-visible { box-shadow: none; }
 .list-head, .option { display: grid; grid-template-columns: minmax(0, 1fr) 64px 120px; gap: 12px; align-items: center; }
 .list-head { padding: 6px 12px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.06em; }
 .list-head span:not(:first-child), .option > span:not(.opt-main) { text-align: right; }
-.list { max-height: 320px; overflow-y: auto; padding: 4px; }
+.list { max-height: var(--list-max, 320px); overflow-y: auto; padding: 4px; }
 .option { width: 100%; background: none; border: 0; padding: 7px 8px; border-radius: 8px; text-align: left; }
 .option.active { background: var(--surface-2); }
 .option[aria-selected="true"] { background: var(--accent-soft); }

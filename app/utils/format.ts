@@ -56,3 +56,8 @@ export function formatCost(usd?: number | null): string {
 export function initials(name?: string): string {
   return (name || '?').split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()
 }
+
+/** Two-letter fallback mark for a project title (used where no icon is shown). */
+export function projectMark(title?: string | null): string {
+  return (title || '').replace(/\s+/g, '').slice(0, 2).toUpperCase() || 'PR'
+}

@@ -58,13 +58,13 @@ async function logout() {
 
       <div class="switcher">
         <button class="switcher-btn" :aria-expanded="switcherOpen" @click="switcherOpen = !switcherOpen">
-          <span class="proj-mark">{{ (current?.title || 'P').slice(0, 1).toUpperCase() }}</span>
+          <ProjectMark :title="current?.title" :icon="current?.icon" class="proj-mark" />
           <span class="grow truncate">{{ current?.title || 'Select project' }}</span>
           <ChevronsUpDown :size="15" class="dim" />
         </button>
         <div v-if="switcherOpen" class="switcher-menu panel fade-in">
           <NuxtLink v-for="p in projects" :key="p._id" :to="`/admin/projects/${p._id}`" class="switcher-item" :class="{ active: p._id === projectId }">
-            <span class="proj-mark sm">{{ p.title.slice(0, 1).toUpperCase() }}</span>
+            <ProjectMark :title="p.title" :icon="p.icon" class="proj-mark sm" />
             <span class="truncate">{{ p.title }}</span>
           </NuxtLink>
           <p v-if="!projects.length" class="dim small" style="padding: 8px 10px">No projects yet</p>
@@ -141,10 +141,10 @@ async function logout() {
 }
 .switcher-btn:hover { border-color: var(--border-strong); }
 .proj-mark {
-  width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
   background: linear-gradient(135deg, var(--accent), #5eead4); color: var(--accent-ink); flex-shrink: 0;
 }
-.proj-mark.sm { width: 20px; height: 20px; font-size: 11px; border-radius: 6px; }
+.proj-mark.sm { width: 20px; height: 20px; font-size: 10px; border-radius: 6px; }
 .switcher-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30; padding: 6px; box-shadow: var(--shadow-lg); max-height: 320px; overflow-y: auto; }
 .switcher-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; color: var(--text-muted); }
 .switcher-item:hover, .switcher-item.active { background: var(--surface-2); color: var(--text); }

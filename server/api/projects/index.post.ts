@@ -10,6 +10,8 @@ export default defineEventHandler(async (event) => {
     await sources.insertOne(newSource(project._id, { type: 'url', url, options: buildSourceOptions('url', { crawl: true, maxPages: WEBSITE_SOURCE_MAX_PAGES }) }))
     syncEvents.emit('kick')
   }
+  // Match the chat colours and icon to the website in the background (keeps the defaults on failure)
+  applyWebsiteBranding(project).catch(err => console.warn(`[theme] ${project.website}: ${err?.message ?? err}`))
   setResponseStatus(event, 201)
   return project
 })

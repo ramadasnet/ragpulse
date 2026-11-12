@@ -4,9 +4,13 @@
     "private": true,
     "scripts": {
         "dev": "bun --preload ./server/preload.ts ./node_modules/.bin/nuxt dev",
+        "dev:admin": "RAGPULSE_APP=admin RAGPULSE_BUILD_DIR=.nuxt/admin NUXT_PUBLIC_ADMIN_URL=http://localhost:3030 NUXT_PUBLIC_CHAT_URL=http://localhost:3031 bun --preload ./server/preload.ts ./node_modules/.bin/nuxt dev --port 3030",
+        "dev:chat": "RAGPULSE_APP=chat RAGPULSE_BUILD_DIR=.nuxt/chat NUXT_PUBLIC_ADMIN_URL=http://localhost:3030 NUXT_PUBLIC_CHAT_URL=http://localhost:3031 bun --preload ./server/preload.ts ./node_modules/.bin/nuxt dev --port 3031",
+        "dev:landing": "RAGPULSE_APP=landing RAGPULSE_BUILD_DIR=.nuxt/landing NUXT_PUBLIC_CHAT_URL=http://localhost:3031 bun --preload ./server/preload.ts ./node_modules/.bin/nuxt dev --port 3032",
         "build": "bun --bun nuxt build",
         "build:admin": "RAGPULSE_APP=admin bun --bun nuxt build",
         "build:chat": "RAGPULSE_APP=chat bun --bun nuxt build",
+        "build:landing": "RAGPULSE_APP=landing bun --bun nuxt generate",
         "start": "bun --preload ./server/preload.ts .output/server/index.mjs",
         "preview": "bun --bun nuxt preview",
         "typecheck": "nuxt prepare && vue-tsc --noEmit -p .nuxt/tsconfig.server.json && vue-tsc --noEmit -p .nuxt/tsconfig.app.json",

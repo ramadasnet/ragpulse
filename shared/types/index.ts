@@ -60,8 +60,10 @@ export interface Project {
   _id: string
   title: string
   website: string
+  /** Project icon as a data URI (usually the website favicon). Falls back to the two-letter mark when unset. */
+  icon?: string
   systemInstructions: string
-  /** OpenRouter model id, e.g. `openai/gpt-4o-mini` */
+  /** OpenRouter model id, e.g. `openrouter/free` */
   model: string
   temperature: number
   /** Max user messages per chat session before redirecting to support. 0 = unlimited. */

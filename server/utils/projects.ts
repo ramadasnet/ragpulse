@@ -65,6 +65,11 @@ const systemInstructionsSchema = z.string().max(20_000)
 
 const modelSchema = z.string().trim().min(1, 'Model is required').max(200).regex(/^[\w.:/@~-]+$/, 'Invalid model id')
 
+/** Image data URI stored as the project icon (capped around 300 KB raw). */
+export const PROJECT_ICON_MAX_CHARS = 420_000
+const iconSchema = z.string().max(PROJECT_ICON_MAX_CHARS, 'Icon image is too large')
+  .regex(/^data:image\/(png|jpe?g|gif|webp|avif|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[a-z0-9+/=]+$/i, 'Icon must be an image data URI')
+
 export const projectCreateSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(120),
   website: websiteSchema,
@@ -98,6 +103,8 @@ export const projectUpdateSchema = z.object({
   rateLimit: z.number().int().min(0).max(1000),
   supportEmail: z.string().trim().toLowerCase().pipe(supportEmailSchema),
   allowedDomains: z.array(z.string().max(300)).max(50, 'At most 50 allowed domains'),
+  /** Image data URI; empty string resets the icon to the two-letter mark */
+  icon: z.union([z.literal(''), iconSchema]),
   refreshIntervalHours: z.number().int().min(REFRESH_MIN_HOURS).max(REFRESH_MAX_HOURS),
   theme: themePatchSchema,
   enabled: z.boolean()
@@ -141,6 +148,10 @@ export function buildProjectUpdate(project: Project, patch: ProjectUpdateInput):
   if (patch.supportEmail !== undefined) {
     if (patch.supportEmail) $set.supportEmail = patch.supportEmail
     else $unset.supportEmail = ''
+  }
+  if (patch.icon !== undefined) {
+    if (patch.icon) $set.icon = patch.icon
+    else $unset.icon = ''
   }
   if (patch.allowedDomains) {
     const normalized: string[] = []

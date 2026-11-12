@@ -70,7 +70,7 @@ async function submit() {
       systemInstructions: form.value.systemInstructions,
       indexWebsite: form.value.indexWebsite
     }
-  }), form.value.indexWebsite ? 'Project created — indexing the website' : 'Project created')
+  }), form.value.indexWebsite ? 'Project created — indexing the website and matching its colours and icon' : 'Project created — matching the website colours and icon')
   if (!project) return
   await refresh().catch(() => {})
   await navigateTo(`/admin/projects/${project._id}/knowledge`)

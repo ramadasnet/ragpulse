@@ -1,7 +1,8 @@
-// Build target: `admin` (dashboard, admin API, MCP, sync scheduler), `chat` (public chat page, chat API, embed.js)
-// or unset to serve both from one server (development).
+// Build target: `admin` (dashboard, admin API, MCP, sync scheduler), `chat` (public chat page, chat API, embed.js),
+// `landing` (static landing site, no server) or unset to serve everything from one server (development).
 const target = process.env.RAGPULSE_APP || ""
-if (target && target !== "admin" && target !== "chat") throw new Error(`Invalid RAGPULSE_APP "${target}", expected admin or chat`)
+if (target && target !== "admin" && target !== "chat" && target !== "landing") throw new Error(`Invalid RAGPULSE_APP "${target}", expected admin, chat or landing`)
+const landing = target === "landing"
 
 const chatOnly = ["app/pages/chat/**", "server/api/chat/**", "server/routes/embed.js.ts", "server/middleware/chat-security.ts"]
 const adminOnly = [
@@ -19,13 +20,28 @@ const adminOnly = [
     "server/routes/mcp.ts",
     "server/plugins/scheduler.ts"
 ]
+const landingOnly = ["app/pages/landing.vue"]
+// Nitro's srcDir is `server/`: a bare `server/**` ignore collapses to `**` there, which also excludes every public
+// asset when Nitro copies them — so server files are excluded per directory instead.
+const serverOnly = ["server/api/**", "server/middleware/**", "server/plugins/**", "server/routes/**", "server/utils/**", "server/preload.ts"]
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
     compatibilityDate: "2025-07-15",
     devtools: {enabled: false},
-    modules: target === "chat" ? [] : ["nuxt-auth-utils"],
-    ignore: target === "admin" ? chatOnly : target === "chat" ? adminOnly : [],
+    modules: target === "chat" || landing ? [] : ["nuxt-auth-utils"],
+    ignore: target === "admin" ? [...chatOnly, ...landingOnly] : target === "chat" ? [...adminOnly, ...landingOnly] : landing ? [...adminOnly, ...chatOnly, ...serverOnly] : [],
+    // The per-app dev servers (dev:admin / dev:chat / dev:landing) pass RAGPULSE_BUILD_DIR so they can run at
+    // the same time without overwriting each other's generated files in .nuxt
+    buildDir: process.env.RAGPULSE_BUILD_DIR || ".nuxt",
+
+    hooks: {
+        // The landing site serves its marketing page on /
+        "pages:extend"(pages) {
+            const home = pages.find((p) => p.path === "/landing")
+            if (landing && home) home.path = "/"
+        }
+    },
     css: ["~/assets/css/main.css"],
 
     app: {
@@ -48,13 +64,13 @@ export default defineNuxtConfig({
         // Defaults: the embedding model can be changed on the Settings page (stored chunks are then re-embedded)
         embeddingModel: "openai/text-embedding-3-small",
         embeddingDimensions: 1536,
-        defaultChatModel: "openai/gpt-4o-mini",
+        defaultChatModel: "openrouter/free",
         // Vision model for images and scanned PDFs (empty disables them; PDFs with text are always read locally)
-        visionModel: "google/gemini-3.1-flash-lite",
+        visionModel: "openrouter/free",
         // Max images / scanned PDFs sent to the vision model per source sync, the rest continues on the next sync
         visionMaxPerSync: 100,
         // Model that summarizes source code of git repositories (empty disables summaries; can be changed on the Settings page)
-        codeSummaryModel: "google/gemini-3.1-flash-lite",
+        codeSummaryModel: "openrouter/free",
         // Max new code files summarized per source sync, the rest continues on the next sync (within an hour)
         codeSummaryMaxPerSync: 500,
         // Website crawler User-Agent (empty = RAGPulseBot/1.0 (+chat URL)) and minimum delay between requests to one site
@@ -100,7 +116,9 @@ export default defineNuxtConfig({
     },
 
     nitro: {
-        preset: "bun"
+        preset: landing ? "static" : "bun",
+        // Cloudflare Pages/Workers headers for the static landing build
+        publicAssets: landing ? [{dir: "landing/public", baseURL: "/"}] : []
     },
 
     vite: {

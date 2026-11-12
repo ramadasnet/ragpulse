@@ -20,6 +20,10 @@ build-admin:
 build-chat:
 	bun run build:chat
 
+# Build the landing page as a static site into .output/public (for Cloudflare)
+build-landing:
+	bun run build:landing
+
 # Run type checking and tests
 check:
 	bun run check
@@ -36,9 +40,21 @@ test:
 db:
 	docker compose up -d mongodb
 
-# Run the dev server (admin and chat) on http://localhost:3000
+# Run the all-in-one dev server (admin, chat and landing) on http://localhost:3000
 dev:
 	bun run dev
+
+# Run separate dev instances (mirrors production): admin on http://localhost:3030
+dev-admin:
+	bun run dev:admin
+
+# Chat instance on http://localhost:3031
+dev-chat:
+	bun run dev:chat
+
+# Landing page on http://localhost:3032
+dev-landing:
+	bun run dev:landing
 
 # Run the production build locally (the last one built: build, build-admin or build-chat)
 start:
@@ -63,4 +79,4 @@ update:
 	npm pkg set version=$(shell date '+%y.%-V%u.1%H%M')
 	bun run check
 
-.PHONY: clean install build build-admin build-chat check typecheck test db dev start docker-build up down update
+.PHONY: clean install build build-admin build-chat build-landing check typecheck test db dev dev-admin dev-chat dev-landing start docker-build up down update

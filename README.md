@@ -13,14 +13,16 @@ so they can act on unanswered questions.
 
 RAGPulse runs as two independent servers sharing the same MongoDB, built from this codebase:
 
-| App   | Image                               | Serves                                                                         |
-| ----- | ----------------------------------- | ------------------------------------------------------------------------------ |
-| Admin | `ghcr.io/ramadasnet/ragpulse-admin` | Dashboard (`/admin`), login, admin API, MCP (`/mcp`), source sync scheduler    |
-| Chat  | `ghcr.io/ramadasnet/ragpulse-chat`  | Visitor chat page (`/chat/:projectId`), chat API (`/api/chat/**`), `/embed.js` |
+| App     | Image                               | Serves                                                                         |
+| ------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| Admin   | `ghcr.io/ramadasnet/ragpulse-admin` | Dashboard (`/admin`), login, admin API, MCP (`/mcp`), source sync scheduler    |
+| Chat    | `ghcr.io/ramadasnet/ragpulse-chat`  | Visitor chat page (`/chat/:projectId`), chat API (`/api/chat/**`), `/embed.js` |
+| Landing | static files                        | Landing page at `/`, no server, for Cloudflare Pages/Workers                    |
 
-The build target is selected with `RAGPULSE_APP=admin|chat` (`bun run build:admin` / `bun run build:chat`, or
-`docker build --target admin|chat`). Without it (e.g. `bun run dev`) both apps are served by one server.
-Project changes reach the chat instance within 30 seconds (public project cache TTL).
+The build target is selected with `RAGPULSE_APP=admin|chat|landing` (`bun run build:admin` / `bun run build:chat` /
+`bun run build:landing`, or `docker build --target admin|chat`). Without it (e.g. `bun run dev`) all apps are served
+by one server (the landing page is then at `/landing`). Project changes reach the chat instance within 30 seconds
+(public project cache TTL).
 
 ## Why MongoDB?
 
@@ -51,19 +53,33 @@ The bundled MongoDB port is exposed only on localhost; the application container
 ```bash
 bun install                       # or: make install
 docker compose up -d mongodb      # or: make db, or point NUXT_MONGODB_URI to Atlas
-bun run dev                       # or: make dev, admin and chat on http://localhost:3000
+bun run dev                       # or: make dev, all apps on one origin at http://localhost:3000
+bun run dev:admin                 # or: make dev-admin, admin instance on http://localhost:3030
+bun run dev:chat                  # or: make dev-chat, chat instance on http://localhost:3031
+bun run dev:landing               # or: make dev-landing, landing page on http://localhost:3032
 make check                        # typecheck and tests
 ```
 
-Set `NUXT_DEV_LOGIN=true` to use `http://localhost:3000/auth/dev?email=you@example.com` in development without OAuth
-(the email must be listed in `NUXT_ADMIN_EMAILS` or already invited). This shortcut does not exist in production builds.
+`bun run dev` serves everything from one server (the landing page at `/landing`). The `dev:admin` / `dev:chat` / `dev:landing`
+scripts mirror the production split as separate instances that can run at the same time (each with its own `.nuxt` build
+directory); they point the public admin and chat URLs at `http://localhost:3030` / `:3031` automatically, so embed snippets,
+the appearance preview and origin checks work across them.
+
+Set `NUXT_DEV_LOGIN=true` to use `/auth/dev?email=you@example.com` in development without OAuth — `http://localhost:3000/auth/dev?...`
+for `bun run dev`, `http://localhost:3030/auth/dev?...` for `bun run dev:admin` (the email must be listed in
+`NUXT_ADMIN_EMAILS` or already invited). This shortcut does not exist in production builds.
 
 ### Production build
 
 ```bash
 bun run build:admin && bun run start   # admin (or: make build-admin start)
 bun run build:chat && bun run start    # chat (or: make build-chat start)
+bun run build:landing                  # landing: static HTML + assets in .output/public
 ```
+
+The landing page is a fully static site: deploy `.output/public` to Cloudflare Pages or Workers static assets,
+no server needed (Pages: build command `bun run build:landing`, output directory `.output/public`). Set
+`NUXT_PUBLIC_CHAT_URL` at build time to fill in the host of the embed snippet shown on the page.
 
 `make docker-build` builds both Docker images, `make up` / `make down` start and stop the Docker Compose stack.
 
@@ -82,8 +98,8 @@ All settings are environment variables, see [`.env.example`](.env.example). Both
 | `NUXT_MONGODB_URI`                                   | MongoDB connection string                                                                                                       |
 | `NUXT_OPENROUTER_API_KEY`                            | OpenRouter key, used for chat and embeddings                                                                                    |
 | `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS` | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Settings** instead (see below)          |
-| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`     | Vision model for images and scanned PDFs (default `google/gemini-3.1-flash-lite`, empty disables), max new files per sync (100) |
-| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC` | Default model for source code summaries (`google/gemini-3.1-flash-lite`, empty disables), max new files per sync (500) |
+| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`     | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100) |
+| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC` | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500) |
 | `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS` | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500) |
 | `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`      | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                  |
 | `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                    | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email             |
@@ -140,6 +156,11 @@ tries again). Secrets are never written to disk or baked into the images; rotate
 
 Each project is a website/app/service with its own title, website, system instructions, OpenRouter model, chat theme,
 knowledge, rate limit (max visitor messages per session before redirecting to support), support email and allowed domains.
+
+When a project is created, its website's home page and stylesheets are analyzed in the background (theme-color, brand
+custom properties, buttons, links, page background) and the chat theme preset with the closest colours is selected,
+in light or dark mode like the website. It can be changed any time under **Appearance**. The website's favicon becomes
+the project icon, falling back to a two-letter mark when none is found; it can be changed under **Settings**.
 
 ### Knowledge
 

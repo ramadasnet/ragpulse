@@ -34,7 +34,7 @@ function toForm(s: AppSettings): Form {
     embeddingModel: s.embeddingModel,
     embeddingDimensions: s.embeddingDimensionsParam ? String(s.embeddingDimensions) : '',
     summarize: !!s.codeSummaryModel,
-    codeSummaryModel: s.codeSummaryModel || 'google/gemini-3.1-flash-lite',
+    codeSummaryModel: s.codeSummaryModel || 'openrouter/free',
     userAgent: s.userAgent,
     requestIntervalMs: s.requestIntervalMs,
     syncHistoryDays: s.syncHistoryDays

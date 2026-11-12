@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { codeToMarkdown, defaultGitInclude, CODE_GIT_EXCLUDE, isCodeFile } from '../server/utils/ingest/git'
+import { codeToMarkdown, defaultGitInclude, CODE_GIT_EXCLUDE, isCodeFile, parseLsRemote } from '../server/utils/ingest/git'
 import { matchesAnyGlob } from '../server/utils/ingest/glob'
 import { HostThrottle, MAX_HOST_INTERVAL_MS, parseRetryAfter } from '../server/utils/ingest/throttle'
 import { fetchUrlSource, parseRobotsTxt, robotsAgent } from '../server/utils/ingest/url'
 import { vectorIndexOutdated } from '../server/utils/db'
+import { compactMarkdown, COMPACT_MAX_CODE_LINES, dedupeAcrossDocuments, dropRepeatedPageLines, refineMarkdown } from '../server/utils/ingest/detail'
+import { htmlToMarkdown, prepareMarkdownFile } from '../server/utils/ingest/markdown'
 
 describe('Retry-After', () => {
   test('parses seconds and HTTP dates', () => {
@@ -115,6 +117,16 @@ describe('git source code', () => {
     expect(matchesAnyGlob('src/app.ts', defaultGitInclude(false))).toBe(false)
   })
 
+  test('reads the remote commit of a branch, tag or HEAD from ls-remote', () => {
+    const [a, b, c, d] = ['a', 'b', 'c', 'd'].map(ch => ch.repeat(40))
+    const out = `${a}\tHEAD\n${b}\trefs/heads/main\n${c}\trefs/tags/v1\n${d}\trefs/tags/v1^{}\n`
+    expect(parseLsRemote(out)).toBe(a)
+    expect(parseLsRemote(out, 'main')).toBe(b)
+    expect(parseLsRemote(out, 'v1')).toBe(d)
+    expect(parseLsRemote(out, 'dev')).toBeUndefined()
+    expect(parseLsRemote('')).toBeUndefined()
+  })
+
   test('detects code files and puts the summary before the source', () => {
     expect(isCodeFile('server/api/x.post.ts')).toBe(true)
     expect(isCodeFile('Dockerfile')).toBe(true)
@@ -122,6 +134,97 @@ describe('git source code', () => {
     const md = codeToMarkdown({ path: 'src/a.ts', lang: 'ts', content: 'export const a = 1\n' }, 'Defines `a`.')
     expect(md).toBe('# src/a.ts\n\n## Summary\n\nDefines `a`.\n\n## Source\n\n```ts\nexport const a = 1\n```')
     expect(codeToMarkdown({ path: 'src/a.ts', lang: 'ts', content: 'x' })).toBe('# src/a.ts\n\n```ts\nx\n```')
+  })
+})
+
+describe('ingest detail presets', () => {
+  test('compact keeps headings, lists and code, drops other formatting and repeats', () => {
+    const md = [
+      '# **Install** the `cli`',
+      '',
+      'Read the [guide](https://x.dev/guide) for **all** _options_, see ![logo](https://x.dev/l.png) and snake_case_name.',
+      '',
+      '> Quoted *note*',
+      '',
+      '---',
+      '',
+      '| Name | Default |',
+      '| --- | --- |',
+      '| `port` | 3000 |',
+      '',
+      '-   [x] First ~~old~~ item',
+      '1. Step one',
+      '',
+      'Read the guide for all options, see and snake_case_name.',
+      '',
+      '```sh',
+      ...Array.from({ length: COMPACT_MAX_CODE_LINES + 5 }, (_, i) => `echo ${i}`),
+      '```'
+    ].join('\n')
+    const out = compactMarkdown(md)
+    expect(out).toStartWith('# Install the cli\n\nRead the guide for all options, see and snake_case_name.\n\nQuoted note\n\n- Name · Default\n- port · 3000\n\n- First old item\n1. Step one\n\n```sh\necho 0')
+    expect(out.match(/Read the guide/g)).toHaveLength(1)
+    expect(out).toEndWith(`echo ${COMPACT_MAX_CODE_LINES - 1}\n…\n\`\`\``)
+  })
+
+  test('compact keeps code summaries only', () => {
+    const file = { path: 'src/a.ts', lang: 'ts', content: 'export const a = 1\n' }
+    expect(codeToMarkdown(file, 'Defines `a`.', 'compact')).toBe('# src/a.ts\n\nDefines `a`.')
+    expect(codeToMarkdown(file, undefined, 'compact')).toBe('# src/a.ts\n\n```ts\nexport const a = 1\n```')
+  })
+
+  test('blocks shared by several documents stay in the first one only', () => {
+    const footer = 'Strautomator automates your Strava activities with weather, music and gear tracking.'
+    const docs = dedupeAcrossDocuments([
+      { ref: 'b', markdown: `# B\n\nOnly on B.\n\n${footer}` },
+      { ref: 'a', markdown: `# A\n\n${footer}` }
+    ])
+    expect(docs.map(d => d.markdown)).toEqual(['# B\n\nOnly on B.', `# A\n\n${footer}`])
+  })
+
+  test('PDF letterheads and page footers are kept once', () => {
+    const pages = [1, 2, 3, 4].map(n => `ACME Bank · Main St 1\nBody of page ${n} with unique text ${'x'.repeat(n)}\nPage ${n} of 4`)
+    const out = dropRepeatedPageLines(pages)
+    expect(out[0]).toBe(pages[0]!)
+    expect(out.slice(1)).toEqual([2, 3, 4].map(n => `Body of page ${n} with unique text ${'x'.repeat(n)}`))
+  })
+
+  test('balanced drops only exact repeats of substantial blocks', () => {
+    const para = 'Strautomator automates your Strava activities: it can add weather, music, gear and counters to names.'
+    const md = `# Doc\n\n${para}\n\n## Again\n\n${para.replace(': ', ':  ')}\n\n${para.replace('music', 'Music')}\n\nShort repeat.\n\nShort repeat.`
+    expect(refineMarkdown(md, 'balanced')).toBe(`# Doc\n\n${para}\n\n## Again\n\n${para.replace('music', 'Music')}\n\nShort repeat.\n\nShort repeat.`)
+    const unique = '# Doc\n\n\n-   a\n-   b'
+    expect(refineMarkdown(unique, 'balanced')).toBe(unique)
+    expect(refineMarkdown(md, 'detailed')).toBe(md)
+
+    const footer = `${para} ${para}`
+    const docs = dedupeAcrossDocuments([
+      { ref: 'b', markdown: `# B\n\n${footer}\n\n${para}` },
+      { ref: 'a', markdown: `# A\n\n${footer}\n\n${para}` },
+      { ref: 'c', markdown: `# C\n\n${footer.toUpperCase()}` }
+    ], 'exact')
+    expect(docs.map(d => d.markdown)).toEqual([`# B\n\n${para}`, `# A\n\n${footer}\n\n${para}`, `# C\n\n${footer.toUpperCase()}`])
+  })
+
+  test('balanced drops only identical long lines repeated on nearly every PDF page', () => {
+    const letterhead = 'ACME Bank AG · Main Street 1 · 60486 Frankfurt am Main'
+    const pages = [1, 2, 3, 4].map(n => `${letterhead}\nBalance on page ${n}: ${n * 100} EUR\nPage ${n} of 4`)
+    const out = dropRepeatedPageLines(pages, 'exact')
+    expect(out[0]).toBe(pages[0]!)
+    expect(out.slice(1)).toEqual([2, 3, 4].map(n => `Balance on page ${n}: ${n * 100} EUR\nPage ${n} of 4`))
+    expect(dropRepeatedPageLines(pages.slice(0, 2), 'exact')).toEqual(pages.slice(0, 2))
+  })
+
+  test('detailed keeps more markdown styles from HTML and markdown files', () => {
+    const html = '<html><body><main><h1>Doc</h1><p>Press <kbd>Ctrl</kbd> and <del>never</del> <img src="/shot.png" alt="Settings screen"> wait.</p><ul><li><input type="checkbox" checked> Done</li></ul><dl><dt>Port</dt><dd>HTTP port</dd></dl><p>Enough readable text for the extraction of this page to work as expected.</p></main></body></html>'
+    const balanced = htmlToMarkdown(html, 'https://x.dev/doc').markdown
+    const detailed = htmlToMarkdown(html, 'https://x.dev/doc', { detail: 'detailed' }).markdown
+    expect(balanced).not.toContain('~~')
+    expect(detailed).toContain('Press `Ctrl` and ~~never~~ ![Settings screen](https://x.dev/shot.png) wait.')
+    expect(detailed).toContain('-   [x] Done')
+    expect(detailed).toContain('**Port**\n: HTTP port')
+    expect(prepareMarkdownFile('Hi <img src="a.png" alt="Diagram"> <kbd>Esc</kbd>', { detail: 'detailed' }).markdown).toBe('Hi ![Diagram](a.png) `Esc`')
+    expect(prepareMarkdownFile('Hi <img src="a.png" alt="Diagram"> <kbd>Esc</kbd>').markdown).toBe('Hi  Esc')
   })
 })
 

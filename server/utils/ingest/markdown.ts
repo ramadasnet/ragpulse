@@ -2,6 +2,7 @@
 import { parseHTML } from 'linkedom'
 import { Readability } from '@mozilla/readability'
 import TurndownService from 'turndown'
+import type { IngestDetail } from '#shared/types'
 
 export interface HtmlPage {
   title: string
@@ -16,10 +17,15 @@ const NOISE = 'script, style, noscript, template, iframe, svg, canvas, form, obj
 const LAYOUT = 'nav, aside, [role="navigation"], [role="banner"], [role="contentinfo"], [role="search"], [aria-hidden="true"], .sr-only, .visually-hidden, .skip-link'
 const ANCHOR_SYMBOLS = /^[\s#¶§🔗\u200b]*$/u
 
-let turndown: TurndownService | null = null
+const escapeUrlChar = (c: string) => (c === '(' ? '%28' : c === ')' ? '%29' : '%20')
 
-function getTurndown(): TurndownService {
-  if (turndown) return turndown
+const turndowns = new Map<'standard' | 'detailed', TurndownService>()
+
+/** Turndown for a preset: `detailed` adds GFM styles (images, strikethrough, task lists, definition lists…). */
+function getTurndown(detail: IngestDetail = 'balanced'): TurndownService {
+  const variant = detail === 'detailed' ? 'detailed' : 'standard'
+  const cached = turndowns.get(variant)
+  if (cached) return cached
   const td = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',
@@ -44,7 +50,7 @@ function getTurndown(): TurndownService {
       if (!text) return ''
       const href = String(node.getAttribute('href') || '')
       if (!/^(https?:|mailto:)/i.test(href)) return text
-      const safeHref = href.replace(/[()\s]/g, c => (c === '(' ? '%28' : c === ')' ? '%29' : '%20'))
+      const safeHref = href.replace(/[()\s]/g, escapeUrlChar)
       return `[${text}](${safeHref})`
     }
   })
@@ -67,8 +73,92 @@ function getTurndown(): TurndownService {
     replacement: (_content, node: any) => tableToMarkdown(node, td)
   })
 
-  turndown = td
+  if (variant === 'detailed') addDetailedRules(td)
+  turndowns.set(variant, td)
   return td
+}
+
+function addDetailedRules(td: TurndownService) {
+  td.addRule('imageDetailed', {
+    filter: 'img',
+    replacement: (_content, node: any) => {
+      const alt = String(node.getAttribute('alt') || node.getAttribute('title') || '').replace(/\s+/g, ' ').replace(/[[\]]/g, '').trim()
+      const src = String(node.getAttribute('src') || '')
+      if (alt.length < 3) return ''
+      return /^https?:/i.test(src) ? `![${alt}](${src.replace(/[()\s]/g, escapeUrlChar)})` : ` _[Image: ${alt}]_ `
+    }
+  })
+  td.addRule('strikethrough', {
+    filter: ['del', 's', 'strike'] as any,
+    replacement: content => (content.trim() ? `~~${content.trim()}~~` : '')
+  })
+  td.addRule('highlight', {
+    filter: ['mark'] as any,
+    replacement: content => (content.trim() ? `**${content.trim()}**` : '')
+  })
+  td.addRule('kbd', {
+    filter: ['kbd'] as any,
+    replacement: content => (content.trim() ? `\`${content.trim()}\`` : '')
+  })
+  td.addRule('abbr', {
+    filter: (node: any) => node.nodeName === 'ABBR' && !!node.getAttribute('title'),
+    replacement: (content, node: any) => `${content} (${String(node.getAttribute('title')).trim()})`
+  })
+  td.addRule('taskCheckbox', {
+    filter: (node: any) => node.nodeName === 'INPUT' && String(node.getAttribute('type')).toLowerCase() === 'checkbox',
+    replacement: (_content, node: any) => `${node.hasAttribute('checked') ? '[x]' : '[ ]'}${/^\s/.test(String(node.nextSibling?.textContent ?? '')) ? '' : ' '}`
+  })
+  td.addRule('summary', {
+    filter: ['summary'] as any,
+    replacement: content => (content.trim() ? `\n\n**${content.trim()}**\n\n` : '')
+  })
+  td.addRule('figcaption', {
+    filter: ['figcaption'] as any,
+    replacement: content => (content.trim() ? `\n\n_${content.trim()}_\n\n` : '')
+  })
+  td.addRule('definitionTerm', {
+    filter: ['dt'] as any,
+    replacement: content => (content.trim() ? `\n\n**${content.trim()}**\n` : '')
+  })
+  td.addRule('definition', {
+    filter: ['dd'] as any,
+    replacement: content => (content.trim() ? `: ${content.trim().replace(/\n+/g, ' ')}\n` : '')
+  })
+}
+
+/** Detailed: embedded videos and frames become links (they are otherwise removed as noise). */
+function embedsToLinks(document: any, base: string) {
+  for (const el of Array.from(document.querySelectorAll('iframe[src], video[src], video source[src]')) as any[]) {
+    const media = el.nodeName === 'SOURCE' ? el.closest('video') : el
+    if (!media?.parentNode) continue
+    const label = normalizeSpace(media.getAttribute('title') || media.getAttribute('aria-label'))
+    let href: string
+    try {
+      href = new URL(String(el.getAttribute('src')), base).href
+    }
+    catch {
+      continue
+    }
+    if (!label || !/^https?:/i.test(href)) continue
+    const p = document.createElement('p')
+    const a = document.createElement('a')
+    a.setAttribute('href', href)
+    a.textContent = `${media.nodeName === 'VIDEO' ? 'Video' : 'Embedded content'}: ${label}`
+    p.appendChild(a)
+    media.replaceWith(p)
+  }
+}
+
+/** Detailed: image sources become absolute, so they can be kept as markdown images. */
+function absolutizeImages(document: any, base: string) {
+  for (const img of Array.from(document.querySelectorAll('img[src]')) as any[]) {
+    try {
+      img.setAttribute('src', new URL(String(img.getAttribute('src')), base).href)
+    }
+    catch {
+      img.removeAttribute('src')
+    }
+  }
 }
 
 function tableToMarkdown(table: any, td: TurndownService): string {
@@ -157,7 +247,7 @@ function extractTitle(document: any): string {
 }
 
 /** Converts a full HTML page to Markdown, keeping only the main content. */
-export function htmlToMarkdown(html: string, pageUrl: string): HtmlPage {
+export function htmlToMarkdown(html: string, pageUrl: string, opts: { detail?: IngestDetail } = {}): HtmlPage {
   const { document } = parseHTML(html) as any
   let base = pageUrl
   try {
@@ -167,6 +257,10 @@ export function htmlToMarkdown(html: string, pageUrl: string): HtmlPage {
   catch {}
 
   const metaTitle = extractTitle(document)
+  if (opts.detail === 'detailed') {
+    embedsToLinks(document, base)
+    absolutizeImages(document, base)
+  }
   const links = processLinks(document, base, pageUrl)
   for (const el of Array.from(document.querySelectorAll(NOISE)) as any[]) {
     if (el.nodeName !== 'META' && el.nodeName !== 'LINK') el.remove()
@@ -197,7 +291,7 @@ export function htmlToMarkdown(html: string, pageUrl: string): HtmlPage {
     contentHtml = readable ?? String(document.body?.innerHTML || '')
   }
 
-  const markdown = tidyMarkdown(getTurndown().turndown(contentHtml))
+  const markdown = tidyMarkdown(getTurndown(opts.detail).turndown(contentHtml))
   const title = metaTitle || normalizeSpace(article?.title) || markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() || pageUrl
   return { title: title.slice(0, 300), markdown, links }
 }
@@ -240,7 +334,7 @@ function mapOutsideFences(text: string, fn: (line: string) => string | null): st
  * Prepares a markdown / MDX file: strips frontmatter (using its `title`), MDX import/export and JSX-only lines,
  * HTML comments and presentational HTML.
  */
-export function prepareMarkdownFile(text: string, opts: { mdx?: boolean } = {}): { title?: string, markdown: string } {
+export function prepareMarkdownFile(text: string, opts: { mdx?: boolean, detail?: IngestDetail } = {}): { title?: string, markdown: string } {
   let md = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
   let title: string | undefined
   const fm = /^(---|\+\+\+)[ \t]*\n([\s\S]*?)\n\1[ \t]*(?:\n|$)/.exec(md)
@@ -266,6 +360,7 @@ export function prepareMarkdownFile(text: string, opts: { mdx?: boolean } = {}):
       if (/^\s*<\/?[A-Z][\w.]*(\s[^<>]*)?\/?>\s*$/.test(line)) return null
       if (/^\s*\{\/\*.*\*\/\}\s*$/.test(line)) return null
     }
+    if (opts.detail === 'detailed') line = detailedHtmlInline(line)
     return line
       .replace(/<img\b[^>]*>/gi, '')
       .replace(/<\/?(p|div|span|picture|source|br|center|sup|sub|details|summary|kbd|font|small|big)\b[^>]*>/gi, '')
@@ -274,6 +369,21 @@ export function prepareMarkdownFile(text: string, opts: { mdx?: boolean } = {}):
   md = tidyMarkdown(md)
   if (!title) title = /^#\s+(.+)$/m.exec(md)?.[1]?.replace(/[*_`]/g, '').trim()
   return { title, markdown: md }
+}
+
+const attr = (tag: string, name: string) => new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(tag)?.[2]?.trim() || ''
+
+/** Detailed: inline HTML that carries content in markdown files (images with alt text, keys, summaries) becomes markdown. */
+function detailedHtmlInline(line: string): string {
+  return line
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const alt = attr(tag, 'alt').replace(/[[\]]/g, '')
+      const src = attr(tag, 'src')
+      return alt.length >= 3 && src ? `![${alt}](${src.replace(/[()\s]/g, escapeUrlChar)})` : ''
+    })
+    .replace(/<kbd>([^<]+)<\/kbd>/gi, '`$1`')
+    .replace(/<summary\b[^>]*>([\s\S]*?)<\/summary>/gi, (_m, t: string) => (t.trim() ? `**${t.trim()}**` : ''))
+    .replace(/<(del|s|strike)>([^<]+)<\/\1>/gi, '~~$2~~')
 }
 
 /** reStructuredText: converts underlined (and over+underlined) headings to ATX headings. */

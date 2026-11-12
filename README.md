@@ -172,6 +172,9 @@ the project icon, falling back to a two-letter mark when none is found; it can b
   Each code file is summarized by `NUXT_CODE_SUMMARY_MODEL` with the repository (README, file tree) as context, and an
   **"How the application works"** document is written from all summaries, so the assistant can answer technical questions.
   Summaries are cached; at most `NUXT_CODE_SUMMARY_MAX_PER_SYNC` new files are summarized per sync and the rest follow within an hour.
+  The overview is written again only when at least 10% of its inputs (file summaries, README) changed since it was written.
+  Before cloning, the branch's latest commit is checked with `git ls-remote`: when neither the commit nor the source settings
+  (index detail, include/exclude patterns, models) changed since the last complete sync, the repository isn't cloned at all.
   Turn **Index source code** off on a source to index documentation only.
 - **URLs** — fetched, main content extracted (Readability) and converted to Markdown; optional crawling of linked pages under
   the same path. Requests to a site are spaced (500 ms by default, or the robots.txt `Crawl-delay` if longer); `429 Too Many
@@ -191,6 +194,20 @@ Everything is converted to Markdown, split into heading-aware chunks, embedded t
 Unchanged documents and chunks are never re-embedded. Sources refresh automatically: every 2 days by default, configurable per
 project and per source (1 hour to 7 days). Each source keeps a history of its sync runs (files, total size and duration per run,
 for `NUXT_SYNC_HISTORY_DAYS` days), opened from the history button in the source list.
+
+#### Index detail
+
+Each project picks how much of its sources is indexed (**Settings → Knowledge → Index detail**). Every chunk stores an
+embedding (~20 KB in MongoDB at 1536 dimensions, far more than its text), so the presets mostly differ in how many chunks
+they produce. Changing the preset re-indexes all sources of the project.
+
+| Preset | What is indexed | Chunks |
+| --- | --- | --- |
+| **Compact** | Headings and lists only: emphasis, links, images, quotes and HTML are removed, tables become lists, code blocks are cut after 100 lines. Repeated blocks are removed within a document and across the documents of a source (site footers, PDF letterheads). Code files keep only a short summary (no source code), trivial files are skipped. Vision transcribes only key text and skips more small images. | ~2400 chars, no overlap |
+| **Balanced** (default) | Clean Markdown, code summaries followed by the source code. Only exact repeats are removed, always keeping one copy: repeated paragraphs within a document, identical blocks of 200+ characters across the documents of a source, and identical long lines on nearly every page of a PDF (letterheads, footers). | ~1800 chars, 200 overlap |
+| **Detailed** | All Markdown styles (images with alt text, strikethrough, keys, task and definition lists, captions, embedded videos as links). In-depth code summaries with references, intricacies and source comments, richer application overview and vision transcriptions. | ~1400 chars, 300 overlap |
+
+Projects without a preset use **Balanced**. Code summaries and vision results are cached per preset.
 
 ### Conversations & escalation
 

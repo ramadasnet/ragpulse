@@ -21,7 +21,7 @@ const MAX_ATTEMPTS = 5
 const CONCURRENCY = 4
 
 /** Bump to re-index all Drive files after converter changes (combined with the file's Drive version) */
-export const DRIVE_CONVERTER_VERSION = "1"
+export const DRIVE_CONVERTER_VERSION = "2"
 
 const FILE_FIELDS = "id,name,mimeType,version,size,modifiedTime,webViewLink,shortcutDetails(targetId,targetMimeType)"
 
@@ -347,7 +347,7 @@ export async function fetchDriveSource(
         if (plan.kind === "text" || plan.kind === "csv") {
             const text = new TextDecoder().decode(await download(f, undefined, MAX_TEXT_BYTES))
             if (plan.kind === "csv") return {markdown: csvToMarkdown(text, plan.delimiter)}
-            return {markdown: textFileToMarkdown(f.name, text, driveTitle(f)).markdown}
+            return {markdown: textFileToMarkdown(f.name, text, driveTitle(f), ctx.detail).markdown}
         }
         let bytes: Uint8Array
         let mime: BinaryMime
@@ -373,7 +373,8 @@ export async function fetchDriveSource(
     const processFile = async (f: DriveFile): Promise<void> => {
         const ref = f.id
         // Google Workspace files may have no `version`; modifiedTime is the best revision available
-        const version = `${DRIVE_CONVERTER_VERSION}:${f.version ?? f.modifiedTime ?? ""}`
+        // The preset is part of the version: changing it converts every file again
+        const version = `${DRIVE_CONVERTER_VERSION}${ctx.detail && ctx.detail !== "balanced" ? `-${ctx.detail}` : ""}:${f.version ?? f.modifiedTime ?? ""}`
         if (ctx.knownVersions?.get(ref) === version) {
             outcome.unchanged!.push(ref)
             return

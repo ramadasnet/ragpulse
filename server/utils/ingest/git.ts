@@ -1,5 +1,6 @@
 // Git repository fetcher: shallow clone → walk files → markdown. Pure module (no Nuxt auto-imports).
 import {execFile} from "node:child_process"
+import type {IngestDetail} from "#shared/types"
 import {mkdtemp, open, readdir, readFile, rm, stat} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {basename, extname, join} from "node:path"
@@ -9,6 +10,9 @@ import {adocToMarkdown, tidyMarkdown, htmlToMarkdown, prepareMarkdownFile, rstTo
 import {emptyFetchOutcome, type CodeFile, type CodeSummaries, type FetchContext, type FetchOutcome} from "./types"
 
 const CLONE_TIMEOUT_MS = 120_000
+const LS_REMOTE_TIMEOUT_MS = 30_000
+/** Bump to re-index all repositories after converter changes (part of the stored revision) */
+export const GIT_CONVERTER_VERSION = "1"
 const MAX_FILE_BYTES = 300 * 1024
 const MAX_FILES = 3000
 
@@ -169,8 +173,9 @@ function codeLang(path: string): string {
     return CODE_LANG[ext] ?? ext.slice(1)
 }
 
-/** Markdown document of a code file: its summary (when available) followed by the source. */
-export function codeToMarkdown(file: CodeFile, summary?: string): string {
+/** Markdown document of a code file: its summary (when available) followed by the source. Compact keeps only the summary. */
+export function codeToMarkdown(file: CodeFile, summary?: string, detail?: IngestDetail): string {
+    if (detail === "compact" && summary?.trim()) return `# ${file.path}\n\n${summary.trim()}`
     const body = file.content.replace(/\r\n?/g, "\n").replace(/\s+$/, "")
     const fence = body.includes("```") ? "~~~~" : "```"
     const code = `${fence}${file.lang}\n${body}\n${fence}`
@@ -222,6 +227,28 @@ function run(cmd: string, args: string[], opts: {cwd?: string; timeout: number})
             }
         )
     })
+}
+
+/** Commit of a branch/tag (or HEAD) in `git ls-remote` output. Branches win over tags, peeled tags over tag objects. */
+export function parseLsRemote(output: string, branch?: string): string | undefined {
+    const refs = new Map<string, string>()
+    for (const line of output.split("\n")) {
+        const m = /^([0-9a-f]{40,64})\s+(\S+)$/.exec(line.trim())
+        if (m) refs.set(m[2]!, m[1]!)
+    }
+    if (!branch) return refs.get("HEAD")
+    return refs.get(`refs/heads/${branch}`) ?? refs.get(`refs/tags/${branch}^{}`) ?? refs.get(`refs/tags/${branch}`)
+}
+
+/** Current commit of the branch on the remote, without cloning. Undefined when it can't be determined. */
+async function remoteCommit(cloneUrl: string, branch?: string): Promise<string | undefined> {
+    const patterns = branch ? [`refs/heads/${branch}`, `refs/tags/${branch}`, `refs/tags/${branch}^{}`] : ["HEAD"]
+    try {
+        const out = await run("git", ["-c", "credential.helper=", "ls-remote", "--", cloneUrl, ...patterns], {timeout: LS_REMOTE_TIMEOUT_MS})
+        return parseLsRemote(out, branch)
+    } catch {
+        return undefined
+    }
 }
 
 /** Web URL of a file for well-known hosts, so answers can link to the source. */
@@ -300,14 +327,14 @@ function titleFromPath(path: string, repoName: string): string {
 }
 
 /** Converts a fetched text file (markdown, html, rst, adoc, plain text, code) to a markdown document. */
-export function textFileToMarkdown(path: string, text: string, fallbackTitle: string): {title: string; markdown: string} {
+export function textFileToMarkdown(path: string, text: string, fallbackTitle: string, detail?: IngestDetail): {title: string; markdown: string} {
     const ext = extname(path).toLowerCase()
     if (MARKDOWN_EXT.has(ext)) {
-        const {title, markdown} = prepareMarkdownFile(text, {mdx: ext === ".mdx"})
+        const {title, markdown} = prepareMarkdownFile(text, {mdx: ext === ".mdx", detail})
         return {title: title || fallbackTitle, markdown}
     }
     if (ext === ".html" || ext === ".htm") {
-        const page = htmlToMarkdown(text, `file:///${path}`)
+        const page = htmlToMarkdown(text, `file:///${path}`, {detail})
         return {title: page.title || fallbackTitle, markdown: page.markdown}
     }
     if (ext === ".rst") {
@@ -320,7 +347,7 @@ export function textFileToMarkdown(path: string, text: string, fallbackTitle: st
     }
     if (PLAIN_EXT.has(ext)) {
         // README without extension may well be markdown
-        const {title, markdown} = prepareMarkdownFile(text)
+        const {title, markdown} = prepareMarkdownFile(text, {detail})
         return {title: title || fallbackTitle, markdown}
     }
     return {title: path, markdown: codeToMarkdown({path, lang: codeLang(path), content: text})}
@@ -356,6 +383,15 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
     const branch = options.branch?.trim() || undefined
     if (branch && !/^[\w][\w./-]*$/.test(branch)) throw new Error("Invalid branch name")
 
+    const revisionOf = (commit: string) => `${GIT_CONVERTER_VERSION}:${commit}:${ctx.revisionSalt ?? ""}`
+    if (ctx.knownRevision) {
+        const commit = await remoteCommit(cloneUrl.href, branch)
+        if (commit && revisionOf(commit) === ctx.knownRevision) {
+            ctx.log?.(`${url.hostname}${url.pathname}@${branch || "HEAD"}: unchanged since the last sync (${commit.slice(0, 12)}), not cloned`)
+            return {...outcome, revision: ctx.knownRevision, upToDate: true}
+        }
+    }
+
     const dir = await mkdtemp(join(tmpdir(), "ragpulse-git-"))
     const secrets = [token]
     try {
@@ -374,6 +410,8 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
             throw new Error(`git clone failed: ${msg}`.slice(0, 400))
         }
 
+        const headCommit = (await run("git", ["rev-parse", "HEAD"], {cwd: dir, timeout: 10_000}).catch(() => "")).trim()
+        if (/^[0-9a-f]{40,64}$/.test(headCommit)) outcome.revision = revisionOf(headCommit)
         let headBranch = branch
         if (!headBranch) {
             headBranch = (await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], {cwd: dir, timeout: 10_000}).catch(() => "")).trim() || "HEAD"
@@ -425,7 +463,7 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
                     else outcome.skipped.push({ref: path, reason: "empty"})
                     continue
                 }
-                const {title, markdown} = textFileToMarkdown(path, text, titleFromPath(path, repoName))
+                const {title, markdown} = textFileToMarkdown(path, text, titleFromPath(path, repoName), ctx.detail)
                 const clean = tidyMarkdown(markdown)
                 if (!clean) {
                     outcome.skipped.push({ref: path, reason: "empty"})
@@ -447,7 +485,12 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
                 summaries = {files: new Map(), overviewError: String(err?.message || err), incomplete: `code summaries failed: ${String(err?.message || err).slice(0, 200)}`}
             }
             for (const file of codeFiles) {
-                outcome.documents.push({ref: file.path, url: gitFileUrl(url.href, headBranch, file.path), title: file.path.slice(0, 300), markdown: tidyMarkdown(codeToMarkdown(file, summaries.files.get(file.path)))})
+                // Compact: trivial files are not worth their source code
+                if (ctx.detail === "compact" && summaries.trivial?.has(file.path)) {
+                    outcome.skipped.push({ref: file.path, reason: "no meaningful content"})
+                    continue
+                }
+                outcome.documents.push({ref: file.path, url: gitFileUrl(url.href, headBranch, file.path), title: file.path.slice(0, 300), markdown: tidyMarkdown(codeToMarkdown(file, summaries.files.get(file.path), ctx.detail))})
             }
             if (summaries.overview?.trim()) {
                 outcome.documents.push({ref: OVERVIEW_REF, url: repoUrl, title: `${repoName} · How the application works`, markdown: tidyMarkdown(summaries.overview)})

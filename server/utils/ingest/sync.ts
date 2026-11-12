@@ -1,7 +1,8 @@
 // Source synchronisation: fetch → markdown → chunks → embeddings → MongoDB.
-import type {Chunk, DocumentRecord, Source, SyncRun} from "#shared/types"
+import {projectIngestDetail, type Chunk, type DocumentRecord, type IngestDetail, type Source, type SyncRun} from "#shared/types"
 import {chunkMarkdown, type MarkdownChunk} from "./chunker"
 import {createCodeSummarizer} from "./code-summary"
+import {CHUNK_PRESETS, dedupeAcrossDocuments, refineMarkdown} from "./detail"
 import {createBinaryExtractor} from "./extract"
 import {fetchDriveSource, parseServiceAccountKey} from "./drive"
 import {fetchGitSource, scrubGitSecrets} from "./git"
@@ -40,6 +41,21 @@ async function fetchSource(source: Source, ctx: FetchContext): Promise<FetchOutc
         return fetchDriveSource(source.url, {serviceAccountKey: parseServiceAccountKey(raw)}, ctx)
     }
     return fetchUrlSource(source.url, {crawl: source.options?.crawl, maxPages: source.options?.maxPages}, ctx)
+}
+
+/** Content hash of a document; the preset is part of it, so changing the preset re-chunks every document. */
+function documentHash(markdown: string, detail: IngestDetail): string {
+    return sha256(detail === "balanced" ? markdown : `${detail}\0${markdown}`)
+}
+
+/**
+ * Fingerprint of everything besides the content that shapes a source's index (preset, options, models). Credentials are
+ * left out, so rotating a token doesn't force a full sync.
+ */
+function revisionSalt(source: Source, detail: IngestDetail, codeSummaryModel: string): string {
+    const {accessToken: _token, serviceAccountKey: _key, ...options} = source.options || {}
+    const visionModel = String(useRuntimeConfig().visionModel || "")
+    return sha256(JSON.stringify({detail, options, codeSummaryModel, visionModel})).slice(0, 16)
 }
 
 function errorText(err: any, source: Source): string {
@@ -81,6 +97,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
     try {
         if (!project) throw new Error("Project not found")
         const settings = await getAppSettings({fresh: true})
+        const detail = projectIngestDetail(project)
         const signal = AbortSignal.timeout(SYNC_TIMEOUT_MS)
         const log = (msg: string) => console.info(`[ingest] ${label}: ${msg}`)
         const existing = (await documents.find({sourceId}, {projection: {_id: 1, ref: 1, hash: 1, title: 1, url: 1, version: 1}}).toArray()) as Array<
@@ -89,13 +106,18 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         const byRef = new Map(existing.map((d) => [d.ref, d]))
         const outcome = await fetchSource(source, {
             userAgent: settings.userAgent || defaultUserAgent(),
+            detail,
             requestIntervalMs: settings.requestIntervalMs,
             signal,
             log,
-            extractBinary: createBinaryExtractor(),
-            summarizeCode: createCodeSummarizer(settings.codeSummaryModel, {maxPerSync: Number(useRuntimeConfig().codeSummaryMaxPerSync) || 0, signal, log}),
-            knownVersions: new Map(existing.flatMap((d) => (d.version ? [[d.ref, d.version] as const] : [])))
+            extractBinary: createBinaryExtractor(detail),
+            summarizeCode: createCodeSummarizer(settings.codeSummaryModel, {detail, maxPerSync: Number(useRuntimeConfig().codeSummaryMaxPerSync) || 0, signal, log}),
+            knownVersions: new Map(existing.flatMap((d) => (d.version ? [[d.ref, d.version] as const] : []))),
+            knownRevision: existing.length ? source.syncedRevision : undefined,
+            revisionSalt: revisionSalt(source, detail, settings.codeSummaryModel)
         })
+        // Unchanged since the last complete sync: every stored document is kept as is
+        if (outcome.upToDate) outcome.unchanged = existing.map((d) => d.ref)
 
         if (!outcome.documents.length && !outcome.unchanged?.length) {
             const reason = outcome.errors[0] || outcome.skipped[0]?.reason
@@ -107,6 +129,10 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                       : `No indexable content${reason ? ` (${reason})` : ""}`
             )
         }
+
+        const refined = outcome.documents.map((doc) => ({...doc, markdown: refineMarkdown(doc.markdown, detail)}))
+        const fetched = detail === "detailed" ? refined : dedupeAcrossDocuments(refined, detail === "compact" ? "similar" : "exact")
+        const chunkOptions = CHUNK_PRESETS[detail]
 
         const embeddingModel = embeddingKey(settings)
         const embeddingDimensions = settings.embeddingDimensionsParam ? settings.embeddingDimensions : undefined
@@ -197,8 +223,8 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
             }
         }
 
-        for (const doc of outcome.documents) {
-            const hash = sha256(doc.markdown)
+        for (const doc of fetched) {
+            const hash = documentHash(doc.markdown, detail)
             const prev = byRef.get(doc.ref)
             if (prev && prev.hash === hash) {
                 if (prev.title !== doc.title || (prev.url || "") !== (doc.url || "")) {
@@ -211,7 +237,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                 }
                 continue
             }
-            const docChunks = chunkMarkdown(doc.markdown, {title: doc.title})
+            const docChunks = chunkMarkdown(doc.markdown, {...chunkOptions, title: doc.title})
             pending.push({doc, hash, prevId: prev?._id, chunks: docChunks})
             pendingChunks += docChunks.length
             if (pendingChunks >= EMBED_BATCH) await flush()
@@ -219,7 +245,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         await flush()
 
         // Documents that disappeared from the source (transient failures and incomplete fetches keep their previous version)
-        const keep = new Set([...outcome.documents.map((d) => d.ref), ...outcome.failedRefs, ...(outcome.unchanged ?? [])])
+        const keep = new Set([...fetched.map((d) => d.ref), ...outcome.failedRefs, ...(outcome.unchanged ?? [])])
         const gone = outcome.incomplete ? [] : existing.filter((d) => !keep.has(d.ref)).map((d) => d._id)
         if (gone.length) {
             await chunks.deleteMany({documentId: {$in: gone}})
@@ -250,6 +276,10 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         const message = partial ? scrubGitSecrets(partial, [source.options?.accessToken]) : undefined
         const nextHours = outcome.incomplete ? Math.min(INCOMPLETE_RETRY_HOURS, refreshHours) : refreshHours
         const durationMs = Date.now() - startedAt
+        // Only a complete sync may be skipped next time
+        const revision = message ? undefined : outcome.revision
+        const unset: Record<string, ""> = revision ? {} : {syncedRevision: ""}
+        if (!message) unset.lastError = ""
         await sources.updateOne(
             {_id: sourceId},
             {
@@ -261,9 +291,10 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                     chunkCount,
                     nextSyncAt: new Date(Date.now() + nextHours * 3600_000),
                     updatedAt: new Date(),
-                    ...(message ? {lastError: message} : {})
+                    ...(message ? {lastError: message} : {}),
+                    ...(revision ? {syncedRevision: revision} : {})
                 },
-                ...(message ? {} : {$unset: {lastError: ""}})
+                $unset: unset
             }
         )
         await recordSyncRun({
@@ -282,7 +313,8 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
             ...(message ? {message} : {})
         })
         Object.assign(result, {ok: true, documents: documentCount, chunks: chunkCount})
-        console.info(`[ingest] ${label} synced in ${(durationMs / 1000).toFixed(1)}s: ${documentCount} docs (${result.changed} changed, ${result.removed} removed), ${chunkCount} chunks, ${result.embedded} embedded`)
+        if (outcome.upToDate) console.info(`[ingest] ${label} unchanged since the last sync, ${documentCount} docs kept`)
+        else console.info(`[ingest] ${label} synced in ${(durationMs / 1000).toFixed(1)}s: ${documentCount} docs (${result.changed} changed, ${result.removed} removed), ${chunkCount} chunks, ${result.embedded} embedded`)
         return result
     } catch (err: any) {
         const message = errorText(err, source)
@@ -299,7 +331,9 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                         lastDurationMs: Date.now() - startedAt,
                         nextSyncAt: new Date(Date.now() + retryHours * 3600_000),
                         updatedAt: new Date()
-                    }
+                    },
+                    // A failed sync may have updated only part of the documents: the next one must not be skipped
+                    $unset: {syncedRevision: ""}
                 }
             )
             .catch(() => {})

@@ -73,6 +73,8 @@ export interface Project {
   allowedDomains: string[]
   /** Default refresh interval for sources, in hours (1..168). Default 48. */
   refreshIntervalHours: number
+  /** How much of the fetched content is indexed. Unset = `DEFAULT_INGEST_DETAIL`. */
+  ingestDetail?: IngestDetail
   theme: ChatTheme
   enabled: boolean
   createdAt: Date
@@ -115,6 +117,8 @@ export interface Source {
   nextSyncAt: Date
   lastError?: string
   lastDurationMs?: number
+  /** git: commit and settings fingerprint of the last complete sync; the next sync skips cloning while it matches */
+  syncedRevision?: string
   documentCount: number
   chunkCount: number
   createdAt: Date
@@ -309,6 +313,34 @@ export interface EmbeddingStatus {
   model: string
   total: number
   current: number
+}
+
+export const INGEST_DETAILS = ['compact', 'balanced', 'detailed'] as const
+
+/** Ingestion preset: trades index size (storage, embeddings) for retrieval detail */
+export type IngestDetail = (typeof INGEST_DETAILS)[number]
+
+export const DEFAULT_INGEST_DETAIL: IngestDetail = 'balanced'
+
+export const INGEST_DETAIL_INFO: Record<IngestDetail, { label: string, description: string }> = {
+  compact: {
+    label: 'Compact',
+    description: 'Smallest index, for lightweight databases. Keeps headings and lists only, short code summaries without source code, removes duplicated content.'
+  },
+  balanced: {
+    label: 'Balanced',
+    description: 'Good answers at a moderate size. Clean markdown without exact duplicates, code summaries with the source code.'
+  },
+  detailed: {
+    label: 'Detailed',
+    description: 'Most accurate, largest index. Keeps all markdown styles, in-depth code summaries with references and source comments, smaller chunks.'
+  }
+}
+
+/** Ingestion preset of a project (projects without one use the default). */
+export function projectIngestDetail(project: { ingestDetail?: IngestDetail | null } | null | undefined): IngestDetail {
+  const value = project?.ingestDetail
+  return value && (INGEST_DETAILS as readonly string[]).includes(value) ? value : DEFAULT_INGEST_DETAIL
 }
 
 export const REFRESH_MIN_HOURS = 1

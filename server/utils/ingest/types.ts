@@ -1,3 +1,4 @@
+import type {IngestDetail} from "#shared/types"
 import type {BinaryMime} from "./binary"
 
 export interface FetchedDocument {
@@ -25,6 +26,10 @@ export interface FetchOutcome {
      * missing from this outcome keep their previous version, and the source is synced again soon.
      */
     incomplete?: string
+    /** Revision of the fetched content (git: commit + settings fingerprint), stored after a complete sync */
+    revision?: string
+    /** The content is still at `FetchContext.knownRevision`: nothing was fetched and every stored document is kept */
+    upToDate?: boolean
 }
 
 export interface BinaryFile {
@@ -55,6 +60,8 @@ export interface RepoContext {
 export interface CodeSummaries {
     /** Markdown summary per file path (files without a summary are indexed as plain code) */
     files: Map<string, string>
+    /** Files the model found without meaningful content (re-exports, generated code, trivial config) */
+    trivial?: Set<string>
     /** Overview of how the application works, built from all file summaries */
     overview?: string
     /** Why the overview wasn't (re)generated this time: the previous one is kept */
@@ -65,12 +72,18 @@ export interface CodeSummaries {
 
 export interface FetchContext {
     userAgent: string
+    /** Ingestion preset of the project (default balanced): how much of each page/file is converted */
+    detail?: IngestDetail
     /** URL sources: minimum delay between requests to the same host */
     requestIntervalMs?: number
     signal?: AbortSignal
     log?: (msg: string) => void
     /** Converts PDFs, images and Office files to markdown. Without it these files are not indexed. */
     extractBinary?: (file: BinaryFile) => Promise<ExtractResult>
+    /** Revision of the last complete sync; sources may skip fetching entirely while it is current (git) */
+    knownRevision?: string
+    /** Fingerprint of the sync settings (preset, options, models), combined into `FetchOutcome.revision` */
+    revisionSalt?: string
     /** ref → version of the currently stored document; sources may skip re-downloading unchanged items (Drive) */
     knownVersions?: Map<string, string>
     /** Summarizes source code files of a git repository. Without it code is indexed as is. */

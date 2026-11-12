@@ -67,6 +67,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
                         supportEmail: project.supportEmail,
                         allowedDomains: project.allowedDomains,
                         refreshIntervalHours: project.refreshIntervalHours,
+                        ingestDetail: projectIngestDetail(project),
                         botName: project.theme?.botName,
                         chatUrl: publicUrl("chat", `/chat/${project._id}`),
                         createdAt: project.createdAt,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { AlertTriangle, Globe, ImageUp, RotateCcw, Trash2 } from 'lucide-vue-next'
-import type { Project, ProjectPermission } from '#shared/types'
-import { REFRESH_MAX_HOURS, REFRESH_MIN_HOURS } from '#shared/types'
+import type { IngestDetail, Project, ProjectPermission } from '#shared/types'
+import { INGEST_DETAIL_INFO, INGEST_DETAILS, projectIngestDetail, REFRESH_MAX_HOURS, REFRESH_MIN_HOURS } from '#shared/types'
 import { defaultSystemInstructions } from '#shared/utils/instructions'
 
 type ProjectWithPerms = Project & { permissions: ProjectPermission[] }
@@ -29,6 +29,7 @@ interface Form {
   rateLimit: number
   supportEmail: string
   refreshIntervalHours: number
+  ingestDetail: IngestDetail
 }
 
 function toForm(p: Project): Form {
@@ -41,7 +42,8 @@ function toForm(p: Project): Form {
     systemInstructions: p.systemInstructions,
     rateLimit: p.rateLimit,
     supportEmail: p.supportEmail || '',
-    refreshIntervalHours: p.refreshIntervalHours
+    refreshIntervalHours: p.refreshIntervalHours,
+    ingestDetail: projectIngestDetail(p)
   }
 }
 
@@ -80,6 +82,9 @@ const refreshOptions = [1, 2, 3, 6, 12, 24, 48, 72, 96, 120, 144, 168]
   .filter(h => h >= REFRESH_MIN_HOURS && h <= REFRESH_MAX_HOURS)
   .map(h => ({ value: h, label: h < 24 ? `Every ${h} hour${h === 1 ? '' : 's'}` : h === 24 ? 'Every day' : `Every ${h / 24} days` }))
 
+const detailOptions = INGEST_DETAILS.map(id => ({ id, ...INGEST_DETAIL_INFO[id] }))
+const detailChanged = computed(() => !!project.value && !!form.value && form.value.ingestDetail !== projectIngestDetail(project.value))
+
 const temperatureLabel = computed(() => {
   const t = form.value?.temperature ?? 0
   if (t <= 0.3) return 'Precise'
@@ -93,6 +98,7 @@ const { run, pending } = useAction()
 async function save() {
   const f = form.value
   if (!f || !valid.value) return
+  const reindex = detailChanged.value
   const updated = await run(() => $fetch<ProjectWithPerms>(`/api/projects/${projectId.value}`, {
     method: 'PATCH',
     body: {
@@ -104,9 +110,10 @@ async function save() {
       systemInstructions: f.systemInstructions,
       rateLimit: Number(f.rateLimit),
       supportEmail: f.supportEmail.trim(),
-      refreshIntervalHours: Number(f.refreshIntervalHours)
+      refreshIntervalHours: Number(f.refreshIntervalHours),
+      ingestDetail: f.ingestDetail
     }
-  }), 'Settings saved')
+  }), reindex ? 'Settings saved, sources are being re-indexed' : 'Settings saved')
   if (!updated) return
   project.value = updated
   refreshProjects().catch(() => {})
@@ -302,13 +309,27 @@ async function deleteProject() {
         </div>
       </UiCard>
 
-      <UiCard title="Knowledge refresh" description="How often web pages and git repositories are re-synced.">
-        <div class="grid-2">
-          <UiSelect v-model.number="form.refreshIntervalHours" label="Default refresh interval" :options="refreshOptions" />
-          <p class="small muted explain">
-            Applies to every source that doesn't set its own interval. Individual sources can override it on the
-            <NuxtLink :to="`/admin/projects/${projectId}/knowledge`" class="accent">Knowledge</NuxtLink> page. Unchanged content is skipped, so frequent refreshes are cheap.
-          </p>
+      <UiCard title="Knowledge" description="How much of your sources is indexed, and how often they are re-synced.">
+        <div class="stack" style="--gap: 18px">
+          <UiField label="Index detail" :hint="detailChanged ? 'Saving re-indexes every source of this project with the new preset.' : 'Applies to web pages, repositories, Drive files, PDFs and images. Larger indexes answer more precisely but need more database storage.'">
+            <div class="detail-options" role="radiogroup" aria-label="Index detail">
+              <label v-for="o in detailOptions" :key="o.id" class="detail-option" :class="{ on: form.ingestDetail === o.id }">
+                <input v-model="form.ingestDetail" type="radio" name="ingestDetail" :value="o.id" class="sr-only">
+                <span class="detail-head">
+                  <span class="strong">{{ o.label }}</span>
+                  <span v-if="o.id === 'balanced'" class="dim tiny">Default</span>
+                </span>
+                <span class="small muted">{{ o.description }}</span>
+              </label>
+            </div>
+          </UiField>
+          <div class="grid-2">
+            <UiSelect v-model.number="form.refreshIntervalHours" label="Default refresh interval" :options="refreshOptions" />
+            <p class="small muted explain">
+              Applies to every source that doesn't set its own interval. Individual sources can override it on the
+              <NuxtLink :to="`/admin/projects/${projectId}/knowledge`" class="accent">Knowledge</NuxtLink> page. Unchanged content is skipped, so frequent refreshes are cheap.
+            </p>
+          </div>
         </div>
       </UiCard>
 
@@ -361,6 +382,17 @@ async function deleteProject() {
 .link-btn { background: none; border: 0; color: var(--accent); padding: 0; display: inline-flex; align-items: center; gap: 4px; }
 .explain { align-self: end; padding-bottom: 4px; }
 .range { width: 100%; accent-color: var(--accent); height: 22px; cursor: pointer; }
+.detail-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.detail-option {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; cursor: pointer;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+  transition: border-color 0.15s, background 0.15s;
+}
+.detail-option:hover { border-color: var(--border-strong); }
+.detail-option.on { border-color: var(--accent); background: var(--accent-soft); }
+.detail-option:focus-within { box-shadow: var(--ring); }
+.detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+@media (max-width: 720px) { .detail-options { grid-template-columns: 1fr; } }
 .danger-card { border-color: rgb(255 107 107 / 0.3); }
 .savebar {
   position: sticky; bottom: 16px; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px;

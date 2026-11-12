@@ -9,10 +9,12 @@ export interface LockDoc {
     expiresAt: Date
 }
 
-/** Cached LLM output: vision transcriptions (`model:sha256(bytes)`) and code summaries (`code:…`, `overview:…`) */
+/** Cached LLM output: vision transcriptions (`model:sha256(bytes)`) and code summaries (`code:…`, `overview:…`, `overview-latest:…`) */
 export interface ExtractionDoc {
     _id: string
     markdown: string
+    /** Latest overview of a repository: `path\0sha256(summary)` of every input it was written from */
+    basis?: string[]
     createdAt: Date
     usedAt: Date
 }

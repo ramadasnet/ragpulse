@@ -13,5 +13,9 @@ export default defineEventHandler(async (event) => {
   if (patch.refreshIntervalHours !== undefined && patch.refreshIntervalHours !== project.refreshIntervalHours) {
     await rescheduleProjectSources(project._id)
   }
+  // Re-index every source with the new preset
+  if (patch.ingestDetail !== undefined && patch.ingestDetail !== projectIngestDetail(project)) {
+    await requestSync(project._id)
+  }
   return { ...updated, permissions: projectPermissions(user, project._id) }
 })

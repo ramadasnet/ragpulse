@@ -93,7 +93,7 @@ function parseSections(md: string): Section[] {
 }
 
 /** Splits text into blocks separated by blank lines, keeping fenced code blocks whole. */
-function splitBlocks(text: string): string[] {
+export function splitBlocks(text: string): string[] {
   const blocks: string[] = []
   let buf: string[] = []
   let fence: string | null = null

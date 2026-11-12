@@ -1,5 +1,6 @@
 // Web page fetcher + same-site crawler. Pure module (no Nuxt auto-imports).
 import {createHash} from "node:crypto"
+import type {IngestDetail} from "#shared/types"
 import {binaryMimeFromName, binaryMimeFromType, MAX_BINARY_BYTES, type BinaryMime} from "./binary"
 import {tidyMarkdown, htmlToMarkdown, prepareMarkdownFile} from "./markdown"
 import {HostThrottle, parseRetryAfter} from "./throttle"
@@ -190,13 +191,13 @@ function lastSegment(url: string): string {
 }
 
 /** Converts a fetched resource into markdown (+ discovered links for HTML). */
-function toDocument(res: Resource): {title: string; markdown: string; links: string[]} {
+function toDocument(res: Resource, detail?: IngestDetail): {title: string; markdown: string; links: string[]} {
     const looksHtml = /^\s*(<!doctype html|<html|<head|<body)/i.test(res.text.slice(0, 500))
     if (res.type === "text/html" || res.type === "application/xhtml+xml" || (looksHtml && !isMarkdownUrl(res.finalUrl))) {
-        return htmlToMarkdown(res.text, res.finalUrl)
+        return htmlToMarkdown(res.text, res.finalUrl, {detail})
     }
     if (res.type.includes("markdown") || isMarkdownUrl(res.finalUrl)) {
-        const {title, markdown} = prepareMarkdownFile(res.text, {mdx: /\.mdx(\?|$)/i.test(res.finalUrl)})
+        const {title, markdown} = prepareMarkdownFile(res.text, {mdx: /\.mdx(\?|$)/i.test(res.finalUrl), detail})
         return {title: title || lastSegment(res.finalUrl), markdown, links: []}
     }
     if (res.type.includes("json")) {
@@ -217,7 +218,7 @@ function toDocument(res: Resource): {title: string; markdown: string; links: str
 
 /** Like `toDocument`, also converting PDFs and images. Throws `SkipError` for files that aren't indexed. */
 async function toPageDocument(res: Resource, ctx: FetchContext): Promise<{title: string; markdown: string; links: string[]}> {
-    if (!res.binary) return toDocument(res)
+    if (!res.binary) return toDocument(res, ctx.detail)
     const name = lastSegment(res.finalUrl)
     const extracted = await ctx.extractBinary!({name, ...res.binary})
     if ("skipped" in extracted) throw new SkipError(extracted.skipped)

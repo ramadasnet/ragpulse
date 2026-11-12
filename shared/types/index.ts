@@ -71,7 +71,7 @@ export interface Project {
   supportEmail?: string
   /** Domains allowed to embed the chat. Supports wildcards like `*.example.com`. The website domain is always allowed. */
   allowedDomains: string[]
-  /** Default refresh interval for sources, in hours (1..168). Default 48. */
+  /** Default refresh interval for sources, in hours (1..336), or 0 for manual only. Default 48. */
   refreshIntervalHours: number
   /** How much of the fetched content is indexed. Unset = `DEFAULT_INGEST_DETAIL`. */
   ingestDetail?: IngestDetail
@@ -110,7 +110,7 @@ export interface Source {
   title: string
   url: string
   options: SourceOptions
-  /** Per source refresh interval in hours (1..168). null = use the project's default. */
+  /** Per source refresh interval in hours (1..336), 0 = manual only, null = use the project's default. */
   refreshIntervalHours: number | null
   status: SourceStatus
   lastSyncAt?: Date
@@ -344,8 +344,17 @@ export function projectIngestDetail(project: { ingestDetail?: IngestDetail | nul
 }
 
 export const REFRESH_MIN_HOURS = 1
-export const REFRESH_MAX_HOURS = 168
+export const REFRESH_MAX_HOURS = 336
 export const DEFAULT_REFRESH_HOURS = 48
+/** Refresh interval of sources that only sync when requested */
+export const MANUAL_REFRESH = 0
+/** Refresh interval presets (hours) */
+export const REFRESH_PRESETS = [2, 4, 12, 24, 48, 72, 168, 336]
+
+/** Whether a refresh interval is valid: manual only, or 1 hour to 14 days. */
+export function isRefreshInterval(hours: number): boolean {
+  return hours === MANUAL_REFRESH || (Number.isInteger(hours) && hours >= REFRESH_MIN_HOURS && hours <= REFRESH_MAX_HOURS)
+}
 
 export const DEFAULT_SYNC_HISTORY_DAYS = 30
 export const SYNC_HISTORY_MAX_DAYS = 365

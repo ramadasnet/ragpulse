@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
     updated.refreshIntervalHours = set.refreshIntervalHours = body.refreshIntervalHours
     if (source.status === 'idle' || source.status === 'error') {
       const base = source.lastSyncAt ? new Date(source.lastSyncAt).getTime() : Date.now()
-      updated.nextSyncAt = set.nextSyncAt = new Date(base + sourceRefreshHours(updated, project) * 3600_000)
+      updated.nextSyncAt = set.nextSyncAt = nextSyncDate(base, sourceRefreshHours(updated, project))
     }
   }
   if (contentChanged && source.status !== 'syncing') {

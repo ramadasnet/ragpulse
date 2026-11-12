@@ -73,7 +73,7 @@ export default defineEventHandler(async (event) => {
             .toArray()
             .catch(() => []),
         sources
-            .find({status: "idle"}, {projection: {nextSyncAt: 1}})
+            .find({status: "idle", nextSyncAt: {$lt: MANUAL_NEXT_SYNC}}, {projection: {nextSyncAt: 1}})
             .sort({nextSyncAt: 1})
             .limit(1)
             .toArray()

@@ -5,6 +5,7 @@ import {mkdtemp, open, readdir, readFile, rm, stat} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {basename, extname, join} from "node:path"
 import {binaryMimeFromName, MAX_BINARY_BYTES} from "./binary"
+import {stripComments} from "./comments"
 import {matchesAnyGlob} from "./glob"
 import {adocToMarkdown, tidyMarkdown, htmlToMarkdown, prepareMarkdownFile, rstToMarkdown} from "./markdown"
 import {emptyFetchOutcome, type CodeFile, type CodeSummaries, type FetchContext, type FetchOutcome} from "./types"
@@ -12,7 +13,7 @@ import {emptyFetchOutcome, type CodeFile, type CodeSummaries, type FetchContext,
 const CLONE_TIMEOUT_MS = 120_000
 const LS_REMOTE_TIMEOUT_MS = 30_000
 /** Bump to re-index all repositories after converter changes (part of the stored revision) */
-export const GIT_CONVERTER_VERSION = "1"
+export const GIT_CONVERTER_VERSION = "2"
 const MAX_FILE_BYTES = 300 * 1024
 const MAX_FILES = 3000
 
@@ -173,10 +174,16 @@ function codeLang(path: string): string {
     return CODE_LANG[ext] ?? ext.slice(1)
 }
 
-/** Markdown document of a code file: its summary (when available) followed by the source. Compact keeps only the summary. */
+/**
+ * Markdown document of a code file: its summary (when available) followed by the source. Compact keeps only the summary.
+ * Balanced and compact index the source without its comments (detailed keeps them).
+ */
 export function codeToMarkdown(file: CodeFile, summary?: string, detail?: IngestDetail): string {
     if (detail === "compact" && summary?.trim()) return `# ${file.path}\n\n${summary.trim()}`
-    const body = file.content.replace(/\r\n?/g, "\n").replace(/\s+$/, "")
+    const source = file.content.replace(/\r\n?/g, "\n").replace(/\s+$/, "")
+    const stripped = detail === "balanced" || detail === "compact" ? stripComments(source, file.path) : source
+    // A file made only of comments keeps them
+    const body = stripped.trim() ? stripped : source
     const fence = body.includes("```") ? "~~~~" : "```"
     const code = `${fence}${file.lang}\n${body}\n${fence}`
     if (!summary?.trim()) return `# ${file.path}\n\n${code}`
@@ -350,7 +357,7 @@ export function textFileToMarkdown(path: string, text: string, fallbackTitle: st
         const {title, markdown} = prepareMarkdownFile(text, {detail})
         return {title: title || fallbackTitle, markdown}
     }
-    return {title: path, markdown: codeToMarkdown({path, lang: codeLang(path), content: text})}
+    return {title: path, markdown: codeToMarkdown({path, lang: codeLang(path), content: text}, undefined, detail)}
 }
 
 export interface GitSourceOptions {

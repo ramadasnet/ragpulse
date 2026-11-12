@@ -1,4 +1,4 @@
-import { DEFAULT_REFRESH_HOURS, REFRESH_MAX_HOURS, REFRESH_MIN_HOURS } from '#shared/types'
+import { DEFAULT_REFRESH_HOURS, MANUAL_REFRESH, REFRESH_MAX_HOURS, REFRESH_MIN_HOURS } from '../../shared/types'
 import { EventEmitter } from 'node:events'
 
 /** Emits `kick` whenever a sync is requested, so the scheduler can run immediately. */
@@ -18,10 +18,19 @@ export async function requestSync(projectId: string, sourceId?: string): Promise
   return res.modifiedCount
 }
 
-/** Effective refresh interval (hours) for a source. */
+/** `nextSyncAt` of sources that only sync when requested: never due */
+export const MANUAL_NEXT_SYNC = new Date('9999-12-31T00:00:00.000Z')
+
+/** Effective refresh interval (hours) for a source; 0 = manual only. */
 export function sourceRefreshHours(source: { refreshIntervalHours: number | null }, project: { refreshIntervalHours: number }): number {
   const hours = source.refreshIntervalHours ?? project.refreshIntervalHours ?? DEFAULT_REFRESH_HOURS
+  if (hours === MANUAL_REFRESH) return MANUAL_REFRESH
   return Math.min(REFRESH_MAX_HOURS, Math.max(REFRESH_MIN_HOURS, hours))
+}
+
+/** Next automatic sync, `hours` after `base` (ms); never for manual only sources (0 hours). */
+export function nextSyncDate(base: number, hours: number): Date {
+  return hours === MANUAL_REFRESH ? MANUAL_NEXT_SYNC : new Date(base + hours * 3600_000)
 }
 
 /**
@@ -35,7 +44,7 @@ export async function rescheduleProjectSources(projectId: string): Promise<void>
   const list = await sources.find({ projectId, status: { $in: ['idle', 'error'] } }).toArray()
   for (const source of list) {
     const base = source.lastSyncAt ? new Date(source.lastSyncAt).getTime() : Date.now()
-    const nextSyncAt = new Date(base + sourceRefreshHours(source, project) * 3600_000)
+    const nextSyncAt = nextSyncDate(base, sourceRefreshHours(source, project))
     await sources.updateOne({ _id: source._id }, { $set: { nextSyncAt } })
   }
 }

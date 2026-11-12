@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import { z } from 'zod'
 import type { ChatTheme, Project, ProjectAccess, ProjectPermission, User } from '#shared/types'
-import { DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, PROJECT_PERMISSIONS, REFRESH_MAX_HOURS, REFRESH_MIN_HOURS } from '#shared/types'
+import { DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, isRefreshInterval, PROJECT_PERMISSIONS } from '#shared/types'
 import { defaultSystemInstructions } from '#shared/utils/instructions'
 
 // ---------- Validation helpers ----------
@@ -105,7 +105,7 @@ export const projectUpdateSchema = z.object({
   allowedDomains: z.array(z.string().max(300)).max(50, 'At most 50 allowed domains'),
   /** Image data URI; empty string resets the icon to the two-letter mark */
   icon: z.union([z.literal(''), iconSchema]),
-  refreshIntervalHours: z.number().int().min(REFRESH_MIN_HOURS).max(REFRESH_MAX_HOURS),
+  refreshIntervalHours: z.number().refine(isRefreshInterval, 'Manual only (0) or 1 to 336 hours'),
   ingestDetail: z.enum(INGEST_DETAILS),
   theme: themePatchSchema,
   enabled: z.boolean()

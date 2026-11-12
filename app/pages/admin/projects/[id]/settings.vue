@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { AlertTriangle, Globe, ImageUp, RotateCcw, Trash2 } from 'lucide-vue-next'
 import type { IngestDetail, Project, ProjectPermission } from '#shared/types'
-import { INGEST_DETAIL_INFO, INGEST_DETAILS, projectIngestDetail, REFRESH_MAX_HOURS, REFRESH_MIN_HOURS } from '#shared/types'
+import { INGEST_DETAIL_INFO, INGEST_DETAILS, MANUAL_REFRESH, projectIngestDetail, REFRESH_PRESETS } from '#shared/types'
 import { defaultSystemInstructions } from '#shared/utils/instructions'
 
 type ProjectWithPerms = Project & { permissions: ProjectPermission[] }
@@ -78,9 +78,15 @@ const errors = computed(() => {
 })
 const valid = computed(() => Object.keys(errors.value).length === 0)
 
-const refreshOptions = [1, 2, 3, 6, 12, 24, 48, 72, 96, 120, 144, 168]
-  .filter(h => h >= REFRESH_MIN_HOURS && h <= REFRESH_MAX_HOURS)
-  .map(h => ({ value: h, label: h < 24 ? `Every ${h} hour${h === 1 ? '' : 's'}` : h === 24 ? 'Every day' : `Every ${h / 24} days` }))
+// Presets, plus the current value when it is not one of them (set before the presets changed)
+const refreshOptions = computed(() => {
+  const current = project.value?.refreshIntervalHours
+  const hours = [...new Set([...REFRESH_PRESETS, ...(current ? [current] : [])])].sort((a, b) => a - b)
+  return [
+    ...hours.map(h => ({ value: h, label: refreshIntervalLabel(h) })),
+    { value: MANUAL_REFRESH, label: refreshIntervalLabel(MANUAL_REFRESH) }
+  ]
+})
 
 const detailOptions = INGEST_DETAILS.map(id => ({ id, ...INGEST_DETAIL_INFO[id] }))
 const detailChanged = computed(() => !!project.value && !!form.value && form.value.ingestDetail !== projectIngestDetail(project.value))
@@ -328,6 +334,7 @@ async function deleteProject() {
             <p class="small muted explain">
               Applies to every source that doesn't set its own interval. Individual sources can override it on the
               <NuxtLink :to="`/admin/projects/${projectId}/knowledge`" class="accent">Knowledge</NuxtLink> page. Unchanged content is skipped, so frequent refreshes are cheap.
+              Manual only sources sync when you click Sync.
             </p>
           </div>
         </div>

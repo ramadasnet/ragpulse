@@ -192,7 +192,8 @@ the project icon, falling back to a two-letter mark when none is found; it can b
 
 Everything is converted to Markdown, split into heading-aware chunks, embedded through OpenRouter and stored in MongoDB.
 Unchanged documents and chunks are never re-embedded. Sources refresh automatically: every 2 days by default, configurable per
-project and per source (1 hour to 7 days). Each source keeps a history of its sync runs (files, total size and duration per run,
+project and per source (every 2, 4, 12 or 24 hours, every 2, 3, 7 or 14 days, or **Manual only** — synced only when you click
+Sync). Sources are edited on their own page; the type of a source (website, git, Drive) can't be changed once it's added. Each source keeps a history of its sync runs (files, total size and duration per run,
 for `NUXT_SYNC_HISTORY_DAYS` days), opened from the history button in the source list.
 
 #### Index detail
@@ -203,9 +204,9 @@ they produce. Changing the preset re-indexes all sources of the project.
 
 | Preset | What is indexed | Chunks |
 | --- | --- | --- |
-| **Compact** | Headings and lists only: emphasis, links, images, quotes and HTML are removed, tables become lists, code blocks are cut after 100 lines. Repeated blocks are removed within a document and across the documents of a source (site footers, PDF letterheads). Code files keep only a short summary (no source code), trivial files are skipped. Vision transcribes only key text and skips more small images. | ~2400 chars, no overlap |
-| **Balanced** (default) | Clean Markdown, code summaries followed by the source code. Only exact repeats are removed, always keeping one copy: repeated paragraphs within a document, identical blocks of 200+ characters across the documents of a source, and identical long lines on nearly every page of a PDF (letterheads, footers). | ~1800 chars, 200 overlap |
-| **Detailed** | All Markdown styles (images with alt text, strikethrough, keys, task and definition lists, captions, embedded videos as links). In-depth code summaries with references, intricacies and source comments, richer application overview and vision transcriptions. | ~1400 chars, 300 overlap |
+| **Compact** | Headings and lists only: emphasis, links, images, quotes and HTML are removed, tables become lists, code blocks are cut after 100 lines. Repeated blocks are removed within a document and across the documents of a source (site footers, PDF letterheads). Code files keep only a short summary (no source code, or the source without comments when no summary is available), trivial files are skipped. Vision transcribes only key text and skips more small images. | ~2400 chars, no overlap |
+| **Balanced** (default) | Clean Markdown, code summaries followed by the source code with its comments stripped (the summaries are still written from the full source). Only exact repeats are removed, always keeping one copy: repeated paragraphs within a document, identical blocks of 200+ characters across the documents of a source, and identical long lines on nearly every page of a PDF (letterheads, footers). | ~1800 chars, 200 overlap |
+| **Detailed** | All Markdown styles (images with alt text, strikethrough, keys, task and definition lists, captions, embedded videos as links). In-depth code summaries with references, intricacies and source comments, source code with its comments, richer application overview and vision transcriptions. | ~1400 chars, 300 overlap |
 
 Projects without a preset use **Balanced**. Code summaries and vision results are cached per preset.
 

@@ -43,9 +43,18 @@ export function formatDuration(ms?: number | null): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
 
+/** A refresh interval in words; 0 = manual only. */
 export function formatHours(hours: number): string {
+  if (hours === 0) return 'manual only'
   if (hours % 24 === 0) return hours === 24 ? 'daily' : `every ${hours / 24} days`
   return hours === 1 ? 'hourly' : `every ${hours} hours`
+}
+
+/** A refresh interval as a select option label, e.g. "Every 24 hours", "Every 3 days", "Manual only". */
+export function refreshIntervalLabel(hours: number): string {
+  if (hours === 0) return 'Manual only'
+  if (hours >= 48 && hours % 24 === 0) return `Every ${hours / 24} days`
+  return hours === 1 ? 'Every hour' : `Every ${hours} hours`
 }
 
 export function formatCost(usd?: number | null): string {

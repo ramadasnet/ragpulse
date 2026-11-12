@@ -29,7 +29,6 @@ watch(busy, (isBusy, wasBusy) => {
 onBeforeUnmount(() => clearInterval(poll))
 
 const modalOpen = ref(false)
-const editing = ref<SourceView | null>(null)
 const docsOpen = ref(false)
 const docsSource = ref<SourceView | null>(null)
 const historyOpen = ref(false)
@@ -39,11 +38,6 @@ const expanded = ref<Set<string>>(new Set())
 const syncing = ref<Set<string>>(new Set())
 
 function add() {
-  editing.value = null
-  modalOpen.value = true
-}
-function edit(s: SourceView) {
-  editing.value = s
   modalOpen.value = true
 }
 function showDocs(s: SourceView) {
@@ -105,6 +99,10 @@ function refreshLabel(s: SourceView) {
   return s.refreshIntervalHours == null
     ? { kind: 'inherits project', every: capitalize(formatHours(projectHours.value)) }
     : { kind: 'custom', every: capitalize(formatHours(s.refreshIntervalHours)) }
+}
+
+function isManual(s: SourceView) {
+  return (s.refreshIntervalHours ?? projectHours.value) === 0
 }
 
 function capitalize(text: string) {
@@ -193,7 +191,7 @@ defineExpose({ refresh })
               <td class="nowrap small">
                 <span :title="s.lastSyncAt ? formatDate(s.lastSyncAt, true) : undefined">{{ s.lastSyncAt ? `Synced ${timeAgo(s.lastSyncAt)}` : 'Never synced' }}</span>
                 <span v-if="s.lastDurationMs" class="dim tiny"> · {{ (s.lastDurationMs / 1000).toFixed(1) }}s</span>
-                <p class="dim tiny" :title="s.status !== 'syncing' && s.status !== 'queued' && s.nextSyncAt ? `Next sync ${timeAgo(s.nextSyncAt)}` : undefined">
+                <p class="dim tiny" :title="s.status !== 'syncing' && s.status !== 'queued' && s.nextSyncAt && !isManual(s) ? `Next sync ${timeAgo(s.nextSyncAt)}` : undefined">
                   {{ refreshLabel(s).every }} · {{ refreshLabel(s).kind }}
                 </p>
               </td>
@@ -203,14 +201,14 @@ defineExpose({ refresh })
                 </UiButton>
                 <UiButton size="sm" variant="ghost" icon :aria-label="`Documents of ${s.title}`" title="Documents" @click="showDocs(s)"><FileText :size="15" /></UiButton>
                 <UiButton size="sm" variant="ghost" icon :aria-label="`Sync history of ${s.title}`" title="Sync history" @click="showHistory(s)"><History :size="15" /></UiButton>
-                <UiButton size="sm" variant="ghost" icon :aria-label="`Edit ${s.title}`" title="Edit" @click="edit(s)"><Pencil :size="15" /></UiButton>
+                <UiButton size="sm" variant="ghost" icon :aria-label="`Edit ${s.title}`" title="Edit" :to="`/admin/projects/${projectId}/knowledge/sources/${s._id}`"><Pencil :size="15" /></UiButton>
                 <UiButton size="sm" variant="ghost" icon :aria-label="`Delete ${s.title}`" title="Delete" @click="remove(s)"><Trash2 :size="15" /></UiButton>
               </td>
             </tr>
             <tr v-if="s.lastError && expanded.has(s._id)" class="error-row">
               <td colspan="5">
                 <p class="small" :class="s.status === 'error' ? 'danger-text' : 'warn-text'">{{ s.lastError }}</p>
-                <p v-if="s.status === 'error'" class="dim tiny">Existing knowledge from this source is kept. Retrying {{ timeAgo(s.nextSyncAt) }}.</p>
+                <p v-if="s.status === 'error'" class="dim tiny">Existing knowledge from this source is kept. {{ isManual(s) ? 'Sync it again to retry.' : `Retrying ${timeAgo(s.nextSyncAt)}.` }}</p>
               </td>
             </tr>
           </template>
@@ -218,7 +216,7 @@ defineExpose({ refresh })
       </table>
     </div>
 
-    <KnowledgeSourceModal v-model:open="modalOpen" :project-id="projectId" :source="editing" :project-hours="projectHours" @saved="onSaved" />
+    <KnowledgeSourceModal v-model:open="modalOpen" :project-id="projectId" :project-hours="projectHours" @saved="onSaved" />
     <KnowledgeDocumentsModal v-model:open="docsOpen" :project-id="projectId" :source="docsSource" />
     <KnowledgeSyncHistoryModal v-model:open="historyOpen" :project-id="projectId" :source="historySource" />
   </section>

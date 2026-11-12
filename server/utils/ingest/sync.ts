@@ -289,7 +289,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                     lastDurationMs: durationMs,
                     documentCount,
                     chunkCount,
-                    nextSyncAt: new Date(Date.now() + nextHours * 3600_000),
+                    nextSyncAt: nextSyncDate(Date.now(), nextHours),
                     updatedAt: new Date(),
                     ...(message ? {lastError: message} : {}),
                     ...(revision ? {syncedRevision: revision} : {})
@@ -320,6 +320,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         const message = errorText(err, source)
         result.error = message
         console.warn(`[ingest] ${label} failed: ${message}`)
+        // Manual only sources are not retried automatically
         const retryHours = Math.min(1, refreshHours)
         await sources
             .updateOne(
@@ -329,7 +330,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                         status: "error",
                         lastError: message,
                         lastDurationMs: Date.now() - startedAt,
-                        nextSyncAt: new Date(Date.now() + retryHours * 3600_000),
+                        nextSyncAt: nextSyncDate(Date.now(), retryHours),
                         updatedAt: new Date()
                     },
                     // A failed sync may have updated only part of the documents: the next one must not be skipped

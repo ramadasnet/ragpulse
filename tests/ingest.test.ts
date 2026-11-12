@@ -173,6 +173,13 @@ describe('ingest detail presets', () => {
     expect(codeToMarkdown(file, undefined, 'compact')).toBe('# src/a.ts\n\n```ts\nexport const a = 1\n```')
   })
 
+  test('balanced indexes source code without comments, detailed keeps them', () => {
+    const file = { path: 'src/a.ts', lang: 'ts', content: '// The answer\nexport const a = 42 // why\n' }
+    expect(codeToMarkdown(file, 'Defines `a`.', 'balanced')).toEndWith('## Source\n\n```ts\nexport const a = 42\n```')
+    expect(codeToMarkdown(file, undefined, 'detailed')).toBe('# src/a.ts\n\n```ts\n// The answer\nexport const a = 42 // why\n```')
+    expect(codeToMarkdown({ ...file, content: '// only comments' }, undefined, 'balanced')).toBe('# src/a.ts\n\n```ts\n// only comments\n```')
+  })
+
   test('blocks shared by several documents stay in the first one only', () => {
     const footer = 'Strautomator automates your Strava activities with weather, music and gear tracking.'
     const docs = dedupeAcrossDocuments([

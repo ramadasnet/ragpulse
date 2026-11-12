@@ -1,6 +1,6 @@
 // Validation schemas + helpers for the knowledge API routes.
 import { z } from 'zod'
-import { REFRESH_MAX_HOURS, REFRESH_MIN_HOURS, type Source, type SourceOptions, type SourceType } from '#shared/types'
+import { isRefreshInterval, type Source, type SourceOptions, type SourceType } from '#shared/types'
 import { driveFolderUrl, parseDriveFolderId } from '#shared/utils/drive'
 import { parseServiceAccountKey } from './drive'
 import { CRAWL_MAX_PAGES } from './url'
@@ -18,7 +18,7 @@ export const sourceOptionsSchema = z.object({
   serviceAccountKey: z.string().trim().max(10000).optional()
 })
 
-const refreshSchema = z.number().int().min(REFRESH_MIN_HOURS).max(REFRESH_MAX_HOURS).nullable()
+const refreshSchema = z.number().refine(isRefreshInterval, 'Manual only (0) or 1 to 336 hours').nullable()
 
 export const sourceCreateSchema = z.object({
   type: z.enum(['url', 'git', 'drive']),

@@ -70,8 +70,10 @@ let poll: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
     poll = setInterval(async () => {
         if (document.visibilityState !== "visible" || !data.value || status.value === "pending" || pending.value || finishPending.value) return
+        const current = data.value
         const fresh = await $fetch<Detail>(`/api/projects/${projectId.value}/sessions/${sid.value}`).catch(() => null)
-        if (fresh && fresh.session._id === sid.value) data.value = fresh
+        // A refresh or local action during the fetch has newer data: the stale poll result is discarded
+        if (fresh && fresh.session._id === sid.value && data.value === current) data.value = fresh
     }, POLL_MS)
 })
 onBeforeUnmount(() => clearInterval(poll))

@@ -1,7 +1,7 @@
 // Project icon for the chat page, decoded from the stored data URI so it can be cached by the browser.
 export default defineEventHandler(async (event) => {
     const project = await requireChatProject(event, {checkOrigin: false})
-    const match = project.icon?.match(/^data:([\w/+.-]+);base64,(.+)$/)
+    const match = project.icon?.match(/^data:([\w/+.-]+);base64,(.+)$/i)
     if (!match) throw createError({statusCode: 404, statusMessage: "No icon"})
     setResponseHeaders(event, {
         "Content-Type": match[1]!,

@@ -23,6 +23,7 @@ function fakeCollection(docs: Doc[]) {
     return {
         docs,
         find: (filter: any) => ({
+            toArray: async () => docs.filter((d) => matches(d, filter)),
             limit: (n: number) => ({toArray: async () => docs.filter((d) => matches(d, filter)).slice(0, n)})
         }),
         updateMany: async (filter: any, update: any) => {

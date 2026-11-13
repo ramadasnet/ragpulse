@@ -88,6 +88,12 @@ export async function markVisitorSeen(sessionId: string): Promise<void> {
     await sessions.updateOne({_id: sessionId, $or: [{visitorSeenAt: {$exists: false}}, {visitorSeenAt: {$lt: new Date(now.getTime() - PRESENCE_WRITE_MS)}}]}, {$set: {visitorSeenAt: now}})
 }
 
+/** Clears the presence flag when the visitor closes the chat, so pending answers get emailed. */
+export async function markVisitorAway(sessionId: string): Promise<void> {
+    const {sessions} = await useCollections()
+    await sessions.updateOne({_id: sessionId}, {$unset: {visitorSeenAt: ""}})
+}
+
 /** Emails the current answer of a question to the visitor. Returns true when the email was sent. */
 async function sendAnswerEmail(question: Question, project: Project): Promise<boolean> {
     if (!question.visitorEmail || !question.answer) return false
@@ -184,7 +190,7 @@ export async function replyToQuestion(params: {
             await sessions.updateOne({_id: question.sessionId}, {$unset: {learnedFaqId: ""}})
         } else {
             // The visitor's wording may hold personal data, the answer is written by the team
-            const faqQuestion = sanitizeFaqText(question.question, question, project.supportEmail).slice(0, 1000) || question.question
+            const faqQuestion = sanitizeFaqText(question.question, question, project.supportEmail).slice(0, 1000) || "Visitor question"
             faq = {_id: newId(), projectId: project._id, question: faqQuestion, answer, sessionId: question.sessionId, createdAt: now, updatedAt: now}
             await faqs.insertOne(faq)
         }
@@ -219,6 +225,8 @@ export async function sendDueAnswerEmails(limit = 50): Promise<{sent: number; sk
             await questions.updateOne({_id: question._id}, {$set: {visitorNotifiedAt: new Date()}})
             result.sent++
         } else {
+            // Restore the due marker so the next run retries instead of dropping the email for good
+            await questions.updateOne({_id: question._id}, {$set: {visitorEmailDueAt: question.visitorEmailDueAt}})
             result.failed++
         }
     }
@@ -263,11 +271,13 @@ Rules:
  * agent messages posted after the question. Falls back to the agent messages verbatim when no model is available.
  */
 export async function draftAnswerFromChat(question: Question, project: Project): Promise<{humanReplies: number; draft: string}> {
-    const {messages} = await useCollections()
+    const {messages, questions} = await useCollections()
     const asked = question.messageId ? await messages.findOne({_id: question.messageId}, {projection: {createdAt: 1}}) : null
     const since = asked?.createdAt ?? question.createdAt
+    // Agent replies after a newer question was opened target that question, not this one
+    const next = await questions.findOne({sessionId: question.sessionId, _id: {$ne: question._id}, createdAt: {$gt: since}}, {sort: {createdAt: 1}, projection: {createdAt: 1}})
     const list = await messages
-        .find({sessionId: question.sessionId, createdAt: {$gte: since}})
+        .find({sessionId: question.sessionId, createdAt: next?.createdAt ? {$gte: since, $lt: next.createdAt} : {$gte: since}})
         .sort({createdAt: 1})
         .limit(100)
         .toArray()

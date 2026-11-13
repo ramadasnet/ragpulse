@@ -429,11 +429,20 @@ function onMessage(e: MessageEvent) {
     if (typeof e.data.title === "string") titleOverride.value = e.data.title
 }
 
+// The widget was closed: clears the server-side presence flag so pending team answers get emailed
+function reportClosed() {
+    const st = stored.value
+    if (!st) return
+    $fetch(`${api}/sessions/${st.sessionId}`, {headers: {"x-session-token": st.token}, query: {visible: 0}}).catch(() => {})
+}
+
 function onEmbedMessage(e: MessageEvent) {
     if (e.source !== window.parent || e.data?.type !== "ragpulse:visibility") return
     if (parentParam && e.origin !== urlOrigin(parentParam)) return
+    const wasOpen = panelOpen.value
     panelOpen.value = !!e.data.open
     if (panelOpen.value && phase.value === "chat") loadSession(true)
+    else if (wasOpen && !panelOpen.value && phase.value === "chat") reportClosed()
 }
 
 function onKeydown(e: KeyboardEvent) {

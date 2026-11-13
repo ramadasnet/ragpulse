@@ -1,4 +1,5 @@
 import type {Collections} from "./db"
+import {releaseHumanHandling} from "./questions"
 
 export const DEFAULT_CHAT_SESSION_RETENTION_DAYS = 180
 const DAY_MS = 24 * 3600 * 1000
@@ -47,11 +48,19 @@ export async function closeInactiveChatSessions(c: Pick<Collections, "sessions">
 
 /**
  * Deletes escalated questions created more than `retentionDays` ago. FAQ entries created from them are kept.
+ * Sessions whose open questions are deleted get their unanswered count and human handoff state reconciled.
  * @returns Number of deleted questions.
  */
-export async function purgeOldQuestions(c: Pick<Collections, "questions">, retentionDays: number, now = new Date()): Promise<number> {
+export async function purgeOldQuestions(c: Pick<Collections, "questions" | "sessions">, retentionDays: number, now = new Date()): Promise<number> {
     if (!(retentionDays > 0)) return 0
     const cutoff = new Date(now.getTime() - retentionDays * DAY_MS)
+    const open = await c.questions.find({createdAt: {$lt: cutoff}, status: "open"}, {projection: {sessionId: 1}}).toArray()
     const result = await c.questions.deleteMany({createdAt: {$lt: cutoff}})
+    const removed = new Map<string, number>()
+    for (const q of open) removed.set(q.sessionId, (removed.get(q.sessionId) ?? 0) + 1)
+    for (const [sessionId, count] of removed) {
+        await c.sessions.updateOne({_id: sessionId}, {$inc: {unansweredCount: -count}})
+        await releaseHumanHandling(sessionId)
+    }
     return result.deletedCount
 }

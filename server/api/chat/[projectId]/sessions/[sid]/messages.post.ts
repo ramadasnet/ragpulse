@@ -51,8 +51,10 @@ export default defineEventHandler(async (event) => {
 
     async function run() {
         const {messages, sessions} = await useCollections()
-        // While a human handles the conversation the message limit (assistant budget) does not apply
-        const human = !!session.humanHandledAt
+        // While a human handles the conversation the message limit (assistant budget) does not apply.
+        // Re-read the flag: a team reply may have claimed the session after it was loaded above.
+        const current = await sessions.findOne({_id: session._id}, {projection: {humanHandledAt: 1}})
+        const human = !!current?.humanHandledAt
 
         if (!human && (session.limitReached || (project.rateLimit > 0 && session.userMessageCount >= project.rateLimit))) {
             if (!session.limitReached) await sessions.updateOne({_id: session._id}, {$set: {limitReached: true}})
@@ -71,8 +73,11 @@ export default defineEventHandler(async (event) => {
         const now = new Date()
         const userMessage: ChatMessage = {_id: newId(), projectId: project._id, sessionId: session._id, role: "user", content, createdAt: now}
         await messages.insertOne(userMessage)
-        await sessions.updateOne({_id: session._id}, {$inc: {userMessageCount: 1, messageCount: 1}, $set: {lastMessageAt: now, visitorSeenAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
-        session.userMessageCount++
+        // Visitor messages while a human handles the chat don't consume the assistant budget
+        const inc: Record<string, number> = {messageCount: 1}
+        if (!human) inc.userMessageCount = 1
+        await sessions.updateOne({_id: session._id}, {$inc: inc, $set: {lastMessageAt: now, visitorSeenAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
+        if (!human) session.userMessageCount++
         send("meta", {userMessageId: userMessage._id})
         if (human) {
             send("human", {})

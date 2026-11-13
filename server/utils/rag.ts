@@ -105,7 +105,8 @@ async function pickSources(hits: SearchHit[]): Promise<MessageSourceRef[]> {
 
 function escalationText(project: Project, hasEmail: boolean, humanRequested: boolean): string {
     if (humanRequested) {
-        if (!project.supportEmail && !hasEmail) return "Sure, I've passed this conversation to our team so a person can follow up. Leave your email below if you'd like a reply."
+        // Without a support email the team is never notified, so don't promise a follow-up
+        if (!project.supportEmail) return "Sure, I've noted your request for the team."
         return hasEmail ? "Sure, I've passed this conversation to our team. A person will get back to you by email soon." : "Sure, I've passed this conversation to our team. Leave your email below and a person will get back to you."
     }
     if (project.supportEmail) {

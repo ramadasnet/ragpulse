@@ -124,8 +124,6 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
             mcpSafely(async () => {
                 const session = await sessionFor(ctx, session_id, "questions:reply")
                 await assertSessionNotEnded(session)
-                const {messages, sessions} = await useCollections()
-                const now = new Date()
                 const message: ChatMessage = {
                     _id: newId(),
                     projectId: session.projectId,
@@ -133,10 +131,9 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                     role: "agent",
                     content,
                     author: {userId: ctx.user._id, name: mcpAuthorName(ctx), via: "mcp"},
-                    createdAt: now
+                    createdAt: new Date()
                 }
-                await messages.insertOne(message)
-                await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
+                await commitSessionMessage(message)
                 return mcpOk(`Message posted to session ${session._id} (${session.visitorName}).`, {message: mcpMessageView(message)})
             })
     )

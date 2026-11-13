@@ -104,6 +104,20 @@ export async function assertSessionNotEnded(session: Pick<ChatSession, "_id" | "
     throw createError({statusCode: 409, statusMessage: `This conversation ${why}, it can't receive new messages`})
 }
 
+/**
+ * Commits a team message only while the conversation is open: the conditional session update is the atomic
+ * commit point, so a message can never stay posted after the session's `endedAt` was set. The inserted
+ * message is rolled back when the visitor ended the conversation in the meantime.
+ */
+export async function commitSessionMessage(message: ChatMessage): Promise<void> {
+    const {messages, sessions} = await useCollections()
+    await messages.insertOne(message)
+    const res = await sessions.updateOne({_id: message.sessionId, endedAt: {$exists: false}}, {$inc: {messageCount: 1}, $set: {lastMessageAt: message.createdAt}, $unset: {finishedAt: "", finishedBy: ""}})
+    if (res.matchedCount) return
+    await messages.deleteOne({_id: message._id})
+    throw createError({statusCode: 409, statusMessage: "This conversation was ended by the visitor, it can't receive new messages"})
+}
+
 /** Reads and parses a JSON body, rejecting bodies larger than `maxBytes`. */
 export async function readLimitedJson(event: H3Event, maxBytes = 16_384): Promise<unknown> {
     const declared = Number(getRequestHeader(event, "content-length") || 0)
@@ -155,7 +169,9 @@ export function publicChatSession(session: ChatSession) {
 
 /** Message as shown to the visitor. Source code references are dropped when the project hides them. */
 export function publicChatMessage(message: ChatMessage, project: Pick<Project, "showCodeSources">) {
-    const sources = project.showCodeSources ? message.sources : message.sources?.filter((s) => s.kind !== "code")
+    // Sources stored before the `kind` field existed count as documents
+    const all = message.sources?.map((s) => ({...s, kind: s.kind === "code" ? ("code" as const) : ("docs" as const)}))
+    const sources = project.showCodeSources === false ? all?.filter((s) => s.kind !== "code") : all
     return {
         _id: message._id,
         role: message.role,

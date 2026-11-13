@@ -232,6 +232,10 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
 const deleteOpen = ref(false)
 const deleteConfirm = ref("")
 const deleting = useAction()
+function openDelete() {
+    deleteOpen.value = true
+    deleteConfirm.value = ""
+}
 async function deleteProject() {
     if (!project.value || deleteConfirm.value.trim() !== project.value.title.trim()) return
     const ok = await deleting.run(() => $fetch<{ok: boolean}>(`/api/projects/${projectId.value}` as string, {method: "DELETE"}), "Project deleted")
@@ -353,14 +357,7 @@ async function deleteProject() {
                         <p class="strong">Delete this project</p>
                         <p class="small muted">Permanently removes sources, FAQ, embeddings, conversations and questions. This cannot be undone.</p>
                     </div>
-                    <UiButton
-                        variant="danger"
-                        @click="
-                            deleteOpen = true
-                            deleteConfirm = ''
-                        "
-                        ><Trash2 :size="14" /> Delete project</UiButton
-                    >
+                    <UiButton variant="danger" @click="openDelete"><Trash2 :size="14" /> Delete project</UiButton>
                 </div>
             </UiCard>
 

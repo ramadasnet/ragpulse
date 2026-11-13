@@ -17,6 +17,7 @@ Typical workflow:
 2. search_knowledge / list_faqs / get_session — research the answer in the project's knowledge base and conversation.
 3. reply_to_question — send the answer. It is posted into the visitor's chat and emailed to the visitor if they left an email. Set add_to_faq=true when the answer is generally useful, so the chat assistant can answer it next time.
 4. dismiss_question — for spam, duplicates or questions that need no answer.
+5. finish_session — when a conversation is fully handled, flag it finished: sessions with human/agent replies are summarized into a sanitized FAQ entry, so the assistant learns the answer for next time.
 
 Write replies directly to the visitor, in their language, concise and friendly. Never invent facts: if the knowledge base does not contain the answer, say so instead of guessing. Other tools: list_projects, get_project, list_sessions, send_session_message, list_sources, trigger_sync, add_faq, get_project_stats.`
 

@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
         createdAt: now
     }
     await messages.insertOne(message)
-    await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}})
+    await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
     setResponseStatus(event, 201)
     return message
 })

@@ -134,6 +134,8 @@ export interface Faq {
     projectId: string
     question: string
     answer: string
+    /** Conversation this entry was learned from (finished sessions with human replies) */
+    sessionId?: string
     createdAt: Date
     updatedAt: Date
 }
@@ -188,6 +190,11 @@ export interface ChatSession {
     messageCount: number
     unansweredCount: number
     limitReached: boolean
+    /** Flagged as done by an admin or agent; a new message reopens the session automatically */
+    finishedAt?: Date
+    finishedBy?: {userId?: string; name: string; via: "admin" | "mcp"}
+    /** FAQ entry learned from this conversation the last time it was finished */
+    learnedFaqId?: string
     createdAt: Date
     lastMessageAt: Date
 }

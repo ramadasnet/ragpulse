@@ -120,7 +120,7 @@ const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", r
                     </ol>
                 </UiCard>
 
-                <UiCard title="Unanswered" description="Latest open questions from visitors">
+                <UiCard title="Escalated questions" description="Latest open questions from visitors">
                     <template v-if="canReply" #actions>
                         <UiButton size="sm" variant="ghost" :to="`/admin/projects/${projectId}/questions`">Inbox <ArrowUpRight :size="14" /></UiButton>
                     </template>

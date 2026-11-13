@@ -118,7 +118,7 @@ async function submit() {
                 </div>
             </UiCard>
 
-            <UiCard title="Support" description="Where unanswered questions are escalated.">
+            <UiCard title="Support" description="Where escalated questions are sent.">
                 <UiInput
                     v-model="form.supportEmail"
                     type="email"

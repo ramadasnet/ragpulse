@@ -137,7 +137,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
             <div>
                 <div class="eyebrow">Integrations</div>
                 <h1>MCP &amp; API</h1>
-                <p>Connect your own bots and agents — Grok, Duet, Muse, Claude or any MCP client — so they can triage unanswered questions, research the knowledge base and reply to visitors on your behalf.</p>
+                <p>Connect your own bots and agents — Grok, Duet, Muse, Claude or any MCP client — so they can triage escalated questions, research the knowledge base and reply to visitors on your behalf.</p>
             </div>
             <UiButton variant="primary" @click="openCreate"> <Plus :size="16" /> Create token </UiButton>
         </header>
@@ -241,7 +241,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                 <template #footer>
                     <div class="row grow small muted" style="--gap: 8px">
                         <Bot :size="15" />
-                        <span>Prompt <code>answer_unanswered_questions</code> walks an agent through the triage workflow.</span>
+                        <span>Prompt <code>answer_unanswered_questions</code> walks an agent through the escalated questions triage workflow.</span>
                     </div>
                 </template>
             </UiCard>

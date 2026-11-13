@@ -1,4 +1,5 @@
 import type {ChatMessage, ChatSession, Faq, Project, Question, QuestionReason} from "#shared/types"
+import logger from "./logger"
 
 export interface ReplyAuthor {
     userId?: string
@@ -114,7 +115,7 @@ export async function replyToQuestion(params: {questionId: string; answer: strin
     if (params.addToFaq) {
         faq = {_id: newId(), projectId: project._id, question: question.question, answer, createdAt: now, updatedAt: now}
         await faqs.insertOne(faq)
-        await indexFaq(faq).catch((err) => console.error(`[faq] indexing failed for ${faq!._id}: ${err?.message || err}`))
+        await indexFaq(faq).catch((err) => logger.error("Questions.reply", `FAQ indexing failed for ${faq!._id}`, err))
     }
 
     return {question: {...question, ...update}, message, faq}

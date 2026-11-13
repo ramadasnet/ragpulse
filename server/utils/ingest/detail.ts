@@ -234,10 +234,7 @@ export function dedupeAcrossDocuments<T extends {ref: string; markdown: string}>
 export function dropRepeatedPageLines(pages: string[], mode: DedupeMode = "similar"): string[] {
     const filled = pages.filter((p) => p.trim()).length
     if (filled < 3) return pages
-    const keyOf =
-        mode === "exact"
-            ? (line: string) => (exactKey(line).length >= EXACT_MIN_PAGE_LINE_CHARS ? exactKey(line) : "")
-            : (line: string) => similarityKey(line.replace(/\d+/g, "#"))
+    const keyOf = mode === "exact" ? (line: string) => (exactKey(line).length >= EXACT_MIN_PAGE_LINE_CHARS ? exactKey(line) : "") : (line: string) => similarityKey(line.replace(/\d+/g, "#"))
     const counts = new Map<string, number>()
     for (const page of pages) {
         for (const key of new Set(page.split("\n").map(keyOf))) {

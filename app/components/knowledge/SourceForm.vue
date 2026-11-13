@@ -54,16 +54,10 @@ const intervalOptions = computed(() => {
     const current = props.source?.refreshIntervalHours
     // A value set before the presets changed stays selectable
     const hours = [...new Set([...REFRESH_PRESETS, ...(current ? [current] : [])])].sort((a, b) => a - b)
-    return [
-        {value: PROJECT_DEFAULT, label: `Project default (${formatHours(props.projectHours)})`},
-        ...hours.map((h) => ({value: h, label: refreshIntervalLabel(h)})),
-        {value: MANUAL_REFRESH, label: refreshIntervalLabel(MANUAL_REFRESH)}
-    ]
+    return [{value: PROJECT_DEFAULT, label: `Project default (${formatHours(props.projectHours)})`}, ...hours.map((h) => ({value: h, label: refreshIntervalLabel(h)})), {value: MANUAL_REFRESH, label: refreshIntervalLabel(MANUAL_REFRESH)}]
 })
 const refreshHint = computed(() =>
-    draft.value.refresh === MANUAL_REFRESH || (draft.value.refresh === PROJECT_DEFAULT && props.projectHours === MANUAL_REFRESH)
-        ? "Synced only when you click Sync."
-        : "How often the source is fetched again to pick up changes."
+    draft.value.refresh === MANUAL_REFRESH || (draft.value.refresh === PROJECT_DEFAULT && props.projectHours === MANUAL_REFRESH) ? "Synced only when you click Sync." : "How often the source is fetched again to pick up changes."
 )
 
 const lines = (text: string) =>
@@ -153,13 +147,11 @@ defineExpose({pending})
         <template v-else-if="isDrive">
             <div class="sub panel">
                 <p v-if="serviceAccountEmail" class="small muted">
-                    Share the folder with <strong class="mono">{{ serviceAccountEmail }}</strong> (Viewer). All Google Docs, Slides, Sheets, Office files, PDFs, images and text files in it and its
-                    subfolders are indexed.
+                    Share the folder with <strong class="mono">{{ serviceAccountEmail }}</strong> (Viewer). All Google Docs, Slides, Sheets, Office files, PDFs, images and text files in it and its subfolders are indexed.
                 </p>
                 <UiCopy v-if="serviceAccountEmail" :value="serviceAccountEmail" label="Copy email" />
                 <p v-else class="small warn-text">
-                    No service account key is configured yet — set <code class="mono">NUXT_GOOGLE_SERVICE_ACCOUNT_KEY</code> on the server or paste a key below. Share the folder with the key's
-                    client_email (Viewer) so it can be read.
+                    No service account key is configured yet — set <code class="mono">NUXT_GOOGLE_SERVICE_ACCOUNT_KEY</code> on the server or paste a key below. Share the folder with the key's client_email (Viewer) so it can be read.
                 </p>
                 <UiTextarea
                     v-model="draft.serviceAccountKey"
@@ -185,7 +177,15 @@ defineExpose({pending})
                 />
             </div>
             <div class="grid-2">
-                <UiTextarea v-model="draft.include" label="Include" optional mono :rows="5" :placeholder="includePlaceholder" hint="Glob patterns, one per line. PDFs, Office files (docx, pptx, xlsx) and images (PNG, JPEG, WebP, GIF) are converted to text." />
+                <UiTextarea
+                    v-model="draft.include"
+                    label="Include"
+                    optional
+                    mono
+                    :rows="5"
+                    :placeholder="includePlaceholder"
+                    hint="Glob patterns, one per line. PDFs, Office files (docx, pptx, xlsx) and images (PNG, JPEG, WebP, GIF) are converted to text."
+                />
                 <UiTextarea v-model="draft.exclude" label="Exclude" optional mono :rows="5" placeholder="changelog/**&#10;**/CHANGELOG.md" hint="Applied after include." />
             </div>
             <UiInput

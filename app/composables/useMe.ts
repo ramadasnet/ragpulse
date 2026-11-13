@@ -1,43 +1,42 @@
-import type { ProjectAccess, ProjectPermission, Role } from '#shared/types'
-import { PROJECT_PERMISSIONS } from '#shared/types'
+import type {ProjectAccess, ProjectPermission, Role} from "#shared/types"
+import {PROJECT_PERMISSIONS} from "#shared/types"
 
 export interface Me {
-  _id: string
-  email: string
-  name: string
-  avatar?: string
-  role: Role
-  projects: ProjectAccess[]
+    _id: string
+    email: string
+    name: string
+    avatar?: string
+    role: Role
+    projects: ProjectAccess[]
 }
 
 /** Current admin user (fresh from /api/me) with permission helpers. */
 export function useMe() {
-  const me = useState<Me | null>('me', () => null)
+    const me = useState<Me | null>("me", () => null)
 
-  async function refresh() {
-    try {
-      me.value = await $fetch<Me>('/api/me')
+    async function refresh() {
+        try {
+            me.value = await $fetch<Me>("/api/me")
+        } catch {
+            me.value = null
+        }
+        return me.value
     }
-    catch {
-      me.value = null
+
+    const isAdmin = computed(() => me.value?.role === "admin")
+
+    function can(projectId: string | undefined, permission?: ProjectPermission): boolean {
+        if (!me.value || !projectId) return false
+        if (me.value.role === "admin") return true
+        const access = me.value.projects.find((p) => p.projectId === projectId)
+        if (!access) return false
+        return !permission || access.permissions.includes(permission)
     }
-    return me.value
-  }
 
-  const isAdmin = computed(() => me.value?.role === 'admin')
+    function permissionsFor(projectId: string): ProjectPermission[] {
+        if (me.value?.role === "admin") return [...PROJECT_PERMISSIONS]
+        return me.value?.projects.find((p) => p.projectId === projectId)?.permissions ?? []
+    }
 
-  function can(projectId: string | undefined, permission?: ProjectPermission): boolean {
-    if (!me.value || !projectId) return false
-    if (me.value.role === 'admin') return true
-    const access = me.value.projects.find(p => p.projectId === projectId)
-    if (!access) return false
-    return !permission || access.permissions.includes(permission)
-  }
-
-  function permissionsFor(projectId: string): ProjectPermission[] {
-    if (me.value?.role === 'admin') return [...PROJECT_PERMISSIONS]
-    return me.value?.projects.find(p => p.projectId === projectId)?.permissions ?? []
-  }
-
-  return { me, refresh, isAdmin, can, permissionsFor }
+    return {me, refresh, isAdmin, can, permissionsFor}
 }

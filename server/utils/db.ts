@@ -2,6 +2,7 @@ import {MongoClient, type Db, type Collection} from "mongodb"
 import {randomBytes} from "node:crypto"
 import type {ApiToken, ChatMessage, ChatSession, Chunk, DocumentRecord, Faq, Project, Question, Source, SyncRun, User} from "#shared/types"
 import type {SettingsDoc} from "./settings"
+import logger from "./logger"
 
 export interface LockDoc {
     _id: string
@@ -89,7 +90,7 @@ async function connect(): Promise<DbState> {
     const stored = await collections.settings.findOne({_id: "app"}, {projection: {embeddingDimensions: 1}})
     vectorMode = await ensureVectorIndex(db, collections, Number(stored?.embeddingDimensions || config.embeddingDimensions))
     state.vectorMode = vectorMode
-    console.info(`[db] connected to ${db.databaseName} (vector search: ${vectorMode})`)
+    logger.info("Database.connect", `Connected to ${db.databaseName}, vector search: ${vectorMode}`)
     return state
 }
 
@@ -130,12 +131,10 @@ async function ensureIndexes(c: Collections) {
 /** Chunks from before embedding keys stored the bare model name: append the actual vector size (`model#dimensions`). */
 async function migrateEmbeddingKeys(c: Collections) {
     try {
-        const res = await c.chunks.updateMany({embeddingModel: {$type: "string", $not: /#\d+$/}, embedding: {$type: "array"}}, [
-            {$set: {embeddingModel: {$concat: ["$embeddingModel", "#", {$toString: {$size: "$embedding"}}]}}}
-        ])
-        if (res.modifiedCount) console.info(`[db] tagged ${res.modifiedCount} chunk(s) with their embedding dimensions`)
+        const res = await c.chunks.updateMany({embeddingModel: {$type: "string", $not: /#\d+$/}, embedding: {$type: "array"}}, [{$set: {embeddingModel: {$concat: ["$embeddingModel", "#", {$toString: {$size: "$embedding"}}]}}}])
+        if (res.modifiedCount) logger.info("Database.migration", `Tagged ${res.modifiedCount} chunk(s) with their embedding dimensions`)
     } catch (err: any) {
-        console.warn(`[db] embedding key migration failed: ${err?.message || err}`)
+        logger.warn("Database.migration", "Embedding key migration failed", err)
     }
 }
 
@@ -173,15 +172,15 @@ async function ensureVectorIndex(db: Db, c: Collections, dimensions: number): Pr
         const indexes = await c.chunks.listSearchIndexes(VECTOR_INDEX_NAME).toArray()
         if (!indexes.length) {
             await c.chunks.createSearchIndex({name: VECTOR_INDEX_NAME, type: "vectorSearch", definition: vectorIndexDefinition(dimensions)})
-            console.info(`[db] created vector search index "${VECTOR_INDEX_NAME}" (${dimensions} dims)`)
+            logger.info("Database.vectorIndex", `Created vector search index "${VECTOR_INDEX_NAME}" (${dimensions} dims)`)
         } else if (vectorIndexOutdated(indexes[0], dimensions)) {
             // The previous index keeps serving queries while the new definition builds
             await c.chunks.updateSearchIndex(VECTOR_INDEX_NAME, vectorIndexDefinition(dimensions))
-            console.info(`[db] updated vector search index "${VECTOR_INDEX_NAME}" (${dimensions} dims)`)
+            logger.info("Database.vectorIndex", `Updated vector search index "${VECTOR_INDEX_NAME}" (${dimensions} dims)`)
         }
         return "atlas"
     } catch (err: any) {
-        console.warn(`[db] vector search unavailable, using in-app similarity fallback (${err?.codeName || err?.message || err})`)
+        logger.warn("Database.vectorIndex", "Vector search unavailable, using in-app similarity fallback", err?.codeName || err)
         return "fallback"
     }
 }

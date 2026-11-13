@@ -28,7 +28,13 @@ interface Syntax {
 
 const C_LIKE: Syntax = {line: ["//"], block: [["/*", "*/"]], quotes: `"'`}
 const JS: Syntax = {...C_LIKE, template: true, regex: true}
-const JVM: Syntax = {...C_LIKE, multi: [['"""', '"""'], ["'''", "'''"]]}
+const JVM: Syntax = {
+    ...C_LIKE,
+    multi: [
+        ['"""', '"""'],
+        ["'''", "'''"]
+    ]
+}
 // `//` is no comment in CSS (`url(http://…)`)
 const CSS: Syntax = {block: [["/*", "*/"]], quotes: `"'`}
 const HASH: Syntax = {line: ["#"], quotes: `"'`}
@@ -47,15 +53,33 @@ register("go", {...C_LIKE, multi: [["`", "`"]]})
 register("rs", {...C_LIKE, charLiterals: true})
 register("php", {line: ["//", "#"], block: [["/*", "*/"]], quotes: `"'`, hashAttributes: true})
 register("fs", {line: ["//"], block: [["(*", "*)"]], quotes: `"`, multi: [['"""', '"""']]})
-register("py", {...HASH, multi: [['"""', '"""'], ["'''", "'''"]]})
+register("py", {
+    ...HASH,
+    multi: [
+        ['"""', '"""'],
+        ["'''", "'''"]
+    ]
+})
 register("rb pl pm r nim cr", HASH)
-register("ex exs", {...HASH, multi: [['"""', '"""'], ["'''", "'''"]]})
+register("ex exs", {
+    ...HASH,
+    multi: [
+        ['"""', '"""'],
+        ["'''", "'''"]
+    ]
+})
 register("jl", {line: ["#"], block: [["#=", "=#"]], quotes: `"`, multi: [['"""', '"""']]})
 register("sh bash zsh fish", SHELL)
 register("ps1", {line: ["#"], lineAt: "word", block: [["<#", "#>"]], quotes: `"'`})
 register("tf hcl", {line: ["#", "//"], block: [["/*", "*/"]], quotes: `"`})
 register("yaml yml", CONFIG)
-register("graphql gql toml", {...CONFIG, multi: [['"""', '"""'], ["'''", "'''"]]})
+register("graphql gql toml", {
+    ...CONFIG,
+    multi: [
+        ['"""', '"""'],
+        ["'''", "'''"]
+    ]
+})
 register("ini cfg", {line: ["#", ";"], lineAt: "start", quotes: ""})
 register("sql", {line: ["--"], block: [["/*", "*/"]], quotes: `"'`})
 register("lua", {line: ["--"], block: [["--[[", "]]"]], quotes: `"'`, multi: [["[[", "]]"]]})

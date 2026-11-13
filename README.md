@@ -17,7 +17,7 @@ RAGPulse runs as two independent servers sharing the same MongoDB, built from th
 | ------- | ----------------------------------- | ------------------------------------------------------------------------------ |
 | Admin   | `ghcr.io/ramadasnet/ragpulse-admin` | Dashboard (`/admin`), login, admin API, MCP (`/mcp`), source sync scheduler    |
 | Chat    | `ghcr.io/ramadasnet/ragpulse-chat`  | Visitor chat page (`/chat/:projectId`), chat API (`/api/chat/**`), `/embed.js` |
-| Landing | static files                        | Landing page at `/`, no server, for Cloudflare Pages/Workers                    |
+| Landing | static files                        | Landing page at `/`, no server, for Cloudflare Pages/Workers                   |
 
 The build target is selected with `RAGPULSE_APP=admin|chat|landing` (`bun run build:admin` / `bun run build:chat` /
 `bun run build:landing`, or `docker build --target admin|chat`). Without it (e.g. `bun run dev`) all apps are served
@@ -89,23 +89,25 @@ no server needed (Pages: build command `bun run build:landing`, output directory
 
 All settings are environment variables, see [`.env.example`](.env.example). Both apps take the same configuration. The important ones:
 
-| Variable                                             | Description                                                                                                                     |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `NUXT_PUBLIC_ADMIN_URL`                              | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                            |
-| `NUXT_PUBLIC_CHAT_URL`                               | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                     |
-| `NUXT_APP_SECRET`                                    | 32+ chars secret for the admin session cookie and visitor IP hashing                                                            |
-| `NUXT_ADMIN_EMAILS`                                  | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                  |
-| `NUXT_MONGODB_URI`                                   | MongoDB connection string                                                                                                       |
-| `NUXT_OPENROUTER_API_KEY`                            | OpenRouter key, used for chat and embeddings                                                                                    |
-| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS` | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Settings** instead (see below)          |
-| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`     | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100) |
-| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC` | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500) |
-| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS` | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500) |
-| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`      | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                  |
-| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                    | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email             |
-| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                  | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                       |
-| `NUXT_CHAT_SESSION_RETENTION_DAYS`                   | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever) |
-| `NUXT_SYNC_HISTORY_DAYS`                             | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Settings** instead (see below)          |
+| Variable                                                       | Description                                                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_ADMIN_URL`                                        | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                            |
+| `NUXT_PUBLIC_CHAT_URL`                                         | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                     |
+| `NUXT_APP_SECRET`                                              | 32+ chars secret for the admin session cookie and visitor IP hashing                                                            |
+| `NUXT_ADMIN_EMAILS`                                            | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                  |
+| `NUXT_MONGODB_URI`                                             | MongoDB connection string                                                                                                       |
+| `NUXT_OPENROUTER_API_KEY`                                      | OpenRouter key, used for chat and embeddings                                                                                    |
+| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`           | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Settings** instead (see below)          |
+| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`               | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)              |
+| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`   | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                       |
+| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS` | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)         |
+| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                  |
+| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                              | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email             |
+| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                            | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                        |
+| `NUXT_CHAT_SESSION_RETENTION_DAYS`                             | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever) |
+| `NUXT_SYNC_HISTORY_DAYS`                                       | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Settings** instead (see below)           |
+| `RAGPULSE_LOG_LEVEL`                                           | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                          |
+| `RAGPULSE_LOG_JSON`                                            | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                         |
 
 ### Settings page
 
@@ -178,7 +180,7 @@ the project icon, falling back to a two-letter mark when none is found; it can b
   Turn **Index source code** off on a source to index documentation only.
 - **URLs** — fetched, main content extracted (Readability) and converted to Markdown; optional crawling of linked pages under
   the same path. Requests to a site are spaced (500 ms by default, or the robots.txt `Crawl-delay` if longer); `429 Too Many
-  Requests` responses slow the site down and are retried after `Retry-After`. A crawl that stays rate limited stops early and
+Requests` responses slow the site down and are retried after `Retry-After`. A crawl that stays rate limited stops early and
   keeps the previously indexed pages until the next attempt (within an hour).
 - **Google Drive folders** — indexed recursively (subfolders and shared drives): Google Docs, Slides and Sheets are exported
   and converted to Markdown, Office files, PDFs, images and text/markdown/csv files are indexed as well. Shortcuts to files
@@ -202,11 +204,11 @@ Each project picks how much of its sources is indexed (**Settings → Knowledge 
 embedding (~20 KB in MongoDB at 1536 dimensions, far more than its text), so the presets mostly differ in how many chunks
 they produce. Changing the preset re-indexes all sources of the project.
 
-| Preset | What is indexed | Chunks |
-| --- | --- | --- |
-| **Compact** | Headings and lists only: emphasis, links, images, quotes and HTML are removed, tables become lists, code blocks are cut after 100 lines. Repeated blocks are removed within a document and across the documents of a source (site footers, PDF letterheads). Code files keep only a short summary (no source code, or the source without comments when no summary is available), trivial files are skipped. Vision transcribes only key text and skips more small images. | ~2400 chars, no overlap |
-| **Balanced** (default) | Clean Markdown, code summaries followed by the source code with its comments stripped (the summaries are still written from the full source). Only exact repeats are removed, always keeping one copy: repeated paragraphs within a document, identical blocks of 200+ characters across the documents of a source, and identical long lines on nearly every page of a PDF (letterheads, footers). | ~1800 chars, 200 overlap |
-| **Detailed** | All Markdown styles (images with alt text, strikethrough, keys, task and definition lists, captions, embedded videos as links). In-depth code summaries with references, intricacies and source comments, source code with its comments, richer application overview and vision transcriptions. | ~1400 chars, 300 overlap |
+| Preset                 | What is indexed                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Chunks                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| **Compact**            | Headings and lists only: emphasis, links, images, quotes and HTML are removed, tables become lists, code blocks are cut after 100 lines. Repeated blocks are removed within a document and across the documents of a source (site footers, PDF letterheads). Code files keep only a short summary (no source code, or the source without comments when no summary is available), trivial files are skipped. Vision transcribes only key text and skips more small images. | ~2400 chars, no overlap  |
+| **Balanced** (default) | Clean Markdown, code summaries followed by the source code with its comments stripped (the summaries are still written from the full source). Only exact repeats are removed, always keeping one copy: repeated paragraphs within a document, identical blocks of 200+ characters across the documents of a source, and identical long lines on nearly every page of a PDF (letterheads, footers).                                                                        | ~1800 chars, 200 overlap |
+| **Detailed**           | All Markdown styles (images with alt text, strikethrough, keys, task and definition lists, captions, embedded videos as links). In-depth code summaries with references, intricacies and source comments, source code with its comments, richer application overview and vision transcriptions.                                                                                                                                                                           | ~1400 chars, 300 overlap |
 
 Projects without a preset use **Balanced**. Code summaries and vision results are cached per preset.
 
@@ -245,13 +247,13 @@ Create a token in **MCP & API**, then point any MCP client at `https://admin.rag
 
 ```json
 {
-  "mcpServers": {
-    "ragpulse": {
-      "type": "http",
-      "url": "https://admin.ragpulse.example.com/mcp",
-      "headers": {"Authorization": "Bearer rp_..."}
+    "mcpServers": {
+        "ragpulse": {
+            "type": "http",
+            "url": "https://admin.ragpulse.example.com/mcp",
+            "headers": {"Authorization": "Bearer rp_..."}
+        }
     }
-  }
 }
 ```
 

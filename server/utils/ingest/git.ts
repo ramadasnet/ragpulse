@@ -22,26 +22,103 @@ export const DOCS_GIT_INCLUDE = ["**/*.md", "**/*.mdx", "**/*.markdown", "**/*.t
 
 /** Programming language extensions treated as source code (indexed and summarized) */
 export const CODE_EXTENSIONS = [
-    "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro",
-    "py", "rb", "go", "rs", "java", "kt", "kts", "scala", "groovy", "swift", "m", "mm", "php", "cs", "fs", "vb",
-    "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "zig", "nim", "dart", "lua", "pl", "pm", "r", "jl",
-    "ex", "exs", "erl", "hrl", "hs", "clj", "cljs", "elm", "ml", "sol",
-    "sh", "bash", "zsh", "fish", "ps1", "sql", "graphql", "gql", "proto", "prisma", "tf"
+    "ts",
+    "tsx",
+    "mts",
+    "cts",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "vue",
+    "svelte",
+    "astro",
+    "py",
+    "rb",
+    "go",
+    "rs",
+    "java",
+    "kt",
+    "kts",
+    "scala",
+    "groovy",
+    "swift",
+    "m",
+    "mm",
+    "php",
+    "cs",
+    "fs",
+    "vb",
+    "c",
+    "h",
+    "cc",
+    "cpp",
+    "cxx",
+    "hpp",
+    "hh",
+    "zig",
+    "nim",
+    "dart",
+    "lua",
+    "pl",
+    "pm",
+    "r",
+    "jl",
+    "ex",
+    "exs",
+    "erl",
+    "hrl",
+    "hs",
+    "clj",
+    "cljs",
+    "elm",
+    "ml",
+    "sol",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "ps1",
+    "sql",
+    "graphql",
+    "gql",
+    "proto",
+    "prisma",
+    "tf"
 ]
 /** Build, dependency and deployment manifests that explain how an application is put together */
 const MANIFEST_FILES = new Set([
-    "package.json", "dockerfile", "containerfile", "makefile", "justfile", "procfile",
-    "pyproject.toml", "setup.py", "setup.cfg", "cargo.toml", "go.mod", "gemfile", "composer.json", "pom.xml",
-    "build.gradle", "build.gradle.kts", "settings.gradle", "mix.exs", "pubspec.yaml", "deno.json", "nuxt.config.ts",
-    ".env.example", "env.example", "fly.toml", "wrangler.toml", "netlify.toml", "vercel.json", "app.yaml", "serverless.yml"
+    "package.json",
+    "dockerfile",
+    "containerfile",
+    "makefile",
+    "justfile",
+    "procfile",
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "cargo.toml",
+    "go.mod",
+    "gemfile",
+    "composer.json",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "mix.exs",
+    "pubspec.yaml",
+    "deno.json",
+    "nuxt.config.ts",
+    ".env.example",
+    "env.example",
+    "fly.toml",
+    "wrangler.toml",
+    "netlify.toml",
+    "vercel.json",
+    "app.yaml",
+    "serverless.yml"
 ])
-export const CODE_GIT_INCLUDE = [
-    `**/*.{${CODE_EXTENSIONS.join(",")}}`,
-    `**/{${[...MANIFEST_FILES].join(",")}}`,
-    "**/{docker-compose,compose}*.{yml,yaml}",
-    "**/openapi*.{json,yaml,yml}",
-    "**/swagger*.{json,yaml,yml}"
-]
+export const CODE_GIT_INCLUDE = [`**/*.{${CODE_EXTENSIONS.join(",")}}`, `**/{${[...MANIFEST_FILES].join(",")}}`, "**/{docker-compose,compose}*.{yml,yaml}", "**/openapi*.{json,yaml,yml}", "**/swagger*.{json,yaml,yml}"]
 /** Tests, generated code and fixtures add noise (and summary cost): skipped unless included explicitly */
 export const CODE_GIT_EXCLUDE = [
     "**/*.{test,spec,test-d,bench}.*",
@@ -486,7 +563,10 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
             const repoUrl = url.href.replace(/\.git$/, "")
             let summaries: CodeSummaries
             try {
-                summaries = await summarize({name: repoName, url: repoUrl, readme, tree: files}, codeFiles.map((f) => ({...f, content: f.content.slice(0, MAX_SUMMARY_INPUT_CHARS)})))
+                summaries = await summarize(
+                    {name: repoName, url: repoUrl, readme, tree: files},
+                    codeFiles.map((f) => ({...f, content: f.content.slice(0, MAX_SUMMARY_INPUT_CHARS)}))
+                )
             } catch (err: any) {
                 if (ctx.signal?.aborted) throw err
                 summaries = {files: new Map(), overviewError: String(err?.message || err), incomplete: `code summaries failed: ${String(err?.message || err).slice(0, 200)}`}

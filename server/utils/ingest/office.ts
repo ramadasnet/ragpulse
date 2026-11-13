@@ -103,13 +103,22 @@ function openZip(bytes: Uint8Array, kind: string, needed: (name: string) => bool
 
 // ---------- shared Markdown table rendering (docx, pptx, xlsx, csv) ----------
 
-const escCell = (s: string): string => s.replace(/\|/g, "\\|").replace(/\r\n?|\n/g, "<br>").trim()
+const escCell = (s: string): string =>
+    s
+        .replace(/\|/g, "\\|")
+        .replace(/\r\n?|\n/g, "<br>")
+        .trim()
 
 /** Renders `header` + rows as Markdown table blocks; every block repeats the header (the chunker splits on blank lines). */
 function renderTable(header: string[], rows: string[][]): string {
     const cols = Math.max(header.length, ...rows.map((r) => r.length))
     const all = [header, ...rows]
-    if (cols < 2) return all.flat().map((s) => s.trim()).filter(Boolean).join("\n")
+    if (cols < 2)
+        return all
+            .flat()
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .join("\n")
     const pad = (r: string[]) => Array.from({length: cols}, (_, i) => escCell(r[i] ?? ""))
     const line = (r: string[]) => `| ${pad(r).join(" | ")} |`
     const sep = `| ${Array.from({length: cols}, () => "---").join(" | ")} |`
@@ -158,7 +167,10 @@ function textBoxText(node: Xml, ctx: DocxCtx): string {
         for (const p of els(box, "w:p")) {
             const segs: Seg[] = []
             collectRuns(p, ctx, segs)
-            const t = segs.map((s) => s.text).join("").trim()
+            const t = segs
+                .map((s) => s.text)
+                .join("")
+                .trim()
             if (t) parts.push(t)
         }
     }
@@ -263,7 +275,10 @@ function cellParts(el: Xml, ctx: DocxCtx): string[] {
             const t = docxParagraphText(c, ctx)
             if (t) parts.push(t)
         } else if (name === "w:tbl") {
-            const t = els(c, "w:p").map((p) => docxParagraphText(p, ctx)).filter(Boolean).join(" ")
+            const t = els(c, "w:p")
+                .map((p) => docxParagraphText(p, ctx))
+                .filter(Boolean)
+                .join(" ")
             if (t) parts.push(t)
         } else if (name === "w:sdt") {
             const content = kid(c, "w:sdtContent")
@@ -400,7 +415,10 @@ function slideShapes(el: Xml, out: {title?: string; blocks: string[]}): void {
             if (SKIP_PH.has(phType)) continue
             const txBody = els(c, "p:txBody")[0]
             if (!txBody) continue
-            const t = pptxParagraphs(txBody, !!ph && BODY_PH.has(phType)).filter(Boolean).join("\n").trim()
+            const t = pptxParagraphs(txBody, !!ph && BODY_PH.has(phType))
+                .filter(Boolean)
+                .join("\n")
+                .trim()
             if (!t) continue
             if (TITLE_PH.has(phType)) {
                 if (!out.title) out.title = t.replace(/\s*\n\s*/g, " ")
@@ -491,7 +509,10 @@ function cellText(c: Xml, ctx: XlsxCtx): string {
     const t = at(c, "t")
     const v = kid(c, "v")
     if (t === "s") return v ? (ctx.shared[Number(xtext(v))] ?? "") : ""
-    if (t === "inlineStr") return els(kid(c, "is") ?? c, "t").map(xtext).join("")
+    if (t === "inlineStr")
+        return els(kid(c, "is") ?? c, "t")
+            .map(xtext)
+            .join("")
     if (t === "str") return v ? xtext(v) : ""
     if (t === "b") return v ? (xtext(v) === "1" || xtext(v).toLowerCase() === "true" ? "TRUE" : "FALSE") : ""
     if (t === "e") return v ? xtext(v) : ""
@@ -567,7 +588,12 @@ function xlsxToMarkdown(files: Files): ExtractResult {
     const sst = parseXml(files["xl/sharedStrings.xml"])
     if (sst) {
         for (const si of els(sst, "si")) {
-            ctx.shared.push(kidsOf(si, "t").map(xtext).join("") || kidsOf(si, "r").map((r) => els(r, "t").map(xtext).join("")).join(""))
+            ctx.shared.push(
+                kidsOf(si, "t").map(xtext).join("") ||
+                    kidsOf(si, "r")
+                        .map((r) => els(r, "t").map(xtext).join(""))
+                        .join("")
+            )
         }
     }
     const styles = parseXml(files["xl/styles.xml"])

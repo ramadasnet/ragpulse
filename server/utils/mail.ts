@@ -1,4 +1,5 @@
 import nodemailer, {type Transporter} from "nodemailer"
+import logger from "./logger"
 
 const cloudflareSmtpHost = "smtp.mx.cloudflare.net"
 
@@ -58,7 +59,7 @@ export interface MailOptions {
 export async function sendMail(opts: MailOptions): Promise<boolean> {
     const t = getTransporter()
     if (!t) {
-        console.warn(`[mail] SMTP not configured, skipping email to ${opts.to}: ${opts.subject}`)
+        logger.warn("Mailer.send", "SMTP not configured, skipping email", opts.to, opts.subject)
         return false
     }
     try {
@@ -72,7 +73,7 @@ export async function sendMail(opts: MailOptions): Promise<boolean> {
         })
         return true
     } catch (err: any) {
-        console.error(`[mail] failed sending to ${opts.to}: ${err?.message || err}`)
+        logger.error("Mailer.send", `Failed sending to ${opts.to}`, opts.subject, err)
         return false
     }
 }

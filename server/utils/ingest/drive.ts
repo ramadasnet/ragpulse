@@ -213,12 +213,7 @@ interface DriveFile {
     shortcutDetails?: {targetId?: string; targetMimeType?: string}
 }
 
-type Plan =
-    | {kind: "google"; exportMime: BinaryMime; fallback?: "text/plain" | "text/csv"}
-    | {kind: "binary"; mime: BinaryMime}
-    | {kind: "text"}
-    | {kind: "csv"; delimiter?: string}
-    | {kind: "skip"; reason: string}
+type Plan = {kind: "google"; exportMime: BinaryMime; fallback?: "text/plain" | "text/csv"} | {kind: "binary"; mime: BinaryMime} | {kind: "text"} | {kind: "csv"; delimiter?: string} | {kind: "skip"; reason: string}
 
 const GOOGLE_TYPES: Record<string, {exportMime: BinaryMime; fallback?: "text/plain" | "text/csv"}> = {
     "application/vnd.google-apps.document": {exportMime: DOCX_MIME, fallback: "text/plain"},
@@ -256,11 +251,7 @@ function driveTitle(f: DriveFile): string {
  * Indexes all supported files of a Drive folder (recursively, incl. shared drives).
  * ref = Drive file id; files whose Drive version is still in `ctx.knownVersions` are not downloaded again.
  */
-export async function fetchDriveSource(
-    folderUrlOrId: string,
-    options: {serviceAccountKey: ServiceAccountKey; sleep?: Sleep},
-    ctx: FetchContext
-): Promise<FetchOutcome> {
+export async function fetchDriveSource(folderUrlOrId: string, options: {serviceAccountKey: ServiceAccountKey; sleep?: Sleep}, ctx: FetchContext): Promise<FetchOutcome> {
     const outcome = emptyFetchOutcome()
     outcome.unchanged = []
     const folderId = parseDriveFolderId(folderUrlOrId)

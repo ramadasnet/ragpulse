@@ -23,9 +23,7 @@ function onSaved(source: SourceView) {
     <UiModal v-model:open="open" title="Add source" description="Index a website, a git repository or a Google Drive folder. Content is converted to markdown, chunked and embedded." width="600px">
         <div class="stack" style="--gap: 16px">
             <div class="segmented" role="radiogroup" aria-label="Source type">
-                <button v-for="t in SOURCE_TYPES" :key="t.id" type="button" role="radio" :aria-checked="type === t.id" class="seg" :class="{active: type === t.id}" @click="type = t.id">
-                    <component :is="t.icon" :size="15" /> {{ t.label }}
-                </button>
+                <button v-for="t in SOURCE_TYPES" :key="t.id" type="button" role="radio" :aria-checked="type === t.id" class="seg" :class="{active: type === t.id}" @click="type = t.id"><component :is="t.icon" :size="15" /> {{ t.label }}</button>
             </div>
             <KnowledgeSourceForm id="source-form" ref="form" :project-id="projectId" :type="type" :project-hours="projectHours" @saved="onSaved" />
         </div>

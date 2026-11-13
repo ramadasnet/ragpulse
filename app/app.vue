@@ -1,9 +1,9 @@
 <template>
-  <NuxtLayout>
-    <NuxtPage />
-  </NuxtLayout>
-  <ClientOnly>
-    <UiToaster />
-    <UiConfirm />
-  </ClientOnly>
+    <NuxtLayout>
+        <NuxtPage />
+    </NuxtLayout>
+    <ClientOnly>
+        <UiToaster />
+        <UiConfirm />
+    </ClientOnly>
 </template>

@@ -16,11 +16,14 @@
         "typecheck": "nuxt prepare && vue-tsc --noEmit -p .nuxt/tsconfig.server.json && vue-tsc --noEmit -p .nuxt/tsconfig.app.json",
         "check": "bun run typecheck && bun test",
         "test": "bun test",
+        "format": "prettier --write \"{app,server,shared,tests,landing}/**/*.{ts,vue,json,css,md}\" \"*.{ts,json,md}\"",
+        "format:check": "prettier --check \"{app,server,shared,tests,landing}/**/*.{ts,vue,json,css,md}\" \"*.{ts,json,md}\"",
         "postinstall": "nuxt prepare"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.32.2",
         "@mozilla/readability": "^0.6.0",
+        "anyhow": "^4.0.0",
         "dompurify": "^3.4.17",
         "fflate": "^0.8.3",
         "linkedom": "^0.18.15",
@@ -41,7 +44,17 @@
         "@types/dompurify": "^3.0.5",
         "@types/nodemailer": "^8.0.2",
         "@types/turndown": "^5.0.6",
+        "prettier": "^3.6.2",
         "typescript": "^6",
         "vue-tsc": "^3.3.14"
+    },
+    "prettier": {
+        "trailingComma": "none",
+        "tabWidth": 4,
+        "semi": false,
+        "singleQuote": false,
+        "arrowParens": "always",
+        "bracketSpacing": false,
+        "printWidth": 250
     }
 }

@@ -115,15 +115,18 @@ const SCRIPT = /* js */ `(function () {
 })();
 `
 
-const MINIFIED = SCRIPT.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//')).join('\n')
+const MINIFIED = SCRIPT.split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("//"))
+    .join("\n")
 
 export default defineEventHandler((event) => {
-  setResponseHeaders(event, {
-    'Content-Type': 'application/javascript; charset=utf-8',
-    'Cache-Control': 'public, max-age=300',
-    'X-Content-Type-Options': 'nosniff',
-    'Cross-Origin-Resource-Policy': 'cross-origin',
-    'Access-Control-Allow-Origin': '*'
-  })
-  return MINIFIED
+    setResponseHeaders(event, {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=300",
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "Access-Control-Allow-Origin": "*"
+    })
+    return MINIFIED
 })

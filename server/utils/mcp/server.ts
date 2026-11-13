@@ -1,12 +1,12 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod'
-import type { McpContext } from './context'
-import { registerMcpKnowledgeTools } from './knowledge'
-import { registerMcpProjectTools } from './projects'
-import { registerMcpQuestionTools } from './questions'
-import { registerMcpSessionTools } from './sessions'
+import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js"
+import {z} from "zod"
+import type {McpContext} from "./context"
+import {registerMcpKnowledgeTools} from "./knowledge"
+import {registerMcpProjectTools} from "./projects"
+import {registerMcpQuestionTools} from "./questions"
+import {registerMcpSessionTools} from "./sessions"
 
-export const MCP_SERVER_VERSION = '1.0.0'
+export const MCP_SERVER_VERSION = "1.0.0"
 
 const INSTRUCTIONS = `RAGPulse hosts AI support chats for websites and apps. Visitors ask questions; when the assistant cannot answer confidently (or the visitor asks for a human), the question is escalated as an "unanswered question".
 
@@ -21,10 +21,10 @@ Typical workflow:
 Write replies directly to the visitor, in their language, concise and friendly. Never invent facts: if the knowledge base does not contain the answer, say so instead of guessing. Other tools: list_projects, get_project, list_sessions, send_session_message, list_sources, trigger_sync, add_faq, get_project_stats.`
 
 function triagePrompt(projectId?: string): string {
-  const scope = projectId ? `project "${projectId}"` : 'all projects you can reply in'
-  return `Please triage the open unanswered questions in RAGPulse for ${scope}.
+    const scope = projectId ? `project "${projectId}"` : "all projects you can reply in"
+    return `Please triage the open unanswered questions in RAGPulse for ${scope}.
 
-1. Call list_unanswered_questions${projectId ? ` with project_id "${projectId}"` : ''} (status "open").
+1. Call list_unanswered_questions${projectId ? ` with project_id "${projectId}"` : ""} (status "open").
 2. For each question:
    a. Read the question and its conversation context (call get_session if you need more).
    b. Research the answer with search_knowledge (and list_faqs) for the question's project.
@@ -36,24 +36,25 @@ function triagePrompt(projectId?: string): string {
 
 /** Builds a fresh MCP server bound to the authenticated user (stateless: one per HTTP request). */
 export function createRagpulseMcpServer(ctx: McpContext): McpServer {
-  const server = new McpServer(
-    { name: 'ragpulse', title: 'RAGPulse', version: MCP_SERVER_VERSION },
-    { instructions: INSTRUCTIONS, capabilities: { tools: {}, prompts: {} } }
-  )
+    const server = new McpServer({name: "ragpulse", title: "RAGPulse", version: MCP_SERVER_VERSION}, {instructions: INSTRUCTIONS, capabilities: {tools: {}, prompts: {}}})
 
-  registerMcpProjectTools(server, ctx)
-  registerMcpQuestionTools(server, ctx)
-  registerMcpSessionTools(server, ctx)
-  registerMcpKnowledgeTools(server, ctx)
+    registerMcpProjectTools(server, ctx)
+    registerMcpQuestionTools(server, ctx)
+    registerMcpSessionTools(server, ctx)
+    registerMcpKnowledgeTools(server, ctx)
 
-  server.registerPrompt('answer_unanswered_questions', {
-    title: 'Answer unanswered questions',
-    description: 'Guides you through triaging and answering open visitor questions using the knowledge base.',
-    argsSchema: { project_id: z.string().optional().describe('Limit to one project (id); omit for all projects') }
-  }, ({ project_id }) => ({
-    description: 'Triage open unanswered questions',
-    messages: [{ role: 'user', content: { type: 'text', text: triagePrompt(project_id || undefined) } }]
-  }))
+    server.registerPrompt(
+        "answer_unanswered_questions",
+        {
+            title: "Answer unanswered questions",
+            description: "Guides you through triaging and answering open visitor questions using the knowledge base.",
+            argsSchema: {project_id: z.string().optional().describe("Limit to one project (id); omit for all projects")}
+        },
+        ({project_id}) => ({
+            description: "Triage open unanswered questions",
+            messages: [{role: "user", content: {type: "text", text: triagePrompt(project_id || undefined)}}]
+        })
+    )
 
-  return server
+    return server
 }

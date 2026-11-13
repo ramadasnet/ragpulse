@@ -8,6 +8,7 @@ import {fetchDriveSource, parseServiceAccountKey} from "./drive"
 import {fetchGitSource, scrubGitSecrets} from "./git"
 import type {FetchContext, FetchOutcome, FetchedDocument} from "./types"
 import {fetchUrlSource} from "./url"
+import logger from "../logger"
 
 const SYNC_TIMEOUT_MS = 30 * 60_000
 /** Flush pending documents once this many chunks wait for embeddings */
@@ -69,7 +70,7 @@ async function recordSyncRun(run: Omit<SyncRun, "_id">): Promise<void> {
         const {syncRuns} = await useCollections()
         await syncRuns.insertOne({...run, _id: newId()})
     } catch (err: any) {
-        console.warn(`[ingest] could not record sync run: ${err?.message || err}`)
+        logger.warn("Ingest.recordSyncRun", "Could not record the sync run", err)
     }
 }
 
@@ -99,10 +100,8 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         const settings = await getAppSettings({fresh: true})
         const detail = projectIngestDetail(project)
         const signal = AbortSignal.timeout(SYNC_TIMEOUT_MS)
-        const log = (msg: string) => console.info(`[ingest] ${label}: ${msg}`)
-        const existing = (await documents.find({sourceId}, {projection: {_id: 1, ref: 1, hash: 1, title: 1, url: 1, version: 1}}).toArray()) as Array<
-            Pick<DocumentRecord, "_id" | "ref" | "hash" | "title" | "url" | "version">
-        >
+        const log = (msg: string) => logger.info("Ingest.sync", label, msg)
+        const existing = (await documents.find({sourceId}, {projection: {_id: 1, ref: 1, hash: 1, title: 1, url: 1, version: 1}}).toArray()) as Array<Pick<DocumentRecord, "_id" | "ref" | "hash" | "title" | "url" | "version">>
         const byRef = new Map(existing.map((d) => [d.ref, d]))
         const outcome = await fetchSource(source, {
             userAgent: settings.userAgent || defaultUserAgent(),
@@ -262,10 +261,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
 
         const [totals, chunkCount] = await Promise.all([
             documents
-                .aggregate<{count: number; bytes: number}>([
-                    {$match: {sourceId}},
-                    {$group: {_id: null, count: {$sum: 1}, bytes: {$sum: {$strLenBytes: {$ifNull: ["$markdown", ""]}}}}}
-                ])
+                .aggregate<{count: number; bytes: number}>([{$match: {sourceId}}, {$group: {_id: null, count: {$sum: 1}, bytes: {$sum: {$strLenBytes: {$ifNull: ["$markdown", ""]}}}}}])
                 .toArray()
                 .then((rows) => rows[0] ?? {count: 0, bytes: 0}),
             chunks.countDocuments({sourceId, sourceType: source.type})
@@ -313,13 +309,13 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
             ...(message ? {message} : {})
         })
         Object.assign(result, {ok: true, documents: documentCount, chunks: chunkCount})
-        if (outcome.upToDate) console.info(`[ingest] ${label} unchanged since the last sync, ${documentCount} docs kept`)
-        else console.info(`[ingest] ${label} synced in ${(durationMs / 1000).toFixed(1)}s: ${documentCount} docs (${result.changed} changed, ${result.removed} removed), ${chunkCount} chunks, ${result.embedded} embedded`)
+        if (outcome.upToDate) logger.info("Ingest.sync", label, `Unchanged since the last sync, ${documentCount} docs kept`)
+        else logger.info("Ingest.sync", label, `Synced in ${(durationMs / 1000).toFixed(1)}s: ${documentCount} docs (${result.changed} changed, ${result.removed} removed), ${chunkCount} chunks, ${result.embedded} embedded`)
         return result
     } catch (err: any) {
         const message = errorText(err, source)
         result.error = message
-        console.warn(`[ingest] ${label} failed: ${message}`)
+        logger.warn("Ingest.sync", label, `Failed: ${message}`)
         // Manual only sources are not retried automatically
         const retryHours = Math.min(1, refreshHours)
         await sources

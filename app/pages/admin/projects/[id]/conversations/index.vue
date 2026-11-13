@@ -119,9 +119,11 @@ function open(row: SessionRow) {
                             <td>
                                 <div class="row" style="--gap: 4px; flex-wrap: wrap">
                                     <UiBadge v-if="s.unansweredCount" tone="warning">{{ s.unansweredCount }} unanswered</UiBadge>
+                                    <UiBadge v-if="s.humanHandledAt" tone="info">Human</UiBadge>
                                     <UiBadge v-if="s.finishedAt" tone="success">Finished</UiBadge>
+                                    <UiBadge v-if="s.endedAt" tone="neutral" :title="s.endReason === 'inactive' ? 'Closed after a period without messages' : 'The visitor started a new conversation'">Ended</UiBadge>
                                     <UiBadge v-if="s.limitReached && !s.unansweredCount && !s.finishedAt" tone="danger">Limit reached</UiBadge>
-                                    <span v-if="!s.unansweredCount && !s.finishedAt && !s.limitReached" class="dim small">—</span>
+                                    <span v-if="!s.unansweredCount && !s.finishedAt && !s.limitReached && !s.endedAt" class="dim small">—</span>
                                 </div>
                             </td>
                             <td class="hide-sm">

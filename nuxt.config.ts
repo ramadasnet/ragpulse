@@ -88,6 +88,8 @@ export default defineNuxtConfig({
         chatSessionRetentionDays: 180,
         // Days sync runs are kept in each source's history, can be changed on the Settings page
         syncHistoryDays: 30,
+        // Minutes to wait before emailing an answer to a visitor who is not in the chat, can be changed on the Settings page
+        answerEmailDelayMinutes: 10,
         // Cloudflare Email Service by default: set NUXT_SMTP_PASS (API token) and NUXT_SMTP_FROM to send email
         smtp: {
             host: "smtp.mx.cloudflare.net",

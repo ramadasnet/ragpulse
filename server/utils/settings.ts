@@ -2,7 +2,8 @@
 // Both the admin and the chat instance read them; the cache keeps the chat instance in sync within CACHE_TTL_MS.
 import {z} from "zod"
 import type {AppSettings} from "#shared/types"
-import {SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {ANSWER_EMAIL_MAX_DELAY_MINUTES, CHAT_AUTO_CLOSE_MAX_DAYS, DEFAULT_ANSWER_EMAIL_DELAY_MINUTES, DEFAULT_CHAT_AUTO_CLOSE_DAYS, DEFAULT_QUESTION_RETENTION_DAYS, QUESTION_RETENTION_MAX_DAYS, SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {DEFAULT_GLOBAL_INSTRUCTIONS} from "#shared/utils/instructions"
 
 export const SETTINGS_ID = "app"
 const CACHE_TTL_MS = 30_000
@@ -25,8 +26,18 @@ export function defaultAppSettings(): AppSettings {
         codeSummaryModel: String(config.codeSummaryModel ?? "").trim(),
         userAgent: String(config.crawlerUserAgent || "").trim(),
         requestIntervalMs: Math.max(0, Number(config.crawlerRequestIntervalMs ?? 500) || 0),
-        syncHistoryDays: syncHistoryDays(config.syncHistoryDays)
+        syncHistoryDays: syncHistoryDays(config.syncHistoryDays),
+        questionRetentionDays: DEFAULT_QUESTION_RETENTION_DAYS,
+        globalInstructions: DEFAULT_GLOBAL_INSTRUCTIONS,
+        answerEmailDelayMinutes: answerEmailDelayMinutes(config.answerEmailDelayMinutes),
+        chatAutoCloseDays: DEFAULT_CHAT_AUTO_CLOSE_DAYS
     }
+}
+
+/** Answer email delay from the environment, clamped to the allowed range. */
+function answerEmailDelayMinutes(value: unknown): number {
+    const n = Math.round(Number(value ?? DEFAULT_ANSWER_EMAIL_DELAY_MINUTES))
+    return Number.isFinite(n) ? Math.min(ANSWER_EMAIL_MAX_DELAY_MINUTES, Math.max(0, n)) : DEFAULT_ANSWER_EMAIL_DELAY_MINUTES
 }
 
 /** Default crawler User-Agent, used when the setting is empty. */
@@ -80,7 +91,13 @@ export const settingsPatchSchema = z
             .max(300)
             .regex(/^[\x20-\x7E]*$/, "User-Agent may only contain printable ASCII characters"),
         requestIntervalMs: z.number().int().min(0).max(60_000),
-        syncHistoryDays: z.number().int().min(1).max(SYNC_HISTORY_MAX_DAYS)
+        syncHistoryDays: z.number().int().min(1).max(SYNC_HISTORY_MAX_DAYS),
+        /** 0 = keep forever */
+        questionRetentionDays: z.number().int().min(0).max(QUESTION_RETENTION_MAX_DAYS),
+        globalInstructions: z.string().trim().max(20_000),
+        answerEmailDelayMinutes: z.number().int().min(0).max(ANSWER_EMAIL_MAX_DELAY_MINUTES),
+        /** 0 = never */
+        chatAutoCloseDays: z.number().int().min(0).max(CHAT_AUTO_CLOSE_MAX_DAYS)
     })
     .partial()
 

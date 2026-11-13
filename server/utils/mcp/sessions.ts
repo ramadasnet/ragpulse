@@ -17,7 +17,10 @@ export function mcpSessionView(s: ChatSession) {
         limitReached: s.limitReached,
         finishedAt: s.finishedAt,
         finishedBy: s.finishedBy ? {name: s.finishedBy.name, via: s.finishedBy.via} : undefined,
+        endedAt: s.endedAt,
+        endReason: s.endedAt ? (s.endReason ?? "visitor") : undefined,
         learnedFaqId: s.learnedFaqId,
+        humanHandledAt: s.humanHandledAt,
         createdAt: s.createdAt,
         lastMessageAt: s.lastMessageAt
     }
@@ -110,7 +113,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
         {
             title: "Send message to a chat session",
             description:
-                "Posts a human/agent message (markdown) into a visitor's chat session, e.g. a proactive follow-up. The visitor sees it in the chat; it is NOT emailed. To answer an escalated question (with email notification), use reply_to_question. Requires questions:reply.",
+                "Posts a human/agent message (markdown) into a visitor's chat session, e.g. a proactive follow-up. The visitor sees it in the chat; it is NOT emailed. Fails when the conversation ended (`endedAt`: the visitor started a new one, or it was closed after the configured days without messages). To answer an escalated question (with email notification), use reply_to_question. Requires questions:reply.",
             inputSchema: {
                 session_id: z.string().min(1).describe("Chat session id"),
                 content: z.string().trim().min(1).max(8000).describe("Message text (markdown)")
@@ -120,6 +123,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
         ({session_id, content}) =>
             mcpSafely(async () => {
                 const session = await sessionFor(ctx, session_id, "questions:reply")
+                await assertSessionNotEnded(session)
                 const {messages, sessions} = await useCollections()
                 const now = new Date()
                 const message: ChatMessage = {

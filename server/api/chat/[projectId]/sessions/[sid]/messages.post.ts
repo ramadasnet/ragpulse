@@ -12,7 +12,7 @@ const activeSessions = new Set<string>()
 /**
  * Sends a visitor message and streams the answer as Server-Sent Events:
  * `meta` {userMessageId} · `delta` {text} · `done` {message} · `escalated` {questionId, message, needsEmail}
- * · `limit` {message, hasSupport} · `error` {message}
+ * · `limit` {message, hasSupport} · `human` {} (a team member handles the conversation, no assistant reply) · `error` {message}
  */
 export default defineEventHandler(async (event) => {
     const project = await requireChatProject(event)
@@ -51,8 +51,10 @@ export default defineEventHandler(async (event) => {
 
     async function run() {
         const {messages, sessions} = await useCollections()
+        // While a human handles the conversation the message limit (assistant budget) does not apply
+        const human = !!session.humanHandledAt
 
-        if (session.limitReached || (project.rateLimit > 0 && session.userMessageCount >= project.rateLimit)) {
+        if (!human && (session.limitReached || (project.rateLimit > 0 && session.userMessageCount >= project.rateLimit))) {
             if (!session.limitReached) await sessions.updateOne({_id: session._id}, {$set: {limitReached: true}})
             send("limit", {
                 message: "You've reached the message limit for this conversation. Send your question to our team and we'll get back to you.",
@@ -61,7 +63,7 @@ export default defineEventHandler(async (event) => {
             return
         }
 
-        if (!useRuntimeConfig(event).openrouterApiKey) {
+        if (!human && !useRuntimeConfig(event).openrouterApiKey) {
             send("error", {message: "The assistant is not configured yet (missing OpenRouter API key). Please try again later."})
             return
         }
@@ -69,15 +71,19 @@ export default defineEventHandler(async (event) => {
         const now = new Date()
         const userMessage: ChatMessage = {_id: newId(), projectId: project._id, sessionId: session._id, role: "user", content, createdAt: now}
         await messages.insertOne(userMessage)
-        await sessions.updateOne({_id: session._id}, {$inc: {userMessageCount: 1, messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
+        await sessions.updateOne({_id: session._id}, {$inc: {userMessageCount: 1, messageCount: 1}, $set: {lastMessageAt: now, visitorSeenAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
         session.userMessageCount++
         send("meta", {userMessageId: userMessage._id})
+        if (human) {
+            send("human", {})
+            return
+        }
 
         try {
             for await (const ev of generateAnswer({project, session, userMessage, startedAt})) {
                 if (ev.type === "delta") send("delta", {text: ev.text})
-                else if (ev.type === "done") send("done", {message: publicChatMessage(ev.message)})
-                else send("escalated", {questionId: ev.question._id, message: publicChatMessage(ev.message), needsEmail: !session.visitorEmail})
+                else if (ev.type === "done") send("done", {message: publicChatMessage(ev.message, project)})
+                else send("escalated", {questionId: ev.question._id, message: publicChatMessage(ev.message, project), needsEmail: !session.visitorEmail})
             }
         } catch (err: any) {
             logger.error("Chat.messages", `Answer failed for session ${session._id}`, err)

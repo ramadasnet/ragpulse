@@ -83,14 +83,29 @@ function buildTranscript(messages: ChatMessage[]): string {
 }
 
 /**
+ * Messages a finished conversation can still learn from. Everything up to the last answered question is
+ * left out: answered questions get their own FAQ entry, so learning them again would duplicate it.
+ */
+export function learnableMessages<T extends Pick<ChatMessage, "createdAt">>(list: T[], lastAnsweredAt?: Date | string): T[] {
+    if (!lastAnsweredAt) return list
+    const after = new Date(lastAnsweredAt).getTime()
+    return list.filter((m) => new Date(m.createdAt).getTime() > after)
+}
+
+/**
  * Summarizes a finished conversation into a reusable FAQ entry when a human/agent contributed.
  * Creates the entry, or updates the FAQ learned from an earlier finish of the same session,
  * and (re)indexes it. Sessions without agent replies are skipped — they add no new knowledge.
+ * Only replies after the last answered question are learned (see `learnableMessages`).
  */
 export async function learnFaqFromSession(project: Project, session: ChatSession): Promise<SessionLearnResult> {
-    const {messages, faqs, sessions} = await useCollections()
-    const list = (await messages.find({sessionId: session._id}).sort({createdAt: -1}).limit(500).toArray()).reverse()
-    if (!list.some((m) => m.role === "agent")) return {skipped: "no human replies in this conversation"}
+    const {messages, faqs, sessions, questions} = await useCollections()
+    const [recent, lastAnswered] = await Promise.all([
+        messages.find({sessionId: session._id}).sort({createdAt: -1}).limit(500).toArray(),
+        questions.findOne({sessionId: session._id, status: "answered"}, {sort: {answeredAt: -1}, projection: {answeredAt: 1}})
+    ])
+    const list = learnableMessages(recent.reverse(), lastAnswered?.answeredAt)
+    if (!list.some((m) => m.role === "agent")) return {skipped: lastAnswered ? "the answered questions of this conversation are already in the FAQ" : "no human replies in this conversation"}
     const text = buildTranscript(list)
     if (!text) return {skipped: "the conversation is empty"}
 
@@ -110,8 +125,10 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
     if (!question || !answer) return {skipped: parsed?.skip || "nothing reusable for other visitors"}
 
     const now = new Date()
-    // Re-finishing a reopened session updates its previously learned FAQ instead of duplicating it
-    const existing = session.learnedFaqId ? await faqs.findOne({_id: session.learnedFaqId, projectId: project._id}) : null
+    // Re-finishing a reopened session updates its previously learned FAQ instead of duplicating it,
+    // unless an answered question took that entry over
+    const learned = session.learnedFaqId ? await faqs.findOne({_id: session.learnedFaqId, projectId: project._id}) : null
+    const existing = learned && !(await questions.countDocuments({faqId: learned._id}, {limit: 1})) ? learned : null
     let faq: Faq
     if (existing) {
         faq = {...existing, question, answer, sessionId: session._id, updatedAt: now}
@@ -148,8 +165,10 @@ export async function finishSession(params: {session: ChatSession; finished: boo
     }
 
     const update: Pick<ChatSession, "finishedAt" | "finishedBy"> = {finishedAt: session.finishedAt ?? new Date(), finishedBy: author}
-    await sessions.updateOne({_id: session._id}, {$set: update})
-    const next = {...session, ...update}
+    // A finished conversation is handed back to the assistant
+    await sessions.updateOne({_id: session._id}, {$set: update, $unset: {humanHandledAt: "", humanHandledBy: ""}})
+    const {humanHandledAt, humanHandledBy, ...rest} = session
+    const next: ChatSession = {...rest, ...update}
 
     let learned: SessionLearnResult | undefined
     const project = await projects.findOne({_id: session.projectId})

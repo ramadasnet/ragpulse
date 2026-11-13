@@ -1,10 +1,13 @@
 import {describe, expect, test} from "bun:test"
-import {chatSessionRetentionDays, purgeOldChatSessions} from "../server/utils/chat-retention"
+import {chatSessionRetentionDays, closeInactiveChatSessions, purgeOldChatSessions, purgeOldQuestions} from "../server/utils/chat-retention"
 
 interface Doc {
     _id: string
     sessionId?: string
     lastMessageAt?: Date
+    createdAt?: Date
+    endedAt?: Date
+    endReason?: string
 }
 
 /** Minimal in-memory stand-in for the MongoDB collections used by the cleanup. */
@@ -13,6 +16,7 @@ function fakeCollection(docs: Doc[]) {
         Object.entries(filter).every(([key, cond]: [string, any]) => {
             const value = (doc as any)[key]
             if (cond?.$lt) return value < cond.$lt
+            if (cond?.$exists !== undefined) return (value !== undefined) === cond.$exists
             if (cond?.$in) return cond.$in.includes(value)
             return value === cond
         })
@@ -21,6 +25,11 @@ function fakeCollection(docs: Doc[]) {
         find: (filter: any) => ({
             limit: (n: number) => ({toArray: async () => docs.filter((d) => matches(d, filter)).slice(0, n)})
         }),
+        updateMany: async (filter: any, update: any) => {
+            const hits = docs.filter((d) => matches(d, filter))
+            for (const d of hits) Object.assign(d, update.$set)
+            return {modifiedCount: hits.length}
+        },
         deleteMany: async (filter: any) => {
             const before = docs.length
             docs.splice(0, docs.length, ...docs.filter((d) => !matches(d, filter)))
@@ -77,5 +86,43 @@ describe("chat session retention", () => {
         const c = {sessions, messages: fakeCollection([]), questions: fakeCollection([])} as any
         expect(await purgeOldChatSessions(c, 180, now)).toBe(1201)
         expect(sessions.docs).toHaveLength(0)
+    })
+})
+
+describe("inactive chat session auto-close", () => {
+    test("closes sessions without messages for more than the given days, once", async () => {
+        const sessions = fakeCollection([
+            {_id: "stale", lastMessageAt: daysAgo(8)},
+            {_id: "recent", lastMessageAt: daysAgo(6)},
+            {_id: "ended", lastMessageAt: daysAgo(30), endedAt: daysAgo(20), endReason: "visitor"}
+        ])
+        expect(await closeInactiveChatSessions({sessions} as any, 7, now)).toBe(1)
+        expect(sessions.docs.find((d) => d._id === "stale")).toMatchObject({endedAt: now, endReason: "inactive"})
+        expect(sessions.docs.find((d) => d._id === "recent")?.endedAt).toBeUndefined()
+        expect(sessions.docs.find((d) => d._id === "ended")).toMatchObject({endedAt: daysAgo(20), endReason: "visitor"})
+        expect(await closeInactiveChatSessions({sessions} as any, 7, now)).toBe(0)
+    })
+
+    test("closes nothing when set to 0", async () => {
+        const sessions = fakeCollection([{_id: "stale", lastMessageAt: daysAgo(400)}])
+        expect(await closeInactiveChatSessions({sessions} as any, 0, now)).toBe(0)
+        expect(sessions.docs[0]?.endedAt).toBeUndefined()
+    })
+})
+
+describe("escalated question retention", () => {
+    test("deletes questions older than the retention period", async () => {
+        const questions = fakeCollection([
+            {_id: "old", createdAt: daysAgo(400)},
+            {_id: "recent", createdAt: daysAgo(30)}
+        ])
+        expect(await purgeOldQuestions({questions} as any, 365, now)).toBe(1)
+        expect(questions.docs.map((d) => d._id)).toEqual(["recent"])
+    })
+
+    test("keeps everything when set to 0", async () => {
+        const questions = fakeCollection([{_id: "old", createdAt: daysAgo(4000)}])
+        expect(await purgeOldQuestions({questions} as any, 0, now)).toBe(0)
+        expect(questions.docs).toHaveLength(1)
     })
 })

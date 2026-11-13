@@ -1,12 +1,17 @@
 // Scheduler: periodically syncs sources that are due, and immediately when a sync is requested.
 // Re-embeds stored chunks after an embedding model change.
-// Also deletes chat sessions older than the configured retention period and old sync history.
+// Also closes chat sessions without messages for the configured number of days, deletes chat sessions older than the configured retention period, old escalated questions and old sync history,
+// and sends the delayed answer emails of visitors who did not see the answer in the chat.
 // MongoDB locks make sure only one instance runs each job at a time.
 import logger from "../utils/logger"
 
 const LOCK_NAME = "scheduler"
 const RETENTION_LOCK_NAME = "chat-retention"
 const HISTORY_LOCK_NAME = "sync-history-retention"
+const QUESTION_LOCK_NAME = "question-retention"
+const AUTO_CLOSE_LOCK_NAME = "chat-auto-close"
+const EMAIL_LOCK_NAME = "answer-emails"
+const EMAIL_INTERVAL_MS = 30_000
 const RETENTION_INTERVAL_MS = 3600 * 1000
 const LOCK_TTL_SECONDS = 120
 const MAX_PER_TICK = 20
@@ -61,8 +66,44 @@ export default defineNitroPlugin((nitroApp) => {
         }
     }
 
+    async function purgeQuestions() {
+        if (closed) return
+        try {
+            const days = (await getAppSettings()).questionRetentionDays
+            if (!days) return
+            const deleted = await withLock(async () => purgeOldQuestions(await useCollections(), days), QUESTION_LOCK_NAME)
+            if (deleted) logger.info("Scheduler.retention", `Deleted ${deleted} escalated question(s) older than ${days} day(s)`)
+        } catch (err: any) {
+            logger.error("Scheduler.retention", "Escalated question cleanup failed", err)
+        }
+    }
+
+    async function closeInactiveSessions() {
+        if (closed) return
+        try {
+            const days = (await getAppSettings()).chatAutoCloseDays
+            if (!days) return
+            const count = await withLock(async () => closeInactiveChatSessions(await useCollections(), days), AUTO_CLOSE_LOCK_NAME)
+            if (count) logger.info("Scheduler.retention", `Closed ${count} chat session(s) without messages for ${days} day(s)`)
+        } catch (err: any) {
+            logger.error("Scheduler.retention", "Closing inactive chat sessions failed", err)
+        }
+    }
+
+    async function sendAnswerEmails() {
+        if (closed) return
+        try {
+            const res = await withLock(() => sendDueAnswerEmails(), EMAIL_LOCK_NAME)
+            if (res?.sent || res?.skipped || res?.failed) logger.info("Scheduler.emails", `Answer emails: ${res.sent} sent, ${res.skipped} skipped (seen in the chat), ${res.failed} failed`)
+        } catch (err: any) {
+            logger.error("Scheduler.emails", "Answer emails failed", err)
+        }
+    }
+
     async function runRetention() {
+        await closeInactiveSessions()
         await purgeChatSessions()
+        await purgeQuestions()
         await purgeSyncHistory()
     }
 
@@ -126,6 +167,7 @@ export default defineNitroPlugin((nitroApp) => {
 
     const interval = setInterval(tick, tickMs)
     const retentionInterval = setInterval(runRetention, RETENTION_INTERVAL_MS)
+    const emailInterval = setInterval(sendAnswerEmails, EMAIL_INTERVAL_MS)
     syncEvents.on("kick", kick)
 
     nitroApp.hooks.hook("close", () => {
@@ -133,6 +175,7 @@ export default defineNitroPlugin((nitroApp) => {
         clearTimeout(startup)
         clearInterval(interval)
         clearInterval(retentionInterval)
+        clearInterval(emailInterval)
         if (kickTimer) clearTimeout(kickTimer)
         syncEvents.off("kick", kick)
     })

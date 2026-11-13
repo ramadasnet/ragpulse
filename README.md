@@ -2,7 +2,7 @@
 
 Self-hosted, single-tenant AI support chat for your projects. Index your docs (FAQ, git repositories, web pages), embed a fast
 chat on your sites, escalate what the AI can't answer to your support email — and plug your own bots and agents in via **MCP**
-so they can act on unanswered questions.
+so they can act on escalated questions.
 
 - **Stack:** TypeScript · Nuxt 4 · Bun · MongoDB (documents + vectors) · OpenRouter (chat + embeddings)
 - **Admin:** Google / Microsoft social login, Admin and Assistant roles with per-project permissions
@@ -89,37 +89,45 @@ no server needed (Pages: build command `bun run build:landing`, output directory
 
 All settings are environment variables, see [`.env.example`](.env.example). Both apps take the same configuration. The important ones:
 
-| Variable                                                       | Description                                                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `NUXT_PUBLIC_ADMIN_URL`                                        | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                            |
-| `NUXT_PUBLIC_CHAT_URL`                                         | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                     |
-| `NUXT_APP_SECRET`                                              | 32+ chars secret for the admin session cookie and visitor IP hashing                                                            |
-| `NUXT_ADMIN_EMAILS`                                            | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                  |
-| `NUXT_MONGODB_URI`                                             | MongoDB connection string                                                                                                       |
-| `NUXT_OPENROUTER_API_KEY`                                      | OpenRouter key, used for chat and embeddings                                                                                    |
-| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`           | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Settings** instead (see below)          |
-| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`               | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)              |
-| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`   | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                       |
-| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS` | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)         |
-| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                  |
-| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                              | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email             |
-| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                            | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                        |
-| `NUXT_CHAT_SESSION_RETENTION_DAYS`                             | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever) |
-| `NUXT_SYNC_HISTORY_DAYS`                                       | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Settings** instead (see below)           |
-| `RAGPULSE_LOG_LEVEL`                                           | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                          |
-| `RAGPULSE_LOG_JSON`                                            | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                         |
+| Variable                                                       | Description                                                                                                                             |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_ADMIN_URL`                                        | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                                    |
+| `NUXT_PUBLIC_CHAT_URL`                                         | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                             |
+| `NUXT_APP_SECRET`                                              | 32+ chars secret for the admin session cookie and visitor IP hashing                                                                    |
+| `NUXT_ADMIN_EMAILS`                                            | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                          |
+| `NUXT_MONGODB_URI`                                             | MongoDB connection string                                                                                                               |
+| `NUXT_OPENROUTER_API_KEY`                                      | OpenRouter key, used for chat and embeddings                                                                                            |
+| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`           | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Global Settings** instead (see below)           |
+| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`               | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)                      |
+| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`   | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                               |
+| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS` | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)                 |
+| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                          |
+| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                              | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email                     |
+| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                            | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                                |
+| `NUXT_CHAT_SESSION_RETENTION_DAYS`                             | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever)         |
+| `NUXT_SYNC_HISTORY_DAYS`                                       | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Global Settings** instead (see below)            |
+| `NUXT_ANSWER_EMAIL_DELAY_MINUTES`                              | Minutes before an answer is emailed to a visitor who isn't in the chat (default 10, max 1440). Change it on **Global Settings** instead |
+| `RAGPULSE_LOG_LEVEL`                                           | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                                  |
+| `RAGPULSE_LOG_JSON`                                            | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                                 |
 
-### Settings page
+### Global Settings page
 
-Admins can change these workspace-wide settings on **Settings**; saved values override the environment defaults above:
+Admins can change these workspace-wide settings on **Global Settings**; saved values override the environment defaults above:
 
+- **Global system instructions**: base rules added to the chat answers of **all projects**, with precedence over each project's
+  own instructions. The default forbids sharing credentials, private keys, environment variables, secrets and personal
+  information, and guards against prompt injection. Leave empty to disable.
 - **Embedding model** and optional **dimensions** (any OpenRouter embedding model). The model is tested before it is applied.
   Vectors of different models can't be compared, so changing it re-indexes the knowledge of **all projects**: the scheduler
   re-embeds the stored chunks in the background (no re-fetching), the vector index is updated automatically, and progress is
-  shown on **Settings** and **System**. Until it finishes, answers only use the knowledge that has already been re-indexed.
+  shown on **Global Settings** and **System**. Until it finishes, answers only use the knowledge that has already been re-indexed.
 - **Source code summaries**: the model that summarizes git repository code (or off).
 - **Website crawler**: the User-Agent and the minimum delay between two requests to the same site.
-- **Sync history**: how many days each source's sync runs (files, total size and duration per run) are kept; older runs are deleted automatically.
+- **Cleanup**: after how many days without messages conversations are closed (default 7, `0` = never; the visitor then gets a new
+  chat), how many days each source's sync runs (files, total size and duration per run) are kept, and how many days escalated
+  questions are kept (default 365, `0` = forever); older entries are deleted automatically. FAQ entries created from answered
+  questions or learned from conversations are never deleted by this cleanup.
+- **Answer emails**: how many minutes to wait before emailing an answer to a visitor who isn't looking at the chat (default 10, `0` = right away).
 
 ### Email
 
@@ -162,7 +170,8 @@ knowledge, rate limit (max visitor messages per session before redirecting to su
 When a project is created, its website's home page and stylesheets are analyzed in the background (theme-color, brand
 custom properties, buttons, links, page background) and the chat theme preset with the closest colours is selected,
 in light or dark mode like the website. It can be changed any time under **Appearance**. The website's favicon becomes
-the project icon, falling back to a two-letter mark when none is found; it can be changed under **Settings**.
+the project icon, falling back to a two-letter mark when none is found; it can be changed under **Settings**. The chat shows
+the icon as the assistant's avatar.
 
 ### Knowledge
 
@@ -215,20 +224,39 @@ Projects without a preset use **Balanced**. Code summaries and vision results ar
 ### Conversations & escalation
 
 Visitors tell the chat how they want to be called, then ask away. Answers are generated from the retrieved knowledge only. When the
-model can't answer confidently, or a visitor hits the rate limit, the question becomes an **unanswered question**: it's emailed to
-the project's support email and shows up in the admin inbox and over MCP. Replies (from the admin UI or an agent via MCP) are posted
-into the visitor's chat and emailed to them if they left an address, and can be added to the FAQ in one click.
+model can't answer confidently, the visitor asks to talk to a human (in any language), or a visitor hits the rate limit, the
+question becomes an **escalated question**: it's emailed to the project's support email and shows up in the admin inbox and over MCP. Replies (from the admin UI or an agent via MCP) are posted
+into the visitor's chat and added to the project FAQ (once per question, with a link from the answered question to view or
+delete the entry). Visitors who left an email only get it by email when they don't see it in the chat: the chat reports when it's
+open and visible (the embed widget also tells it when it's closed). Visitors in the chat are never emailed; otherwise the email
+waits for the **Answer emails** delay on **Global Settings** and is cancelled if the visitor opens the chat meanwhile.
+
+Answers list their sources in two groups, **documents** and **source code**: an icon for each group sits at the bottom right of
+the answer and shows its links on hover (or tap on mobile). **Settings → AI → Show source code references** hides the source
+code group; the assistant can still link to code in the answer itself when the visitor asks about it.
+
+When a team member replies to a visitor from the conversation page while a question is open, the conversation is flagged as
+**handled by a human**: the assistant stops answering (and the message limit no longer applies) so the two can chat back and
+forth. Opening the question in the inbox then pre-fills **Your answer** with a summary of what was answered in the chat;
+**Set answer** records it (and adds it to the FAQ) without posting it to the chat again. Once no question of the
+conversation is open (answered, dismissed, or the conversation is finished), the assistant takes over again.
 
 When a conversation is done, an admin or agent flags it as **finished** (conversation page, or `finish_session` over MCP). If it had
 human replies, the service summarizes it into a new FAQ entry so the assistant learns the answer — self-learning knowledge. Personal
 and sensitive data is stripped from the entry (visitor name and email, other email addresses, phone/card/order numbers, tokens).
 Re-finishing a conversation updates its learned entry instead of duplicating it, and any new message reopens the conversation.
+When the visitor starts a new conversation (the reset button in the chat header), the previous one is flagged as **ended**, as are
+conversations without messages for **Global Settings → Cleanup → Close inactive conversations** days (default 7, `0` = never). A visitor
+returning to an ended conversation gets a new chat from scratch, and the team can no longer post into it from the conversation page or over MCP (`send_session_message`), and answering one of its
+questions only records the answer (FAQ, email) without posting it to the chat. Ended conversations can still be finished.
+Each answered question has exactly one FAQ entry: learning skips everything up to the conversation's last answered question, and
+answering a question of an already finished conversation reuses the entry learned from it.
 Conversations without activity for 180 days (`NUXT_CHAT_SESSION_RETENTION_DAYS`) are deleted automatically by the scheduler.
 
 ### Roles
 
 - **Admin** — full access, manages projects, users and system.
-- **Assistant** — access to assigned projects only, with per-project permissions: analytics, conversations, unanswered questions,
+- **Assistant** — access to assigned projects only, with per-project permissions: analytics, conversations, escalated questions,
   knowledge, settings.
 
 ## Embedding the chat

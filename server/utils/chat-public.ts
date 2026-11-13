@@ -68,7 +68,7 @@ function safeEqualHex(a: string, b: string): boolean {
     return ba.length === bb.length && ba.length > 0 && timingSafeEqual(ba, bb)
 }
 
-/** Loads the chat session from the `sid` router param and verifies the `x-session-token` header. */
+/** Loads the chat session from the `sid` router param and verifies the `x-session-token` header. Ended sessions are rejected. */
 export async function requireChatSession(event: H3Event, project: Project): Promise<ChatSession> {
     const sid = getRouterParam(event, "sid") || ""
     const token = getRequestHeader(event, "x-session-token") || ""
@@ -78,7 +78,30 @@ export async function requireChatSession(event: H3Event, project: Project): Prom
     if (!session || !safeEqualHex(sha256(token), session.tokenHash)) {
         throw createError({statusCode: 401, statusMessage: "Invalid session"})
     }
+    if (await sessionEnded(session)) throw createError({statusCode: 401, statusMessage: "This conversation has ended"})
     return session
+}
+
+/**
+ * Whether the session ended: by the visitor, or after `chatAutoCloseDays` without messages.
+ * Flags inactive sessions right away (the scheduler only closes them hourly) and updates `session`.
+ */
+export async function sessionEnded(session: Pick<ChatSession, "_id" | "endedAt" | "endReason" | "lastMessageAt">): Promise<boolean> {
+    if (session.endedAt) return true
+    const days = (await getAppSettings()).chatAutoCloseDays
+    if (!days || new Date(session.lastMessageAt).getTime() >= Date.now() - days * 24 * 3600 * 1000) return false
+    const {sessions} = await useCollections()
+    session.endedAt = new Date()
+    session.endReason = "inactive"
+    await sessions.updateOne({_id: session._id, endedAt: {$exists: false}}, {$set: {endedAt: session.endedAt, endReason: session.endReason}})
+    return true
+}
+
+/** Rejects team messages (admin panel or MCP) into an ended conversation. */
+export async function assertSessionNotEnded(session: Pick<ChatSession, "_id" | "endedAt" | "endReason" | "lastMessageAt">): Promise<void> {
+    if (!(await sessionEnded(session))) return
+    const why = session.endReason === "inactive" ? "was closed after a period without messages" : "was ended by the visitor"
+    throw createError({statusCode: 409, statusMessage: `This conversation ${why}, it can't receive new messages`})
 }
 
 /** Reads and parses a JSON body, rejecting bodies larger than `maxBytes`. */
@@ -107,6 +130,8 @@ export function publicChatConfig(project: Project) {
         title: project.title,
         website: project.website,
         theme: {...DEFAULT_THEME, ...project.theme, botName: project.theme?.botName || project.title},
+        /** Project icon URL (versioned so caches refresh when the project changes) */
+        icon: project.icon ? `/api/chat/${project._id}/icon?v=${new Date(project.updatedAt).getTime()}` : undefined,
         rateLimit: project.rateLimit,
         hasSupport: !!project.supportEmail,
         allowedHosts: allowedHostPatterns(project)
@@ -122,16 +147,20 @@ export function publicChatSession(session: ChatSession) {
         visitorEmail: session.visitorEmail,
         userMessageCount: session.userMessageCount,
         limitReached: session.limitReached,
+        /** A human from the team is replying: the assistant does not answer */
+        humanHandling: !!session.humanHandledAt,
         createdAt: session.createdAt
     }
 }
 
-export function publicChatMessage(message: ChatMessage) {
+/** Message as shown to the visitor. Source code references are dropped when the project hides them. */
+export function publicChatMessage(message: ChatMessage, project: Pick<Project, "showCodeSources">) {
+    const sources = project.showCodeSources ? message.sources : message.sources?.filter((s) => s.kind !== "code")
     return {
         _id: message._id,
         role: message.role,
         content: message.content,
-        sources: message.sources?.length ? message.sources : undefined,
+        sources: sources?.length ? sources : undefined,
         escalated: message.escalated || undefined,
         createdAt: message.createdAt
     }

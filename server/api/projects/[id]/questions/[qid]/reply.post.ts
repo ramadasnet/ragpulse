@@ -2,8 +2,10 @@ import {z} from "zod"
 
 const schema = z.object({
     answer: z.string().trim().min(1, "Answer cannot be empty").max(8000),
+    /** Default true: the answer is added to the FAQ (once per question) */
     addToFaq: z.boolean().optional(),
-    notifyVisitor: z.boolean().optional()
+    /** False when the visitor already got the answer in the chat: only records it */
+    postToChat: z.boolean().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -18,6 +20,6 @@ export default defineEventHandler(async (event) => {
         answer: body.answer,
         author: {userId: user._id, name: user.name, via: "admin"},
         addToFaq: body.addToFaq,
-        notifyVisitor: body.notifyVisitor
+        postToChat: body.postToChat
     })
 })

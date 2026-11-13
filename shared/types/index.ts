@@ -11,7 +11,7 @@ export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number]
 export const PERMISSION_INFO: Record<ProjectPermission, {label: string; description: string}> = {
     "analytics:read": {label: "Analytics", description: "View usage and performance analytics"},
     "sessions:read": {label: "Conversations", description: "Read chat sessions and messages"},
-    "questions:reply": {label: "Unanswered questions", description: "Reply to and dismiss unanswered questions"},
+    "questions:reply": {label: "Escalated questions", description: "Reply to and dismiss escalated questions"},
     "sources:manage": {label: "Knowledge", description: "Manage FAQ, sources and trigger syncs"},
     "settings:edit": {label: "Settings", description: "Edit project settings, appearance and embedding"}
 }
@@ -69,6 +69,8 @@ export interface Project {
     refreshIntervalHours: number
     /** How much of the fetched content is indexed. Unset = `DEFAULT_INGEST_DETAIL`. */
     ingestDetail?: IngestDetail
+    /** Show source code references under chat answers */
+    showCodeSources: boolean
     theme: ChatTheme
     enabled: boolean
     createdAt: Date
@@ -193,17 +195,29 @@ export interface ChatSession {
     /** Flagged as done by an admin or agent; a new message reopens the session automatically */
     finishedAt?: Date
     finishedBy?: {userId?: string; name: string; via: "admin" | "mcp"}
+    /** Ended by the visitor (new conversation) or closed after `AppSettings.chatAutoCloseDays` without messages: nobody can post into it anymore */
+    endedAt?: Date
+    /** Why the session ended (unset on sessions ended by the visitor before it existed) */
+    endReason?: "visitor" | "inactive"
     /** FAQ entry learned from this conversation the last time it was finished */
     learnedFaqId?: string
+    /** Set when a human replied to an escalated question from the admin panel: the assistant stays silent until no question is open */
+    humanHandledAt?: Date
+    humanHandledBy?: {userId?: string; name: string}
+    /** Last time the visitor had the chat open and visible */
+    visitorSeenAt?: Date
     createdAt: Date
     lastMessageAt: Date
 }
 
 export type MessageRole = "user" | "assistant" | "agent"
 
+export type MessageSourceKind = "docs" | "code"
+
 export interface MessageSourceRef {
     title: string
     url?: string
+    kind: MessageSourceKind
 }
 
 export interface ChatMessage {
@@ -242,9 +256,16 @@ export interface Question {
     answeredAt?: Date
     supportNotifiedAt?: Date
     visitorNotifiedAt?: Date
+    /** The answer is emailed at this time unless the visitor sees the chat before */
+    visitorEmailDueAt?: Date
+    /** FAQ entry created from the answer */
+    faqId?: string
     createdAt: Date
     updatedAt: Date
 }
+
+/** What happened with the answer email: sent now, scheduled (visitor not in the chat), skipped (visitor is in the chat), or none (no email / disabled) */
+export type AnswerEmailStatus = "sent" | "scheduled" | "seen" | "none" | "failed"
 
 export interface ApiToken {
     _id: string
@@ -291,7 +312,7 @@ export interface SessionUser {
     role: Role
 }
 
-/** Workspace-wide settings, editable on the admin Settings page. Unset values fall back to environment variables. */
+/** Workspace-wide settings, editable on the admin Global Settings page. Unset values fall back to environment variables. */
 export interface AppSettings {
     /** OpenRouter embedding model id */
     embeddingModel: string
@@ -307,6 +328,14 @@ export interface AppSettings {
     requestIntervalMs: number
     /** Days sync runs are kept in each source's history */
     syncHistoryDays: number
+    /** Days escalated questions are kept (FAQ entries created from them are kept). 0 = forever. */
+    questionRetentionDays: number
+    /** System instructions applied to the chat of every project, with precedence over project instructions. Empty disables them. */
+    globalInstructions: string
+    /** Minutes to wait before emailing an answer to a visitor who is not in the chat (cancelled when they see it). 0 = right away. */
+    answerEmailDelayMinutes: number
+    /** Days without messages after which a chat session is closed (the visitor gets a new chat). 0 = never. */
+    chatAutoCloseDays: number
 }
 
 /** Progress of re-embedding after an embedding model change */
@@ -357,8 +386,17 @@ export function isRefreshInterval(hours: number): boolean {
     return hours === MANUAL_REFRESH || (Number.isInteger(hours) && hours >= REFRESH_MIN_HOURS && hours <= REFRESH_MAX_HOURS)
 }
 
+export const DEFAULT_ANSWER_EMAIL_DELAY_MINUTES = 10
+export const ANSWER_EMAIL_MAX_DELAY_MINUTES = 1440
+
 export const DEFAULT_SYNC_HISTORY_DAYS = 30
 export const SYNC_HISTORY_MAX_DAYS = 365
+
+export const DEFAULT_QUESTION_RETENTION_DAYS = 365
+export const QUESTION_RETENTION_MAX_DAYS = 3650
+
+export const DEFAULT_CHAT_AUTO_CLOSE_DAYS = 7
+export const CHAT_AUTO_CLOSE_MAX_DAYS = 365
 
 export const DEFAULT_THEME: ChatTheme = {
     mode: "dark",

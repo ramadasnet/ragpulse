@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertTriangle, ArrowLeft, Bot, CircleCheck, FileText, Headset, Send, Undo2} from "lucide-vue-next"
+import {AlertTriangle, ArrowLeft, Bot, CircleCheck, FileText, Headset, LogOut, Send, Undo2, UserRound} from "lucide-vue-next"
 import type {ChatMessage, ChatSession, Question} from "#shared/types"
 
 interface Detail {
@@ -58,16 +58,27 @@ async function send() {
         "Reply sent"
     )
     if (!message) return
-    const current = data.value
-    data.value = {
-        ...current,
-        messages: [...current.messages, message],
-        // A new agent message reopens a finished conversation
-        session: {...current.session, messageCount: current.session.messageCount + 1, lastMessageAt: message.createdAt, finishedAt: undefined, finishedBy: undefined}
-    }
     reply.value = ""
+    // Reload: the reply reopens a finished conversation and may hand it over to a human
+    await refresh()
     nextTick(() => thread.value?.lastElementChild?.scrollIntoView({behavior: "smooth", block: "end"}))
 }
+
+// Picks up new visitor messages while the page is open (live back-and-forth with the visitor)
+const POLL_MS = 10_000
+let poll: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+    poll = setInterval(async () => {
+        if (document.visibilityState !== "visible" || !data.value || status.value === "pending" || pending.value || finishPending.value) return
+        const fresh = await $fetch<Detail>(`/api/projects/${projectId.value}/sessions/${sid.value}`).catch(() => null)
+        if (fresh && fresh.session._id === sid.value) data.value = fresh
+    }, POLL_MS)
+})
+onBeforeUnmount(() => clearInterval(poll))
+
+const endedText = computed(() => (data.value?.session.endReason === "inactive" ? "Closed after a period without messages" : "The visitor started a new conversation"))
+
+const openQuestion = computed(() => data.value?.questions.find((q) => q.status === "open"))
 
 function onKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -122,6 +133,8 @@ function dayLabel(i: number): string | null {
                         <p class="dim small">{{ data.session.messageCount }} messages · started {{ timeAgo(data.session.createdAt) }}</p>
                     </div>
                     <UiBadge v-if="data.session.unansweredCount" tone="warning">{{ data.session.unansweredCount }} unanswered</UiBadge>
+                    <UiBadge v-if="data.session.humanHandledAt" tone="info"><UserRound :size="12" /> Human handling</UiBadge>
+                    <UiBadge v-if="data.session.endedAt" tone="neutral" :title="endedText"><LogOut :size="12" /> Ended</UiBadge>
                     <UiBadge v-if="data.session.finishedAt" tone="success"><CircleCheck :size="12" /> Finished</UiBadge>
                     <UiButton v-if="canReply" size="sm" variant="secondary" :loading="finishPending" :title="data.session.finishedAt ? 'Reopen this conversation' : 'Flag as finished and learn a FAQ from human replies'" @click="toggleFinished">
                         <template v-if="data.session.finishedAt"><Undo2 :size="14" /> Reopen</template>
@@ -155,7 +168,18 @@ function dayLabel(i: number): string | null {
                     </template>
                 </div>
 
-                <form v-if="canReply" class="composer" @submit.prevent="send">
+                <p v-if="data.session.humanHandledAt" class="handoff small">
+                    <UserRound :size="14" />
+                    <span
+                        >Handled by {{ data.session.humanHandledBy?.name || "a human" }}: the assistant won't reply until the question is answered.
+                        <NuxtLink v-if="openQuestion && canReply" :to="`/admin/projects/${projectId}/questions?q=${openQuestion._id}`" class="link">Set the answer</NuxtLink></span
+                    >
+                </p>
+                <p v-if="data.session.endedAt" class="ended small muted">
+                    <LogOut :size="14" />
+                    <span>{{ endedText }} {{ timeAgo(data.session.endedAt) }}: it can't receive new messages.</span>
+                </p>
+                <form v-else-if="canReply" class="composer" @submit.prevent="send">
                     <label class="sr-only" for="reply">Reply as support</label>
                     <textarea id="reply" v-model="reply" class="control" rows="3" maxlength="8000" placeholder="Reply to the visitor as a human agent… (Markdown supported)" @keydown="onKeydown" />
                     <div class="row between">
@@ -188,6 +212,10 @@ function dayLabel(i: number): string | null {
                         <template v-if="data.session.limitReached"
                             ><dt>Limit</dt>
                             <dd><UiBadge tone="danger">Message limit reached</UiBadge></dd></template
+                        >
+                        <template v-if="data.session.endedAt"
+                            ><dt>Ended</dt>
+                            <dd>{{ formatDate(data.session.endedAt, true) }} {{ data.session.endReason === "inactive" ? "(inactive)" : "by the visitor" }}</dd></template
                         >
                         <template v-if="data.session.finishedAt"
                             ><dt>Finished</dt>
@@ -349,6 +377,34 @@ a.chip:hover {
     align-items: center;
     gap: 5px;
     color: var(--warning);
+}
+.handoff {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--info-soft);
+    color: var(--text-muted);
+}
+.handoff svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--info);
+}
+.ended {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-elev);
+}
+.ended svg {
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 .composer {
     border-top: 1px solid var(--border);

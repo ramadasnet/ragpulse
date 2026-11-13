@@ -48,7 +48,11 @@ export function sanitizeFaqText(text: string, session: {visitorName?: string; vi
     return out
         .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, (m) => (m.toLowerCase() === keep ? m : ""))
         .replace(/\beyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{5,}\b/g, "")
+        .replace(/\b(?:sk|pk|rk)_(?:live|test)_[\w]{8,}/gi, "")
+        .replace(/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[\w]{20,}|xox[abprs]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{30,}|sk-[A-Za-z0-9_-]{20,})/g, "")
         .replace(/\+\d[\d ()./-]{5,}\d/g, "")
+        .replace(/\(\d{3}\)[ .-]?\d{3}[ .-]?\d{4}\b/g, "")
+        .replace(/\b\d{3}[ .-]?\d{3}[ .-]?\d{4}\b/g, "")
         .replace(/\b\d[\d -]{9,}\d\b/g, "")
         .replace(/[ \t]{2,}/g, " ")
         .trim()

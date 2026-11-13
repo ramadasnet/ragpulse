@@ -15,7 +15,7 @@ const allowed = await guardProjectPage(projectId.value!, "sessions:read")
 const {can} = useMe()
 const canReply = computed(() => can(projectId.value, "questions:reply"))
 
-const {data, error, status} = useFetch<Detail>(() => `/api/projects/${projectId.value}/sessions/${sid.value}`, {
+const {data, error, status, refresh} = useFetch<Detail>(() => `/api/projects/${projectId.value}/sessions/${sid.value}`, {
     lazy: true,
     immediate: allowed,
     server: false
@@ -40,7 +40,8 @@ async function toggleFinished() {
     const finished = !current.session.finishedAt
     const res = await runFinish(() => $fetch<FinishResult>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished}}), finished ? "Conversation finished" : "Conversation reopened")
     if (!res || !data.value) return
-    data.value = {...data.value, session: res.session}
+    // Reload instead of trusting the response: a reply sent meanwhile may have reopened the session
+    await refresh()
     if (res.learned?.faq) toast.success(`Learned FAQ: “${res.learned.faq.question}”`)
     else if (finished && res.learned?.skipped) toast.success(`No FAQ learned: ${res.learned.skipped}`)
 }

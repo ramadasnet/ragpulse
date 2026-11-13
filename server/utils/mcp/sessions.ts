@@ -147,7 +147,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                 session_id: z.string().min(1).describe("Chat session id"),
                 finished: z.boolean().default(true).describe("true marks the session finished, false reopens it")
             },
-            annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true}
+            annotations: {readOnlyHint: false, destructiveHint: false}
         },
         ({session_id, finished}) =>
             mcpSafely(async () => {

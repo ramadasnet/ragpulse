@@ -24,6 +24,14 @@ describe("sanitizeFaqText", () => {
         expect(out).not.toContain("eyJ")
     })
 
+    test("removes API keys and common phone formats", () => {
+        const out = sanitizeFaqText("key sk_live_abcdef1234567890 and ghp_abcdefghijklmnopqrstuvwx, call (415) 555-0123 or 4155550123", session)
+        expect(out).not.toContain("sk_live")
+        expect(out).not.toContain("ghp_")
+        expect(out).not.toContain("555-0123")
+        expect(out).not.toContain("4155550123")
+    })
+
     test("keeps version numbers and ordinary text", () => {
         const out = sanitizeFaqText("Requires Node 20.11.1 and a stable connection", session)
         expect(out).toContain("20.11.1")

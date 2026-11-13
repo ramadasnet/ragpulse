@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import {CircleAlert, ArrowUpRight, Headset} from "lucide-vue-next"
+import {CircleAlert, Headset} from "lucide-vue-next"
 
-const props = defineProps<{message: ChatUiMessage; botInitial: string; grouped?: boolean}>()
+const props = defineProps<{message: ChatUiMessage; botInitial: string; botIcon?: string; grouped?: boolean}>()
 
 const typing = computed(() => props.message.streaming && !props.message.content)
 const linkSources = computed(() => (props.message.sources || []).filter((s) => s.url && /^https?:\/\//i.test(s.url)))
@@ -10,8 +10,9 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 <template>
     <div class="msg" :class="[`msg-${message.role}`, {grouped}]">
         <div v-if="message.role !== 'user'" class="who" aria-hidden="true">
-            <span v-if="!grouped" class="who-mark" :class="{agent: message.role === 'agent'}">
+            <span v-if="!grouped" class="who-mark" :class="{agent: message.role === 'agent', icon: message.role !== 'agent' && botIcon}">
                 <Headset v-if="message.role === 'agent'" :size="14" />
+                <img v-else-if="botIcon" :src="botIcon" alt="" />
                 <template v-else>{{ botInitial }}</template>
             </span>
         </div>
@@ -22,15 +23,8 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
                 <p v-else-if="message.error" class="err"><CircleAlert :size="15" /> {{ message.error }}</p>
                 <p v-else-if="message.role === 'user'" class="plain">{{ message.content }}</p>
                 <ChatMarkdown v-else :content="message.content" :streaming="message.streaming" />
+                <ChatSources v-if="linkSources.length && !message.streaming && !message.error" :sources="linkSources" />
             </div>
-            <ul v-if="linkSources.length && !message.streaming" class="sources" aria-label="Sources">
-                <li v-for="s in linkSources" :key="s.url">
-                    <a :href="s.url" target="_blank" rel="noopener noreferrer nofollow" class="chip" :title="s.url">
-                        <span class="truncate">{{ s.title }}</span>
-                        <ArrowUpRight :size="12" />
-                    </a>
-                </li>
-            </ul>
             <slot />
         </div>
     </div>
@@ -63,6 +57,16 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
     font-weight: 700;
     background: linear-gradient(135deg, var(--c-accent), var(--c-accent2));
     color: var(--c-accent-ink);
+}
+.who-mark.icon {
+    background: #fff;
+    padding: 3px;
+    box-shadow: inset 0 0 0 1px var(--c-border);
+}
+.who-mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 .who-mark.agent {
     background: var(--c-highlight-soft);
@@ -142,44 +146,6 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
     height: 6px;
     border-radius: 50%;
     background: var(--c-highlight);
-}
-
-.sources {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-.chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    max-width: 220px;
-    height: 26px;
-    padding: 0 10px;
-    border-radius: 99px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--c-text);
-    background: var(--c-highlight-soft);
-    border: 1px solid transparent;
-    transition:
-        border-color 0.15s,
-        transform 0.15s var(--ease);
-}
-.chip svg {
-    color: var(--c-highlight);
-    flex-shrink: 0;
-}
-.chip:hover {
-    border-color: var(--c-highlight);
-}
-.truncate {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .typing {

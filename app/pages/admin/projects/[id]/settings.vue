@@ -26,6 +26,7 @@ interface Form {
     model: string
     temperature: number
     systemInstructions: string
+    showCodeSources: boolean
     rateLimit: number
     supportEmail: string
     refreshIntervalHours: number
@@ -40,6 +41,7 @@ function toForm(p: Project): Form {
         model: p.model,
         temperature: p.temperature,
         systemInstructions: p.systemInstructions,
+        showCodeSources: p.showCodeSources,
         rateLimit: p.rateLimit,
         supportEmail: p.supportEmail || "",
         refreshIntervalHours: p.refreshIntervalHours,
@@ -116,6 +118,7 @@ async function save() {
                     model: f.model.trim(),
                     temperature: Math.round(Number(f.temperature) * 100) / 100,
                     systemInstructions: f.systemInstructions,
+                    showCodeSources: f.showCodeSources,
                     rateLimit: Number(f.rateLimit),
                     supportEmail: f.supportEmail.trim(),
                     refreshIntervalHours: Number(f.refreshIntervalHours),
@@ -299,18 +302,27 @@ async function deleteProject() {
                         <input v-model.number="form.temperature" type="range" min="0" max="2" step="0.1" class="range" aria-label="Temperature" />
                     </UiField>
 
-                    <UiTextarea v-model="form.systemInstructions" label="System instructions" :rows="14" mono maxlength="20000" hint="Combined with retrieved knowledge on every answer. Describe tone, scope and boundaries.">
+                    <UiTextarea
+                        v-model="form.systemInstructions"
+                        label="System instructions"
+                        :rows="14"
+                        mono
+                        maxlength="20000"
+                        hint="Combined with retrieved knowledge on every answer. Describe tone, scope and boundaries. The global system instructions on Settings always apply too."
+                    >
                         <template #aside>
                             <button type="button" class="link-btn tiny" @click="insertTemplate"><RotateCcw :size="12" /> Use template</button>
                         </template>
                     </UiTextarea>
+
+                    <UiToggle v-model="form.showCodeSources" label="Show source code references" description="Lists the source code files used for an answer below it. When off, answers can still link to code if the visitor asks about it." />
                 </div>
             </UiCard>
 
             <UiCard title="Limits & support" description="Protect your budget and route hard questions to humans.">
                 <div class="grid-2">
                     <UiInput v-model.number="form.rateLimit" type="number" min="0" max="1000" label="Messages per conversation" :error="errors.rateLimit" hint="Visitor messages before the chat offers to contact support. 0 = unlimited." />
-                    <UiInput v-model="form.supportEmail" type="email" label="Support email" optional placeholder="support@example.com" :error="errors.supportEmail" hint="Receives unanswered questions. Leave empty to disable email escalation." />
+                    <UiInput v-model="form.supportEmail" type="email" label="Support email" optional placeholder="support@example.com" :error="errors.supportEmail" hint="Receives escalated questions. Leave empty to disable email escalation." />
                 </div>
             </UiCard>
 

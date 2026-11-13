@@ -155,6 +155,8 @@ export async function finishSession(params: {session: ChatSession; finished: boo
             return {skipped: "summarization failed"}
         })
         if (learned?.faq) next.learnedFaqId = learned.faq._id
+    } else {
+        learned = {skipped: project ? "no OpenRouter API key configured" : "project not found"}
     }
     return {session: next, learned}
 }

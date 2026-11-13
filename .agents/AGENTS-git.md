@@ -1,0 +1,72 @@
+# GIT Conventions
+
+- Group commits by logical change or relevance. Avoid committing too many unrelated changes at once. Prefer smaller commits with clear change boundaries.
+- Do NOT prefix branch names (fix, feat, etc). The branch names should be self descriptive and short, all lowercase.
+
+## Pull Requests (PR)
+
+- PRs can only be opened if the repo is building successfully. If it fails to build, troubleshoot and fix the issue first.
+- Complex PRs with lots of new features and many considerable changes to the codebase, which might still need tweaks, must be created as "draft". Other PRs are created as "ready to review".
+- The PR description MUST be split into the following sections: `New features`, `Breaking changes`, `Other changes`. If there are no new features or no breaking changes, do not create these sections. If only minor changes are present, use just `Changes` instead of `Other changes`.
+- If the PR is changing the frontend in a meaningful way, or if it's a small PR that has nothing but frontend updates, include a screenshot showcasing the changes. If many parts of the app are affected, you can include multiple screenshots. Make sure to delete created screenshots once they have been uploaded to the PR.
+- Do NOT expose information local dev URLs, ports, or other dev-only notes in the PR descriptions.
+- Do NOT add minor technical changes to the PR descriptions like version and lockfile updates, updated README and renamed files. Also no need to describe how the changes were validated or tested. These kind of information belongs to commit messages instead.
+- **Do NOT add attributions to commit messages or PR descriptions**. No need to write "Made with Cursor" or "Made with Claude" or made with whatever. That includes the `Co-authored-by` attribution, which should not be added.
+- If you make a mistake and violate any of the rules above, for example by not following the description pattern, try fixing it on the same PR. If not possible at all, you should close the invalid PR and open a new one.
+
+### Sample Good PR Description
+
+```
+## New features
+
+- **MCP Server:** Available to all PRO users, has tools to manage your account and is compatible with all the major MCP clients.
+- **iOS app:** Still in beta, the iOS app is now available to all users in the App Store.
+- **Dark mode:** Yes you read it, dark mode is on!
+
+## Breaking changes
+
+- **Dropped CoffeeScript support:** The CoffeeScript compiler was removed. Existing CoffeeScript files will be treated as text.
+
+## Other changes
+
+- Customizable menu icons.
+- Improved TS compiler performance.
+- Improved webhooks performance.
+```
+
+### Sample Bad PR Description
+
+```
+The following changes are available in this PR.
+
+# New MCP Server
+
+New MCP server implements 7 tools. It's integrated into the web server's API.
+
+# iOS App
+
+- The iOS app is made with React Native and integrates with a dedicated API.
+- Refactored the iOS base view.
+
+## Other changes:
+
+- Remove CoffeeScript tests.
+- Removed CoffeeScript compiler.
+- Development URL changed from abc.com to xyz.com, port 3100.
+- Updated README and .gitignore.
+- Updated the Express dependency.
+
+Made with Cursor
+```
+
+## Code Reviews
+
+- **Focus on the code, not on the tests!** Reviewing unit tests is fine sometimes, but avoid pointing minor issues or mistakes with tests unless they can cause a P0 / P1 event.
+- **Edge cases with that cause minor events should come last, if at all!** If there's less than 1% chance of a certain codepath being hit, and it does not cause a P0 / P1 event, then it might not be an issue worth addressing if the current review is already too dense.
+- **No nitpicking!** Comments must point to a real problem with a real impact. Code style, formatting, import order, naming preferences, missing comments... none of these are very important.
+
+### Acting on Code Reviews
+
+- **Challenge the reviewer!** You have more access to the system context than the reviewer. A bug might not be actually a bug if the codepath depends on input that can only originate from a specific dependency.
+- **Unit tests have minor importance.** Only fix unit tests if they have major logic flaws. There's no need to tweak unit tests just so they cover cases that are never happening in the real world.
+- **Resolve the comments.** If you fix something, reply to the relevant review comment with a brief explanation of what was done (or not done), and why.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertTriangle, ArrowLeft, Bot, FileText, Headset, Send} from "lucide-vue-next"
+import {AlertTriangle, ArrowLeft, Bot, CircleCheck, FileText, Headset, Send, Undo2} from "lucide-vue-next"
 import type {ChatMessage, ChatSession, Question} from "#shared/types"
 
 interface Detail {
@@ -25,7 +25,25 @@ useHead({title: () => `${data.value?.session.visitorName || "Conversation"} · R
 
 const reply = ref("")
 const {run, pending} = useAction()
+const {run: runFinish, pending: finishPending} = useAction()
+const toast = useToast()
 const thread = ref<HTMLElement>()
+
+interface FinishResult {
+    session: Detail["session"]
+    learned?: {faq?: {question: string}; skipped?: string}
+}
+
+async function toggleFinished() {
+    const current = data.value
+    if (!current) return
+    const finished = !current.session.finishedAt
+    const res = await runFinish(() => $fetch<FinishResult>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished}}), finished ? "Conversation finished" : "Conversation reopened")
+    if (!res || !data.value) return
+    data.value = {...data.value, session: res.session}
+    if (res.learned?.faq) toast.success(`Learned FAQ: “${res.learned.faq.question}”`)
+    else if (finished && res.learned?.skipped) toast.success(`No FAQ learned: ${res.learned.skipped}`)
+}
 
 async function send() {
     const content = reply.value.trim()
@@ -43,7 +61,8 @@ async function send() {
     data.value = {
         ...current,
         messages: [...current.messages, message],
-        session: {...current.session, messageCount: current.session.messageCount + 1, lastMessageAt: message.createdAt}
+        // A new agent message reopens a finished conversation
+        session: {...current.session, messageCount: current.session.messageCount + 1, lastMessageAt: message.createdAt, finishedAt: undefined, finishedBy: undefined}
     }
     reply.value = ""
     nextTick(() => thread.value?.lastElementChild?.scrollIntoView({behavior: "smooth", block: "end"}))
@@ -102,6 +121,11 @@ function dayLabel(i: number): string | null {
                         <p class="dim small">{{ data.session.messageCount }} messages · started {{ timeAgo(data.session.createdAt) }}</p>
                     </div>
                     <UiBadge v-if="data.session.unansweredCount" tone="warning">{{ data.session.unansweredCount }} unanswered</UiBadge>
+                    <UiBadge v-if="data.session.finishedAt" tone="success"><CircleCheck :size="12" /> Finished</UiBadge>
+                    <UiButton v-if="canReply" size="sm" variant="secondary" :loading="finishPending" :title="data.session.finishedAt ? 'Reopen this conversation' : 'Flag as finished and learn a FAQ from human replies'" @click="toggleFinished">
+                        <template v-if="data.session.finishedAt"><Undo2 :size="14" /> Reopen</template>
+                        <template v-else><CircleCheck :size="14" /> Mark finished</template>
+                    </UiButton>
                 </header>
 
                 <div ref="thread" class="thread">
@@ -163,6 +187,16 @@ function dayLabel(i: number): string | null {
                         <template v-if="data.session.limitReached"
                             ><dt>Limit</dt>
                             <dd><UiBadge tone="danger">Message limit reached</UiBadge></dd></template
+                        >
+                        <template v-if="data.session.finishedAt"
+                            ><dt>Finished</dt>
+                            <dd>
+                                {{ formatDate(data.session.finishedAt, true) }}<template v-if="data.session.finishedBy"> by {{ data.session.finishedBy.name }}</template>
+                            </dd></template
+                        >
+                        <template v-if="data.session.learnedFaqId"
+                            ><dt>Learned</dt>
+                            <dd><NuxtLink :to="`/admin/projects/${projectId}/knowledge?tab=faq`" class="link">FAQ entry</NuxtLink></dd></template
                         >
                         <dt>User agent</dt>
                         <dd class="tiny muted break">{{ data.session.userAgent || "—" }}</dd>

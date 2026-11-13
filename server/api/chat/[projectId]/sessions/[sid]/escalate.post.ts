@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
         const now = new Date()
         message = {_id: newId(), projectId: project._id, sessionId: session._id, role: "user", content: text, createdAt: now}
         await messages.insertOne(message)
-        await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}})
+        await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
         const question = await createQuestion({
             project,
             session,

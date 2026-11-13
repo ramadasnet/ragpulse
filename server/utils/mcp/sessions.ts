@@ -15,6 +15,9 @@ export function mcpSessionView(s: ChatSession) {
         userMessageCount: s.userMessageCount,
         unansweredCount: s.unansweredCount,
         limitReached: s.limitReached,
+        finishedAt: s.finishedAt,
+        finishedBy: s.finishedBy ? {name: s.finishedBy.name, via: s.finishedBy.via} : undefined,
+        learnedFaqId: s.learnedFaqId,
         createdAt: s.createdAt,
         lastMessageAt: s.lastMessageAt
     }
@@ -129,8 +132,37 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                     createdAt: now
                 }
                 await messages.insertOne(message)
-                await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}})
+                await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
                 return mcpOk(`Message posted to session ${session._id} (${session.visitorName}).`, {message: mcpMessageView(message)})
+            })
+    )
+
+    server.registerTool(
+        "finish_session",
+        {
+            title: "Finish chat session",
+            description:
+                "Flags a chat session as finished (`finished: false` reopens it). On finish, conversations with human/agent replies are summarized into a new FAQ entry — personal data stripped — so the assistant learns the answer. Sessions without human replies just get marked. Requires questions:reply.",
+            inputSchema: {
+                session_id: z.string().min(1).describe("Chat session id"),
+                finished: z.boolean().default(true).describe("true marks the session finished, false reopens it")
+            },
+            annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true}
+        },
+        ({session_id, finished}) =>
+            mcpSafely(async () => {
+                const session = await sessionFor(ctx, session_id, "questions:reply")
+                const {session: next, learned} = await finishSession({session, finished, author: {userId: ctx.user._id, name: mcpAuthorName(ctx), via: "mcp"}})
+                let summary = finished ? `Session ${session._id} marked finished.` : `Session ${session._id} reopened.`
+                if (learned?.faq) summary += ` Learned a new FAQ entry: "${learned.faq.question}" (id: ${learned.faq._id}).`
+                else if (finished && learned?.skipped) summary += ` No FAQ learned: ${learned.skipped}.`
+                if (learned?.indexError) summary += ` Warning: ${learned.indexError}`
+                return mcpOk(summary, {
+                    session: mcpSessionView(next),
+                    learnedFaq: learned?.faq ? {id: learned.faq._id, question: learned.faq.question, answer: learned.faq.answer} : undefined,
+                    skipped: learned?.skipped,
+                    indexError: learned?.indexError
+                })
             })
     )
 }

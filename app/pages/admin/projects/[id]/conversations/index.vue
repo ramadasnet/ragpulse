@@ -118,6 +118,7 @@ function open(row: SessionRow) {
                             <td class="num hide-sm">{{ s.messageCount }}</td>
                             <td>
                                 <UiBadge v-if="s.unansweredCount" tone="warning">{{ s.unansweredCount }} unanswered</UiBadge>
+                                <UiBadge v-else-if="s.finishedAt" tone="success">Finished</UiBadge>
                                 <UiBadge v-else-if="s.limitReached" tone="danger">Limit reached</UiBadge>
                                 <span v-else class="dim small">—</span>
                             </td>

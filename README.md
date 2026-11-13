@@ -218,6 +218,11 @@ Visitors tell the chat how they want to be called, then ask away. Answers are ge
 model can't answer confidently, or a visitor hits the rate limit, the question becomes an **unanswered question**: it's emailed to
 the project's support email and shows up in the admin inbox and over MCP. Replies (from the admin UI or an agent via MCP) are posted
 into the visitor's chat and emailed to them if they left an address, and can be added to the FAQ in one click.
+
+When a conversation is done, an admin or agent flags it as **finished** (conversation page, or `finish_session` over MCP). If it had
+human replies, the service summarizes it into a new FAQ entry so the assistant learns the answer — self-learning knowledge. Personal
+and sensitive data is stripped from the entry (visitor name and email, other email addresses, phone/card/order numbers, tokens).
+Re-finishing a conversation updates its learned entry instead of duplicating it, and any new message reopens the conversation.
 Conversations without activity for 180 days (`NUXT_CHAT_SESSION_RETENTION_DAYS`) are deleted automatically by the scheduler.
 
 ### Roles
@@ -257,6 +262,6 @@ Create a token in **MCP & API**, then point any MCP client at `https://admin.rag
 }
 ```
 
-Tools include `list_projects`, `list_sessions`, `get_session`, `list_unanswered_questions`, `reply_to_question`,
+Tools include `list_projects`, `list_sessions`, `get_session`, `finish_session`, `list_unanswered_questions`, `reply_to_question`,
 `dismiss_question`, `send_session_message`, `trigger_sync`, `list_sources`, `search_knowledge`, `add_faq`, `list_faqs` and
 `get_project_stats`. Tokens act with the permissions of the user who created them.

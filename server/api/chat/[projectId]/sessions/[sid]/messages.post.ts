@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
         const now = new Date()
         const userMessage: ChatMessage = {_id: newId(), projectId: project._id, sessionId: session._id, role: "user", content, createdAt: now}
         await messages.insertOne(userMessage)
-        await sessions.updateOne({_id: session._id}, {$inc: {userMessageCount: 1, messageCount: 1}, $set: {lastMessageAt: now}})
+        await sessions.updateOne({_id: session._id}, {$inc: {userMessageCount: 1, messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
         session.userMessageCount++
         send("meta", {userMessageId: userMessage._id})
 

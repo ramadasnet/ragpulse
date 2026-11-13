@@ -98,7 +98,10 @@ async function remove(f: Faq) {
                     <div class="row between">
                         <button v-if="f.answer.length > 360" type="button" class="more" @click="toggle(f._id)">{{ expanded.has(f._id) ? "Show less" : "Show more" }}</button>
                         <span v-else />
-                        <span class="dim tiny" :title="formatDate(f.updatedAt, true)">updated {{ timeAgo(f.updatedAt) }}</span>
+                        <span class="row dim tiny" style="--gap: 10px">
+                            <NuxtLink v-if="f.sessionId" :to="`/admin/projects/${projectId}/conversations/${f.sessionId}`" class="link">learned from a conversation</NuxtLink>
+                            <span :title="formatDate(f.updatedAt, true)">updated {{ timeAgo(f.updatedAt) }}</span>
+                        </span>
                     </div>
                 </li>
             </ul>

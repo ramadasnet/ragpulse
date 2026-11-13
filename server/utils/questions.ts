@@ -88,7 +88,7 @@ export async function replyToQuestion(params: {questionId: string; answer: strin
         createdAt: now
     }
     await messages.insertOne(message)
-    await sessions.updateOne({_id: question.sessionId}, {$inc: {messageCount: 1, unansweredCount: question.status === "open" ? -1 : 0}, $set: {lastMessageAt: now}})
+    await sessions.updateOne({_id: question.sessionId}, {$inc: {messageCount: 1, unansweredCount: question.status === "open" ? -1 : 0}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
 
     const update: Partial<Question> = {status: "answered", answer, answeredBy: params.author, answeredAt: now, updatedAt: now}
 

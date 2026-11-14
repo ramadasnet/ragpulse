@@ -69,7 +69,7 @@ const steps = [
     },
     {
         title: "Answer and escalate",
-        text: "The AI answers strictly from your knowledge. Whatever it can't solve is escalated so, you your team (or your AI agents) can take over."
+        text: "The AI answers strictly from your knowledge. Whatever it can't solve is escalated so your team (or your AI agents) can take over."
     }
 ]
 

@@ -1,3 +1,5 @@
+import {fileURLToPath} from "node:url"
+
 // Build target: `admin` (dashboard, admin API, MCP, sync scheduler), `chat` (public chat page, chat API, embed.js),
 // `landing` (static landing site, no server) or unset to serve everything from one server (development).
 const target = process.env.RAGPULSE_APP || ""
@@ -36,13 +38,17 @@ export default defineNuxtConfig({
     buildDir: process.env.RAGPULSE_BUILD_DIR || ".nuxt",
 
     hooks: {
+        // Public builds do not import the dashboard's global dialogs or notifications.
+        "app:resolve"(app) {
+            if (target === "chat" || landing) app.mainComponent = fileURLToPath(new URL("./app/app.public.vue", import.meta.url))
+        },
         // The landing site serves its marketing page on /
         "pages:extend"(pages) {
             const home = pages.find((p) => p.path === "/landing")
             if (landing && home) home.path = "/"
         }
     },
-    css: ["~/assets/css/main.css"],
+    css: target === "chat" ? ["~/assets/css/base.css"] : landing ? ["~/assets/css/base.css", "~/assets/css/theme.css"] : ["~/assets/css/main.css"],
 
     app: {
         head: {

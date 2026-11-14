@@ -24,6 +24,10 @@ The build target is selected with `RAGPULSE_APP=admin|chat|landing` (`bun run bu
 by one server (the landing page is then at `/landing`). Project changes reach the chat instance within 30 seconds
 (public project cache TTL).
 
+Public builds use an app root without dashboard notifications or confirmation dialogs. Chat loads only shared reset,
+typography and motion defaults plus its own component styles; landing adds the design tokens and presentation it uses.
+Dashboard controls, tables and other admin-only styles are loaded only by the admin and combined development builds.
+
 ## Why MongoDB?
 
 MongoDB stores both the application data and the embeddings, and queries them with native `$vectorSearch`

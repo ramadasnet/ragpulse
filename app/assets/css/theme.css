@@ -1,0 +1,121 @@
+/* Design tokens and presentation shared by the landing page and dashboard. */
+:root {
+    color-scheme: dark;
+    --bg: #0a0b0e;
+    --bg-elev: #0f1116;
+    --surface: #13161c;
+    --surface-2: #191d25;
+    --surface-3: #212631;
+    --border: #22262f;
+    --border-strong: #2f3541;
+    --text: #e9ecf2;
+    --text-muted: #9aa3b5;
+    --text-dim: #6b7385;
+
+    --accent: #a3ff7a;
+    --accent-ink: #0b1406;
+    --accent-soft: rgb(163 255 122 / 0.12);
+    --violet: #9d8cff;
+    --violet-soft: rgb(157 140 255 / 0.14);
+
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --shadow-lg: 0 24px 80px rgb(0 0 0 / 0.55);
+    --ring: 0 0 0 3px rgb(163 255 122 / 0.25);
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+}
+::selection {
+    background: rgb(163 255 122 / 0.28);
+    color: #fff;
+}
+:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+    border-radius: var(--radius-sm);
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface-3) transparent;
+}
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 10px;
+    border: 3px solid var(--bg);
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.grid-3 {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+    .grid-3 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (max-width: 720px) {
+    .grid-3 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+.muted {
+    color: var(--text-muted);
+}
+.dim {
+    color: var(--text-dim);
+}
+.section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin: 0 0 10px;
+}
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
+.code-block {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    color: #cfd6e4;
+}
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    display: inline-block;
+}
+.dot.busy {
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    animation: pulse 1.2s infinite var(--ease);
+}
+@keyframes pulse {
+    50% {
+        opacity: 0.35;
+    }
+}

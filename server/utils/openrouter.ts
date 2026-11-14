@@ -1,6 +1,8 @@
-// Thin OpenRouter client: chat completions (streaming and not) and embeddings.
+// Thin LLM client: chat completions (streaming and not) and embeddings, over OpenRouter
+// or a custom OpenAI-compatible endpoint (Global Settings → AI Provider).
 // Docs: https://openrouter.ai/docs/api-reference
 import {parseRetryAfter} from "./ingest/throttle"
+import type {AppSettings} from "#shared/types"
 
 export type LlmContentPart = {type: "text"; text: string} | {type: "image_url"; image_url: {url: string}} | {type: "file"; file: {filename: string; file_data: string}}
 
@@ -25,26 +27,64 @@ export interface ChatCompletionOptions {
 
 export type ChatStreamEvent = {type: "delta"; text: string} | {type: "usage"; usage: LlmUsage}
 
-function settings() {
+/** Resolved endpoint for chat and embeddings: OpenRouter, or a custom OpenAI-compatible API. */
+export interface AiProvider {
+    name: string
+    baseUrl: string
+    /** Bearer token; empty for endpoints without authentication */
+    apiKey: string
+    /** OpenRouter-only app attribution headers */
+    openrouter: boolean
+    appName: string
+    baseAppUrl: string
+}
+
+/**
+ * Resolves the AI provider for a settings snapshot: the custom OpenAI-compatible endpoint when
+ * `customAiProvider` is set, otherwise OpenRouter. Throws a 503 when the provider is not usable.
+ */
+export function resolveAiProvider(app: AppSettings): AiProvider {
     const config = useRuntimeConfig()
-    if (!config.openrouterApiKey) {
-        throw createError({statusCode: 503, statusMessage: "OpenRouter API key is not configured (NUXT_OPENROUTER_API_KEY)"})
+    const appName = String(config.public.appName || "RAGPulse")
+    const baseAppUrl = String(config.public.chatUrl || config.public.adminUrl || "https://github.com/ramadasnet/ragpulse")
+    if (app.customAiProvider) {
+        const baseUrl = app.aiProviderBaseUrl.trim().replace(/\/+$/, "")
+        if (!baseUrl) throw createError({statusCode: 503, statusMessage: "The custom AI provider has no base URL (Global Settings → AI Provider)"})
+        return {name: "AI provider", baseUrl, apiKey: app.aiProviderApiKey, openrouter: false, appName, baseAppUrl}
+    }
+    if (!app.openrouterApiKey) {
+        throw createError({statusCode: 503, statusMessage: "OpenRouter API key is not configured (Global Settings → AI Provider or NUXT_OPENROUTER_API_KEY)"})
     }
     return {
-        baseUrl: String(config.openrouterBaseUrl || "https://openrouter.ai/api/v1").replace(/\/$/, ""),
-        apiKey: String(config.openrouterApiKey),
-        appName: String(config.public.appName || "RAGPulse"),
-        baseAppUrl: String(config.public.chatUrl || config.public.adminUrl || "https://github.com/ramadasnet/ragpulse")
+        name: "OpenRouter",
+        baseUrl: String(config.openrouterBaseUrl || "https://openrouter.ai/api/v1").replace(/\/+$/, ""),
+        apiKey: app.openrouterApiKey,
+        openrouter: true,
+        appName,
+        baseAppUrl
     }
 }
 
-function headers(s: ReturnType<typeof settings>) {
-    return {
-        Authorization: `Bearer ${s.apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": s.baseAppUrl,
-        "X-Title": s.appName
+/** The provider of the saved settings. */
+async function provider(): Promise<AiProvider> {
+    return resolveAiProvider(await getAppSettings())
+}
+
+/** Whether chat and embeddings can run: an OpenRouter key is set, or a custom endpoint is configured. */
+export async function hasAiProvider(): Promise<boolean> {
+    const app = await getAppSettings()
+    return app.customAiProvider ? !!app.aiProviderBaseUrl.trim() : !!app.openrouterApiKey
+}
+
+function headers(p: AiProvider) {
+    const h: Record<string, string> = {"Content-Type": "application/json"}
+    if (p.apiKey) h.Authorization = `Bearer ${p.apiKey}`
+    // App attribution headers are OpenRouter-specific
+    if (p.openrouter) {
+        h["HTTP-Referer"] = p.baseAppUrl
+        h["X-Title"] = p.appName
     }
+    return h
 }
 
 function mapUsage(u: any): LlmUsage | undefined {
@@ -56,7 +96,7 @@ function mapUsage(u: any): LlmUsage | undefined {
     }
 }
 
-async function failFromResponse(res: Response, what: string): Promise<never> {
+async function failFromResponse(res: Response, what: string, providerName = "AI provider"): Promise<never> {
     let detail = ""
     try {
         const body: any = await res.json()
@@ -64,12 +104,12 @@ async function failFromResponse(res: Response, what: string): Promise<never> {
     } catch {
         detail = res.statusText
     }
-    throw createError({statusCode: 502, statusMessage: `OpenRouter ${what} failed (${res.status}): ${detail}`.slice(0, 300)})
+    throw createError({statusCode: 502, statusMessage: `${providerName} ${what} failed (${res.status}): ${detail}`.slice(0, 300)})
 }
 
 /** Non streaming chat completion. */
 export async function chatCompletion(opts: ChatCompletionOptions): Promise<{content: string; usage?: LlmUsage}> {
-    const s = settings()
+    const s = await provider()
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
         method: "POST",
         headers: headers(s),
@@ -79,18 +119,18 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<{cont
             messages: opts.messages,
             temperature: opts.temperature,
             max_tokens: opts.maxTokens,
-            usage: {include: true}
+            ...(s.openrouter ? {usage: {include: true}} : {})
         })
     })
-    if (!res.ok) await failFromResponse(res, "chat completion")
+    if (!res.ok) await failFromResponse(res, "chat completion", s.name)
     const data: any = await res.json()
-    if (data?.error) throw createError({statusCode: 502, statusMessage: `OpenRouter: ${data.error.message || "unknown error"}`})
+    if (data?.error) throw createError({statusCode: 502, statusMessage: `${s.name}: ${data.error.message || "unknown error"}`})
     return {content: data?.choices?.[0]?.message?.content ?? "", usage: mapUsage(data?.usage)}
 }
 
 /** Streaming chat completion, yields text deltas and (at the end) usage. */
 export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {
-    const s = settings()
+    const s = await provider()
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
         method: "POST",
         headers: headers(s),
@@ -101,10 +141,11 @@ export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncG
             temperature: opts.temperature,
             max_tokens: opts.maxTokens,
             stream: true,
-            usage: {include: true}
+            // OpenRouter-only usage accounting; OpenAI-compatible endpoints use stream_options
+            ...(s.openrouter ? {usage: {include: true}} : {stream_options: {include_usage: true}})
         })
     })
-    if (!res.ok || !res.body) await failFromResponse(res, "chat completion")
+    if (!res.ok || !res.body) await failFromResponse(res, "chat completion", s.name)
 
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
@@ -127,7 +168,7 @@ export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncG
             } catch {
                 continue
             }
-            if (data?.error) throw createError({statusCode: 502, statusMessage: `OpenRouter: ${data.error.message || "stream error"}`})
+            if (data?.error) throw createError({statusCode: 502, statusMessage: `${s.name}: ${data.error.message || "stream error"}`})
             const text = data?.choices?.[0]?.delta?.content
             if (text) yield {type: "delta", text}
             const usage = mapUsage(data?.usage)
@@ -141,11 +182,13 @@ export interface EmbeddingOptions {
     model?: string
     /** Requested vector size, sent as `dimensions`. Defaults to the settings; undefined = the model's native size. */
     dimensions?: number
+    /** Calls this provider instead of the configured one (e.g. testing a settings change before it is saved) */
+    provider?: AiProvider
 }
 
 /** Embeds texts with the configured (or given) embedding model. Batches automatically. */
 export async function createEmbeddings(texts: string[], opts: EmbeddingOptions = {}): Promise<{embeddings: number[][]; model: string; key: string; tokens: number}> {
-    const s = settings()
+    const s = opts.provider ?? (await provider())
     let model = opts.model
     let dimensions = opts.dimensions
     let key: string | undefined
@@ -174,10 +217,10 @@ export async function createEmbeddings(texts: string[], opts: EmbeddingOptions =
                 await new Promise((r) => setTimeout(r, Math.min(60_000, retryAfter ?? 1000 * 2 ** attempt)))
                 continue
             }
-            if (!res.ok) await failFromResponse(res, "embeddings")
+            if (!res.ok) await failFromResponse(res, "embeddings", s.name)
             const data: any = await res.json()
-            if (data?.error) throw createError({statusCode: 502, statusMessage: `OpenRouter embeddings: ${data.error.message || "unknown error"}`.slice(0, 300)})
-            if (!Array.isArray(data?.data) || data.data.length !== batch.length) throw createError({statusCode: 502, statusMessage: "OpenRouter embeddings: invalid response"})
+            if (data?.error) throw createError({statusCode: 502, statusMessage: `${s.name} embeddings: ${data.error.message || "unknown error"}`.slice(0, 300)})
+            if (!Array.isArray(data?.data) || data.data.length !== batch.length) throw createError({statusCode: 502, statusMessage: `${s.name} embeddings: invalid response`})
             const sorted = [...data.data].sort((a: any, b: any) => a.index - b.index)
             for (const item of sorted) embeddings.push(item.embedding)
             tokens += Number(data?.usage?.prompt_tokens || data?.usage?.total_tokens || 0)
@@ -204,18 +247,27 @@ export interface OpenRouterModel {
 
 const modelsCache = new Map<string, {at: number; models: OpenRouterModel[]}>()
 
-/** Lists available chat models, or embedding models with `kind: "embedding"` (cached for 1 hour). */
+/**
+ * Lists available models, or embedding models with `kind: "embedding"` (cached for 1 hour per provider).
+ * OpenRouter exposes a dedicated embeddings list; a custom provider is queried at its standard
+ * `/models` endpoint, which can't be filtered by kind (it also has no pricing metadata).
+ */
 export async function listModels(kind: "chat" | "embedding" = "chat"): Promise<OpenRouterModel[]> {
-    const cached = modelsCache.get(kind)
-    if (cached && Date.now() - cached.at < 3600_000) return cached.models
+    const app = await getAppSettings()
     const config = useRuntimeConfig()
-    const baseUrl = String(config.openrouterBaseUrl || "https://openrouter.ai/api/v1").replace(/\/$/, "")
-    const res = await fetch(`${baseUrl}/${kind === "embedding" ? "embeddings/models" : "models"}`)
-    if (!res.ok) await failFromResponse(res, "models")
+    const custom = app.customAiProvider
+    const baseUrl = (custom ? app.aiProviderBaseUrl.trim() : String(config.openrouterBaseUrl || "https://openrouter.ai/api/v1")).replace(/\/+$/, "")
+    if (!baseUrl) return []
+    const cacheKey = `${kind}:${baseUrl}`
+    const cached = modelsCache.get(cacheKey)
+    if (cached && Date.now() - cached.at < 3600_000) return cached.models
+    // OpenRouter's model lists are public; a custom endpoint may need its key
+    const res = await fetch(`${baseUrl}/${custom || kind === "chat" ? "models" : "embeddings/models"}`, {headers: custom && app.aiProviderApiKey ? {Authorization: `Bearer ${app.aiProviderApiKey}`} : {}})
+    if (!res.ok) await failFromResponse(res, "models", custom ? "AI provider" : "OpenRouter")
     const data: any = await res.json()
     const output = kind === "embedding" ? "embeddings" : "text"
     const models: OpenRouterModel[] = (data?.data || [])
-        .filter((m: any) => !m?.architecture?.output_modalities || m.architecture.output_modalities.includes(output))
+        .filter((m: any) => !!m?.id && (custom || !m?.architecture?.output_modalities || m.architecture.output_modalities.includes(output)))
         .map((m: any) => ({
             id: m.id,
             name: m.name || m.id,
@@ -224,7 +276,7 @@ export async function listModels(kind: "chat" | "embedding" = "chat"): Promise<O
             completionPrice: Number(m.pricing?.completion || 0) * 1e6
         }))
         .sort((a: OpenRouterModel, b: OpenRouterModel) => a.id.localeCompare(b.id))
-    modelsCache.set(kind, {at: Date.now(), models})
+    modelsCache.set(cacheKey, {at: Date.now(), models})
     return models
 }
 

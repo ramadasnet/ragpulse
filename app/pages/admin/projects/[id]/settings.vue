@@ -292,7 +292,7 @@ async function deleteProject() {
 
             <UiCard title="AI" description="Model and behaviour of the assistant.">
                 <div class="stack" style="--gap: 18px">
-                    <AdminModelPicker v-model="form.model" label="Model" hint="Prices are USD per 1M input / output tokens via OpenRouter." />
+                    <AdminModelPicker v-model="form.model" label="Model" hint="Prices are USD per 1M input / output tokens via the AI provider." />
                     <p v-if="errors.model" class="field-error">{{ errors.model }}</p>
 
                     <UiField label="Temperature" :hint="`${temperatureLabel} — lower is more factual, higher is more varied. 0.2–0.4 works best for support.`">

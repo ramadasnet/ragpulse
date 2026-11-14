@@ -172,14 +172,14 @@ export async function finishSession(params: {session: ChatSession; finished: boo
 
     let learned: SessionLearnResult | undefined
     const project = await projects.findOne({_id: session.projectId})
-    if (project && useRuntimeConfig().openrouterApiKey) {
+    if (project && (await hasAiProvider())) {
         learned = await learnFaqFromSession(project, next).catch((err: any) => {
             logger.error("Session.learn", `Learning from session ${session._id} failed`, err)
             return {skipped: "summarization failed"}
         })
         if (learned?.faq) next.learnedFaqId = learned.faq._id
     } else {
-        learned = {skipped: project ? "no OpenRouter API key configured" : "project not found"}
+        learned = {skipped: project ? "no AI provider configured" : "project not found"}
     }
     return {session: next, learned}
 }

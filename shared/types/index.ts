@@ -57,7 +57,7 @@ export interface Project {
     /** Project icon as a data URI (usually the website favicon). Falls back to the two-letter mark when unset. */
     icon?: string
     systemInstructions: string
-    /** OpenRouter model id, e.g. `openrouter/free` */
+    /** Model id of the configured AI provider, e.g. `openrouter/free` */
     model: string
     temperature: number
     /** Max user messages per chat session before redirecting to support. 0 = unlimited. */
@@ -314,6 +314,14 @@ export interface SessionUser {
 
 /** Workspace-wide settings, editable on the admin Global Settings page. Unset values fall back to environment variables. */
 export interface AppSettings {
+    /** OpenRouter API key for chat and embeddings (overrides NUXT_OPENROUTER_API_KEY). NEVER sent to clients. */
+    openrouterApiKey: string
+    /** Use a custom OpenAI-compatible provider instead of OpenRouter */
+    customAiProvider: boolean
+    /** Base URL of the custom provider, e.g. https://api.openai.com/v1. Required when customAiProvider is set. */
+    aiProviderBaseUrl: string
+    /** API key of the custom provider, sent as Bearer token (empty = no Authorization header). NEVER sent to clients. */
+    aiProviderApiKey: string
     /** OpenRouter embedding model id */
     embeddingModel: string
     /** Vector size produced by the embedding model (used by the vector index) */
@@ -336,6 +344,22 @@ export interface AppSettings {
     answerEmailDelayMinutes: number
     /** Days without messages after which a chat session is closed (the visitor gets a new chat). 0 = never. */
     chatAutoCloseDays: number
+}
+
+/** AppSettings as sent to clients: API keys are stripped and exposed as `has*`/`saved*`/`env*` flags instead. */
+export type AppSettingsView = Omit<AppSettings, "openrouterApiKey" | "aiProviderApiKey"> & {
+    /** An OpenRouter key is configured (saved in the settings or NUXT_OPENROUTER_API_KEY) */
+    hasOpenrouterApiKey: boolean
+    /** A key saved in the settings overrides NUXT_OPENROUTER_API_KEY and can be removed */
+    savedOpenrouterApiKey: boolean
+    /** NUXT_OPENROUTER_API_KEY is set in the environment */
+    envOpenrouterApiKey: boolean
+    /** A custom provider key is configured (saved in the settings or NUXT_AI_PROVIDER_API_KEY) */
+    hasAiProviderApiKey: boolean
+    /** A custom provider key saved in the settings overrides NUXT_AI_PROVIDER_API_KEY and can be removed */
+    savedAiProviderApiKey: boolean
+    /** NUXT_AI_PROVIDER_API_KEY is set in the environment */
+    envAiProviderApiKey: boolean
 }
 
 /** Progress of re-embedding after an embedding model change */

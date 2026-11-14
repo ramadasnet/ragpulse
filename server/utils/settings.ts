@@ -20,6 +20,10 @@ let cache: {at: number; value: AppSettings} | null = null
 export function defaultAppSettings(): AppSettings {
     const config = useRuntimeConfig()
     return {
+        openrouterApiKey: String(config.openrouterApiKey || ""),
+        customAiProvider: config.customAiProvider === true || String(config.customAiProvider).toLowerCase() === "true",
+        aiProviderBaseUrl: String(config.aiProviderBaseUrl || "").trim(),
+        aiProviderApiKey: String(config.aiProviderApiKey || ""),
         embeddingModel: String(config.embeddingModel || "openai/text-embedding-3-small"),
         embeddingDimensions: Number(config.embeddingDimensions) || 1536,
         embeddingDimensionsParam: true,
@@ -79,8 +83,19 @@ const modelId = z
     .max(200)
     .regex(/^[\w.:/@~-]+$/, "Invalid model id")
 
+/** API keys: a value replaces the saved one, "" removes the saved override (the environment variable applies again). */
+const apiKey = z.string().trim().max(500)
+
 export const settingsPatchSchema = z
     .object({
+        openrouterApiKey: apiKey,
+        customAiProvider: z.boolean(),
+        aiProviderBaseUrl: z
+            .string()
+            .trim()
+            .max(500)
+            .refine((v) => !v || isHttpUrl(v), "Enter a valid http(s) base URL"),
+        aiProviderApiKey: apiKey,
         embeddingModel: modelId,
         /** null = the model's native size */
         embeddingDimensions: z.number().int().min(32).max(8192).nullable(),
@@ -103,9 +118,12 @@ export const settingsPatchSchema = z
 
 export type SettingsPatch = z.output<typeof settingsPatchSchema>
 
-export async function saveAppSettings(patch: Partial<AppSettings>, userId?: string): Promise<AppSettings> {
+/** Saves settings; keys in `unset` are removed from the document so their environment defaults apply again. */
+export async function saveAppSettings(patch: Partial<AppSettings>, userId?: string, unset?: (keyof AppSettings)[]): Promise<AppSettings> {
     const {settings} = await useCollections()
-    await settings.updateOne({_id: SETTINGS_ID}, {$set: {...patch, updatedAt: new Date(), ...(userId ? {updatedBy: userId} : {})}}, {upsert: true})
+    const update: Record<string, unknown> = {$set: {...patch, updatedAt: new Date(), ...(userId ? {updatedBy: userId} : {})}}
+    if (unset?.length) update.$unset = Object.fromEntries(unset.map((key) => [key, ""]))
+    await settings.updateOne({_id: SETTINGS_ID}, update, {upsert: true})
     invalidateAppSettings()
     return getAppSettings({fresh: true})
 }

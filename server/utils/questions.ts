@@ -288,7 +288,7 @@ export async function draftAnswerFromChat(question: Question, project: Project):
         .map((m) => m.content.trim())
         .join("\n\n")
         .slice(0, 8000)
-    if (!useRuntimeConfig().openrouterApiKey) return {humanReplies: replies.length, draft: fallback}
+    if (!(await hasAiProvider())) return {humanReplies: replies.length, draft: fallback}
 
     const transcript = list
         .filter((m) => m.content.trim())

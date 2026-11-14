@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import {AlertTriangle, Bot, Code2, History, Sparkles} from "lucide-vue-next"
+import {AlertTriangle, Bot, Code2, Eraser, Mail, ShieldCheck, Sparkles} from "lucide-vue-next"
 import type {AppSettings, EmbeddingStatus} from "#shared/types"
-import {SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {ANSWER_EMAIL_MAX_DELAY_MINUTES, CHAT_AUTO_CLOSE_MAX_DAYS, QUESTION_RETENTION_MAX_DAYS, SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {DEFAULT_GLOBAL_INSTRUCTIONS} from "#shared/utils/instructions"
 
 interface SettingsResponse {
     settings: AppSettings
@@ -13,7 +14,7 @@ interface SettingsResponse {
 
 const {isAdmin} = useMe()
 if (!isAdmin.value) await navigateTo("/admin", {replace: true})
-useHead({title: "Settings · RAGPulse"})
+useHead({title: "Global Settings · RAGPulse"})
 
 const {confirm} = useConfirm()
 const {data, error, refresh} = useFetch<SettingsResponse>("/api/system/settings", {lazy: true, server: false, immediate: isAdmin.value})
@@ -27,6 +28,10 @@ interface Form {
     userAgent: string
     requestIntervalMs: number | string
     syncHistoryDays: number | string
+    questionRetentionDays: number | string
+    globalInstructions: string
+    answerEmailDelayMinutes: number | string
+    chatAutoCloseDays: number | string
 }
 
 function toForm(s: AppSettings): Form {
@@ -37,7 +42,11 @@ function toForm(s: AppSettings): Form {
         codeSummaryModel: s.codeSummaryModel || "openrouter/free",
         userAgent: s.userAgent,
         requestIntervalMs: s.requestIntervalMs,
-        syncHistoryDays: s.syncHistoryDays
+        syncHistoryDays: s.syncHistoryDays,
+        questionRetentionDays: s.questionRetentionDays,
+        globalInstructions: s.globalInstructions,
+        answerEmailDelayMinutes: s.answerEmailDelayMinutes,
+        chatAutoCloseDays: s.chatAutoCloseDays
     }
 }
 
@@ -79,6 +88,13 @@ const errors = computed(() => {
     if (!Number.isInteger(interval) || interval < 0 || interval > 60_000) e.requestIntervalMs = "Between 0 and 60000 ms"
     const days = Number(f.syncHistoryDays)
     if (!Number.isInteger(days) || days < 1 || days > SYNC_HISTORY_MAX_DAYS) e.syncHistoryDays = `Between 1 and ${SYNC_HISTORY_MAX_DAYS} days`
+    const questionDays = Number(f.questionRetentionDays)
+    if (!Number.isInteger(questionDays) || questionDays < 0 || questionDays > QUESTION_RETENTION_MAX_DAYS) e.questionRetentionDays = `Between 0 and ${QUESTION_RETENTION_MAX_DAYS} days`
+    const delay = Number(f.answerEmailDelayMinutes)
+    if (!Number.isInteger(delay) || delay < 0 || delay > ANSWER_EMAIL_MAX_DELAY_MINUTES) e.answerEmailDelayMinutes = `Between 0 and ${ANSWER_EMAIL_MAX_DELAY_MINUTES} minutes`
+    const closeDays = Number(f.chatAutoCloseDays)
+    if (!Number.isInteger(closeDays) || closeDays < 0 || closeDays > CHAT_AUTO_CLOSE_MAX_DAYS) e.chatAutoCloseDays = `Between 0 and ${CHAT_AUTO_CLOSE_MAX_DAYS} days`
+    if (f.globalInstructions.trim().length > 20_000) e.globalInstructions = "At most 20000 characters"
     return e
 })
 const valid = computed(() => Object.keys(errors.value).length === 0)
@@ -125,7 +141,11 @@ async function save() {
                     codeSummaryModel: f.summarize ? f.codeSummaryModel.trim() : "",
                     userAgent: f.userAgent.trim(),
                     requestIntervalMs: Number(f.requestIntervalMs),
-                    syncHistoryDays: Number(f.syncHistoryDays)
+                    syncHistoryDays: Number(f.syncHistoryDays),
+                    questionRetentionDays: Number(f.questionRetentionDays),
+                    globalInstructions: f.globalInstructions.trim(),
+                    answerEmailDelayMinutes: Number(f.answerEmailDelayMinutes),
+                    chatAutoCloseDays: Number(f.chatAutoCloseDays)
                 }
             }),
         embeddingChanged.value ? "Settings saved — re-indexing started" : "Settings saved"
@@ -156,8 +176,8 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
         <header class="page-header">
             <div>
                 <p class="eyebrow">Workspace</p>
-                <h1>Settings</h1>
-                <p>Embeddings, source code summaries, the website crawler and sync history, for all projects.</p>
+                <h1>Global Settings</h1>
+                <p>Global instructions, embeddings, source code summaries, the website crawler and data cleanup, for all projects.</p>
             </div>
         </header>
 
@@ -171,6 +191,32 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
         </div>
 
         <form v-else class="stack sections" style="--gap: 16px" novalidate @submit.prevent="save">
+            <UiCard>
+                <template #header>
+                    <div class="row" style="--gap: 8px">
+                        <ShieldCheck :size="16" class="dim" />
+                        <h2 class="card-title">Global system instructions</h2>
+                    </div>
+                </template>
+                <div class="stack" style="--gap: 16px">
+                    <p class="small muted">Base security rules for the assistant of every project. They are added to every answer and take precedence over the instructions of each project.</p>
+                    <UiTextarea
+                        v-model="form.globalInstructions"
+                        label="Instructions"
+                        optional
+                        :rows="12"
+                        mono
+                        maxlength="20000"
+                        :error="errors.globalInstructions"
+                        hint="Leave empty to disable. The default protects credentials, secrets and personal information, and resists prompt injection."
+                    >
+                        <template #aside>
+                            <button v-if="form.globalInstructions.trim() !== DEFAULT_GLOBAL_INSTRUCTIONS" type="button" class="link-btn tiny" @click="form.globalInstructions = DEFAULT_GLOBAL_INSTRUCTIONS">Reset to default</button>
+                        </template>
+                    </UiTextarea>
+                </div>
+            </UiCard>
+
             <UiCard>
                 <template #header>
                     <div class="row" style="--gap: 8px">
@@ -276,11 +322,20 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
             <UiCard>
                 <template #header>
                     <div class="row" style="--gap: 8px">
-                        <History :size="16" class="dim" />
-                        <h2 class="card-title">Sync history</h2>
+                        <Eraser :size="16" class="dim" />
+                        <h2 class="card-title">Cleanup</h2>
                     </div>
                 </template>
                 <div class="stack" style="--gap: 16px">
+                    <UiInput
+                        v-model.number="form.chatAutoCloseDays"
+                        type="number"
+                        :min="0"
+                        :max="CHAT_AUTO_CLOSE_MAX_DAYS"
+                        label="Close inactive conversations (days)"
+                        :error="errors.chatAutoCloseDays"
+                        hint="Conversations without messages for this many days are closed: the visitor gets a new chat and the team can no longer reply in them. 0 keeps them open."
+                    />
                     <UiInput
                         v-model.number="form.syncHistoryDays"
                         type="number"
@@ -289,6 +344,35 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         label="Keep sync history (days)"
                         :error="errors.syncHistoryDays"
                         hint="Every source sync records the number of files, total size and duration, shown in each source's history. Older runs are deleted automatically."
+                    />
+                    <UiInput
+                        v-model.number="form.questionRetentionDays"
+                        type="number"
+                        :min="0"
+                        :max="QUESTION_RETENTION_MAX_DAYS"
+                        label="Keep escalated questions (days)"
+                        :error="errors.questionRetentionDays"
+                        hint="Escalated questions older than this are deleted automatically, 0 keeps them forever. FAQ entries created from answers or learned from conversations are kept."
+                    />
+                </div>
+            </UiCard>
+
+            <UiCard>
+                <template #header>
+                    <div class="row" style="--gap: 8px">
+                        <Mail :size="16" class="dim" />
+                        <h2 class="card-title">Answer emails</h2>
+                    </div>
+                </template>
+                <div class="stack" style="--gap: 16px">
+                    <UiInput
+                        v-model.number="form.answerEmailDelayMinutes"
+                        type="number"
+                        :min="0"
+                        :max="ANSWER_EMAIL_MAX_DELAY_MINUTES"
+                        label="Email delay (minutes)"
+                        :error="errors.answerEmailDelayMinutes"
+                        hint="When the team answers a question and the visitor isn't looking at the chat, the answer is emailed after this delay, unless they open the chat meanwhile. Visitors who are in the chat are never emailed. 0 = email right away."
                     />
                 </div>
             </UiCard>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {ArrowLeft, CheckCircle2, Inbox, MessageSquareReply, MessagesSquare, RotateCcw, Send, XCircle} from "lucide-vue-next"
-import type {Faq, Question, QuestionStatus} from "#shared/types"
+import {ArrowLeft, BookOpen, Check, CheckCircle2, Inbox, MessageSquareReply, MessagesSquare, RotateCcw, Send, XCircle} from "lucide-vue-next"
+import type {AnswerEmailStatus, ChatMessage, Faq, Question, QuestionStatus} from "#shared/types"
 
 type Tab = QuestionStatus | "all"
 type Counts = Record<Tab, number>
@@ -12,7 +12,7 @@ const allowed = await guardProjectPage(projectId.value!, "questions:reply")
 const {can} = useMe()
 const {refresh: refreshProjects} = useProjects()
 const toast = useToast()
-useHead({title: "Unanswered · RAGPulse"})
+useHead({title: "Escalated questions · RAGPulse"})
 
 const tabs: Array<{id: Tab; label: string}> = [
     {id: "open", label: "Open"},
@@ -82,12 +82,46 @@ watch(
 
 // ----- Composer -----
 const answer = ref("")
-const addToFaq = ref(false)
-const notifyVisitor = ref(true)
-watch(selectedId, () => {
-    answer.value = ""
-    addToFaq.value = false
-    notifyVisitor.value = true
+/** Human replies posted in the chat after the question: the answer is drafted from them and only recorded */
+const chatReplies = ref(0)
+const drafting = ref(false)
+const setMode = computed(() => chatReplies.value > 0 && selected.value?.status === "open")
+let draftRequest = 0
+
+watch(
+    () => [selected.value?._id, selected.value?.status],
+    async () => {
+        answer.value = ""
+        chatReplies.value = 0
+        const q = selected.value
+        const id = ++draftRequest
+        drafting.value = false
+        if (!q || q.status !== "open") return
+        drafting.value = true
+        try {
+            const res = await $fetch<{humanReplies: number; draft: string}>(`${base.value}/${q._id}/draft`)
+            if (id !== draftRequest || !res.humanReplies) return
+            chatReplies.value = res.humanReplies
+            if (!answer.value.trim()) answer.value = res.draft
+        } catch {
+            // The answer can still be written by hand
+        } finally {
+            if (id === draftRequest) drafting.value = false
+        }
+    },
+    {immediate: true}
+)
+
+/** Explains where the answer goes: chat, FAQ and (only when the visitor is away) email. */
+const composerHint = computed(() => {
+    const q = selected.value
+    if (!q) return undefined
+    const parts: string[] = []
+    if (setMode.value) parts.push(`Summarized from ${chatReplies.value} ${chatReplies.value === 1 ? "reply" : "replies"} in the conversation, saved as the answer without posting it to the chat again.`)
+    else parts.push("Posted in the visitor's chat.")
+    if (!q.faqId && q.status === "open") parts.push("Added to the FAQ.")
+    if (q.visitorEmail) parts.push(`Emailed to ${q.visitorEmail} only if they don't see it in the chat.`)
+    return parts.join(" ")
 })
 
 const {run, pending} = useAction()
@@ -105,18 +139,21 @@ async function sendReply() {
     const q = selected.value
     const text = answer.value.trim()
     if (!q || !text) return
+    const recordOnly = setMode.value
     const res = await run(() =>
-        $fetch<{question: Question; faq?: Faq}>(`${base.value}/${q._id}/reply`, {
+        $fetch<{question: Question; message?: ChatMessage; faq?: Faq; email: AnswerEmailStatus}>(`${base.value}/${q._id}/reply`, {
             method: "POST",
-            body: {answer: text, addToFaq: addToFaq.value, notifyVisitor: !!q.visitorEmail && notifyVisitor.value}
+            body: {answer: text, postToChat: !recordOnly}
         })
     )
     if (!res) return
     replace(res.question)
     answer.value = ""
-    const parts = ["Reply sent"]
-    if (res.question.visitorNotifiedAt && notifyVisitor.value) parts.push("visitor emailed")
+    chatReplies.value = 0
+    const parts = [recordOnly ? "Answer set" : res.message ? "Reply sent" : "Answer set, not posted: the conversation ended"]
     if (res.faq) parts.push("added to FAQ")
+    const emailText = {sent: "visitor emailed", scheduled: "visitor will be emailed unless they open the chat", seen: "visitor is in the chat, no email", failed: "email could not be sent", none: ""}[res.email]
+    if (emailText) parts.push(emailText)
     toast.success(parts.join(" · "))
     await afterChange()
 }
@@ -150,8 +187,8 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
         <header class="page-header">
             <div>
                 <p class="eyebrow">Inbox</p>
-                <h1>Unanswered questions</h1>
-                <p>Questions the assistant couldn't answer or that visitors escalated. Your reply appears in their chat and can be emailed and saved to the FAQ.</p>
+                <h1>Escalated questions</h1>
+                <p>Questions the assistant couldn't answer or that visitors escalated. Your answer appears in their chat, is saved to the FAQ and is emailed when they aren't in the chat.</p>
             </div>
         </header>
 
@@ -228,21 +265,34 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                                 <CheckCircle2 :size="13" class="accent" />
                                 Answered by {{ selected.answeredBy?.name || "Team" }}{{ selected.answeredBy?.via === "mcp" ? " (bot)" : "" }} · {{ timeAgo(selected.answeredAt) }}
                                 <template v-if="selected.visitorNotifiedAt"> · emailed</template>
+                                <span v-else-if="selected.visitorEmailDueAt" :title="`Emailed at ${formatDate(selected.visitorEmailDueAt, true)} unless the visitor opens the chat`"> · email pending</span>
                             </p>
                             <AdminMarkdownContent :content="selected.answer" />
+                            <p v-if="selected.faqId" class="tiny faq-ref row" style="--gap: 6px">
+                                <BookOpen :size="13" />
+                                <NuxtLink v-if="can(projectId, 'sources:manage')" :to="`/admin/projects/${projectId}/knowledge?tab=faq&faq=${selected.faqId}`" class="link">Added to the FAQ: view or delete</NuxtLink>
+                                <span v-else>Added to the FAQ</span>
+                            </p>
                         </div>
 
                         <p v-if="selected.status === 'dismissed'" class="muted small">This question was dismissed. Reopen it to reply.</p>
                     </div>
 
                     <form v-if="selected.status !== 'dismissed'" class="composer" @submit.prevent="sendReply">
-                        <UiTextarea v-model="answer" :label="selected.status === 'answered' ? 'Send a follow-up' : 'Your answer'" :rows="5" maxlength="8000" placeholder="Write a helpful answer… Markdown is supported." @keydown="onKeydown" />
-                        <div class="toggles">
-                            <UiToggle v-model="addToFaq" label="Add to FAQ" description="Saves this Q&A to the knowledge base" />
-                            <UiToggle v-model="notifyVisitor" label="Email the visitor" :description="selected.visitorEmail ? `Send to ${selected.visitorEmail}` : 'Visitor left no email'" :disabled="!selected.visitorEmail" />
-                        </div>
+                        <UiTextarea
+                            v-model="answer"
+                            :label="selected.status === 'answered' ? 'Send a follow-up' : 'Your answer'"
+                            :rows="5"
+                            maxlength="8000"
+                            :placeholder="drafting ? 'Summarizing the replies from the chat…' : 'Write a helpful answer… Markdown is supported.'"
+                            :hint="composerHint"
+                            @keydown="onKeydown"
+                        />
                         <div class="row end">
-                            <UiButton type="submit" variant="primary" :loading="pending" :disabled="!answer.trim()"><Send :size="14" /> Send answer</UiButton>
+                            <UiButton type="submit" variant="primary" :loading="pending" :disabled="!answer.trim()">
+                                <template v-if="setMode"><Check :size="14" /> Set answer</template>
+                                <template v-else><Send :size="14" /> Send answer</template>
+                            </UiButton>
                         </div>
                     </form>
                 </template>
@@ -400,6 +450,14 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
     flex-direction: column;
     gap: 8px;
 }
+.faq-ref {
+    color: var(--text-muted);
+    padding-top: 8px;
+    border-top: 1px solid rgb(157 140 255 / 0.2);
+}
+.link {
+    color: var(--accent);
+}
 .composer {
     border-top: 1px solid var(--border);
     padding: 16px 20px 20px;
@@ -407,11 +465,6 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
     flex-direction: column;
     gap: 14px;
     background: var(--bg-elev);
-}
-.toggles {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px 24px;
 }
 @media (max-width: 900px) {
     .inbox {
@@ -432,9 +485,6 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
     .back-btn {
         display: inline-flex;
         width: 100%;
-    }
-    .toggles {
-        grid-template-columns: minmax(0, 1fr);
     }
 }
 </style>

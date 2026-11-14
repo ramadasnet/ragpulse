@@ -27,7 +27,7 @@ const projectNav = computed(() => {
     const items: Array<{to: string; label: string; icon: any; perm?: ProjectPermission; badge?: number; exact?: boolean}> = [
         {to: `/admin/projects/${id}`, label: "Overview", icon: BarChart3, perm: "analytics:read", exact: true},
         {to: `/admin/projects/${id}/conversations`, label: "Conversations", icon: MessagesSquare, perm: "sessions:read"},
-        {to: `/admin/projects/${id}/questions`, label: "Unanswered", icon: Inbox, perm: "questions:reply", badge: current.value?.stats?.openQuestions},
+        {to: `/admin/projects/${id}/questions`, label: "Escalated", icon: Inbox, perm: "questions:reply", badge: current.value?.stats?.openQuestions},
         {to: `/admin/projects/${id}/knowledge`, label: "Knowledge", icon: BookOpen, perm: "sources:manage"},
         {to: `/admin/projects/${id}/appearance`, label: "Appearance", icon: Palette, perm: "settings:edit"},
         {to: `/admin/projects/${id}/install`, label: "Install", icon: Code2, perm: "settings:edit"},
@@ -87,7 +87,7 @@ async function logout() {
                 <NuxtLink v-if="isAdmin" to="/admin/users" class="nav-item" :class="{active: isActive('/admin/users')}"> <Users :size="16" /> <span>Users</span> </NuxtLink>
                 <NuxtLink to="/admin/mcp" class="nav-item" :class="{active: isActive('/admin/mcp')}"> <Plug :size="16" /> <span>MCP &amp; API</span> </NuxtLink>
                 <NuxtLink v-if="isAdmin" to="/admin/system" class="nav-item" :class="{active: isActive('/admin/system')}"> <Database :size="16" /> <span>System</span> </NuxtLink>
-                <NuxtLink v-if="isAdmin" to="/admin/settings" class="nav-item" :class="{active: isActive('/admin/settings')}"> <SlidersHorizontal :size="16" /> <span>Settings</span> </NuxtLink>
+                <NuxtLink v-if="isAdmin" to="/admin/settings" class="nav-item" :class="{active: isActive('/admin/settings')}"> <SlidersHorizontal :size="16" /> <span>Global Settings</span> </NuxtLink>
             </nav>
 
             <div class="me">

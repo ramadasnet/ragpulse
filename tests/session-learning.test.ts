@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test"
-import {parseLearnedFaq, sanitizeFaqText} from "../server/utils/session-learning"
+import {learnableMessages, parseLearnedFaq, sanitizeFaqText} from "../server/utils/session-learning"
 
 const session = {visitorName: "Jane Doe", visitorEmail: "jane@example.com"}
 
@@ -54,5 +54,19 @@ describe("parseLearnedFaq", () => {
 
     test("returns null for non-JSON output", () => {
         expect(parseLearnedFaq("I cannot summarize this")).toBeNull()
+    })
+})
+
+describe("learnableMessages", () => {
+    const at = (min: number) => new Date(Date.UTC(2026, 0, 1, 12, min))
+    const list = [{createdAt: at(0)}, {createdAt: at(5)}, {createdAt: at(10)}, {createdAt: at(15)}]
+
+    test("keeps everything when no question was answered", () => {
+        expect(learnableMessages(list)).toHaveLength(4)
+    })
+
+    test("drops messages up to the last answered question, already in the FAQ", () => {
+        expect(learnableMessages(list, at(10))).toEqual([{createdAt: at(15)}])
+        expect(learnableMessages(list, at(20).toISOString())).toEqual([])
     })
 })

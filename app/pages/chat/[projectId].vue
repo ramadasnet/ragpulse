@@ -10,6 +10,7 @@ interface ChatConfig {
     title: string
     website: string
     theme: ChatTheme
+    icon?: string
     rateLimit: number
     hasSupport: boolean
 }
@@ -19,6 +20,7 @@ interface PublicSession {
     visitorEmail?: string
     userMessageCount: number
     limitReached: boolean
+    humanHandling?: boolean
 }
 interface Stored {
     sessionId: string
@@ -50,6 +52,7 @@ const vars = computed(() => chatThemeVars(theme.value))
 const title = computed(() => titleOverride.value || config.value?.title || "Chat")
 const botName = computed(() => theme.value.botName || title.value)
 const botInitial = computed(() => (botName.value.trim()[0] || "A").toUpperCase())
+const botIcon = computed(() => config.value?.icon)
 
 useHead({
     title: computed(() => `${botName.value} · ${title.value}`),
@@ -88,7 +91,13 @@ const remaining = computed(() => {
     if (!max || !session.value) return null
     return Math.max(0, max - session.value.userMessageCount)
 })
-const composerHint = computed(() => (remaining.value !== null && remaining.value <= 3 && !limit.value ? `${remaining.value} message${remaining.value === 1 ? "" : "s"} left in this conversation` : ""))
+// A team member is replying: the assistant (and its message limit) is paused
+const humanHandling = computed(() => !!session.value?.humanHandling)
+const showLimit = computed(() => !!limit.value && !humanHandling.value)
+const composerHint = computed(() => {
+    if (humanHandling.value) return "A team member is replying to you here"
+    return remaining.value !== null && remaining.value <= 3 && !limit.value ? `${remaining.value} message${remaining.value === 1 ? "" : "s"} left in this conversation` : ""
+})
 
 function showBanner(text: string) {
     banner.value = text
@@ -159,6 +168,13 @@ function applyServer(list: ChatUiMessage[], s: PublicSession) {
     }
 }
 
+// The embed widget keeps its iframe loaded while closed and reports open / closed (ragpulse:visibility)
+const panelOpen = ref(true)
+/** Whether the visitor can see the chat: decides if team answers are also emailed to them. */
+function chatVisible() {
+    return document.visibilityState === "visible" && panelOpen.value
+}
+
 let lastPoll = 0
 async function loadSession(silent = false) {
     const st = stored.value
@@ -166,7 +182,8 @@ async function loadSession(silent = false) {
     lastPoll = Date.now()
     try {
         const res = await $fetch<{session: PublicSession; messages: ChatUiMessage[]}>(`${api}/sessions/${st.sessionId}`, {
-            headers: {"x-session-token": st.token}
+            headers: {"x-session-token": st.token},
+            query: chatVisible() ? {visible: 1} : undefined
         })
         applyServer(res.messages, res.session)
         phase.value = "chat"
@@ -226,6 +243,9 @@ function resetConversation() {
 
 function newConversation() {
     if (streaming.value) return
+    // Ends the current conversation on the server so the team can't post into it anymore
+    const st = stored.value
+    if (st?.sessionId && st.token) $fetch(`${api}/sessions/${st.sessionId}/end`, {method: "POST", headers: {"x-session-token": st.token}}).catch(() => {})
     resetConversation()
 }
 
@@ -263,15 +283,20 @@ function removeMessage(id: string) {
 async function send(content: string) {
     if (preview) return previewSend(content)
     const st = stored.value
-    if (!st?.token || streaming.value || limit.value) return
+    if (!st?.token || streaming.value || showLimit.value) return
     draft.value = ""
     banner.value = ""
     const userId = `local-u${++localId}`
     const botId = `local-a${localId}`
     messages.value.push({_id: userId, role: "user", content})
-    messages.value.push({_id: botId, role: "assistant", content: "", streaming: true})
-    const user = messages.value[messages.value.length - 2]!
-    const bot = messages.value[messages.value.length - 1]!
+    const user = messages.value[messages.value.length - 1]!
+    const bot = reactive<ChatUiMessage>({_id: botId, role: "assistant", content: "", streaming: true})
+    const showBot = () => {
+        if (!messages.value.some((m) => m._id === botId)) messages.value.push(bot)
+    }
+    let handedOff = false
+    // No typing indicator while a human handles the conversation
+    if (!humanHandling.value) showBot()
     streaming.value = true
     scrollToBottom(true)
     stick.value = true
@@ -300,25 +325,35 @@ async function send(content: string) {
                 user._id = data.userMessageId
                 if (session.value) session.value.userMessageCount++
             } else if (name === "delta") {
+                showBot()
                 bot.content += data.text
             } else if (name === "done") {
+                showBot()
                 Object.assign(bot, data.message, {streaming: false})
             } else if (name === "escalated") {
+                showBot()
                 Object.assign(bot, data.message, {streaming: false})
                 escalation.value = data.needsEmail ? {messageId: data.message._id} : null
+            } else if (name === "human") {
+                handedOff = true
+                removeMessage(botId)
+                if (session.value) session.value.humanHandling = true
             } else if (name === "limit") {
                 removeMessage(userId)
                 removeMessage(botId)
                 if (session.value) session.value.limitReached = true
                 limit.value = {message: data.message, hasSupport: !!data.hasSupport, question: content}
+                if (session.value) session.value.humanHandling = false
             } else if (name === "error") {
+                showBot()
                 bot.streaming = false
                 bot.content = ""
                 bot.error = data.message || "Something went wrong."
             }
         })
     } catch {
-        if (!bot.content) {
+        if (!bot.content && !handedOff) {
+            showBot()
             bot.error = "Connection lost. Please try again."
         }
     } finally {
@@ -394,6 +429,22 @@ function onMessage(e: MessageEvent) {
     if (typeof e.data.title === "string") titleOverride.value = e.data.title
 }
 
+// The widget was closed: clears the server-side presence flag so pending team answers get emailed
+function reportClosed() {
+    const st = stored.value
+    if (!st) return
+    $fetch(`${api}/sessions/${st.sessionId}`, {headers: {"x-session-token": st.token}, query: {visible: 0}}).catch(() => {})
+}
+
+function onEmbedMessage(e: MessageEvent) {
+    if (e.source !== window.parent || e.data?.type !== "ragpulse:visibility") return
+    if (parentParam && e.origin !== urlOrigin(parentParam)) return
+    const wasOpen = panelOpen.value
+    panelOpen.value = !!e.data.open
+    if (panelOpen.value && phase.value === "chat") loadSession(true)
+    else if (wasOpen && !panelOpen.value && phase.value === "chat") reportClosed()
+}
+
 function onKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && embed) closeEmbed()
 }
@@ -420,8 +471,9 @@ onMounted(() => {
                 role: "assistant",
                 content: "Yes! Every plan starts with a **14-day free trial**, no credit card required.\n\n- Full access to all features\n- Cancel anytime from your [account settings](#)",
                 sources: [
-                    {title: "Pricing", url: "https://example.com/pricing"},
-                    {title: "Getting started", url: "https://example.com/docs"}
+                    {title: "Pricing", url: "https://example.com/pricing", kind: "docs"},
+                    {title: "Getting started", url: "https://example.com/docs", kind: "docs"},
+                    {title: "src/billing/trial.ts", url: "https://example.com/code", kind: "code"}
                 ]
             },
             {_id: "p3", role: "agent", content: "Hi Alex, Sam from the team here. Happy to help you set things up!"}
@@ -430,6 +482,7 @@ onMounted(() => {
         if (window.parent !== window) window.parent.postMessage({type: "ragpulse:ready"}, adminOrigin)
         return
     }
+    if (embed) window.addEventListener("message", onEmbedMessage)
     stored.value = readStored()
     if (stored.value) loadSession()
     else phase.value = "intro"
@@ -446,6 +499,7 @@ onBeforeUnmount(() => {
     window.removeEventListener("keydown", onKeydown)
     window.removeEventListener("resize", onResize)
     window.removeEventListener("message", onMessage)
+    window.removeEventListener("message", onEmbedMessage)
     window.removeEventListener("focus", onVisible)
     document.removeEventListener("visibilitychange", onVisible)
 })
@@ -454,12 +508,15 @@ onBeforeUnmount(() => {
 <template>
     <div class="rp" :class="[`rp-${theme.mode}`, {'rp-embed': embed}]" :style="vars">
         <header class="rp-head">
-            <div class="rp-avatar" aria-hidden="true">{{ botInitial }}</div>
+            <div class="rp-avatar" :class="{'rp-avatar-icon': botIcon}" aria-hidden="true">
+                <img v-if="botIcon" :src="botIcon" alt="" />
+                <template v-else>{{ botInitial }}</template>
+            </div>
             <div class="rp-id">
                 <p class="rp-name">{{ botName }}</p>
                 <p class="rp-sub">
                     <span class="rp-pulse" aria-hidden="true" /><span class="rp-trunc">{{ title }}</span
-                    ><span class="rp-sep">·</span>online
+                    ><span class="rp-sep">·</span>{{ humanHandling ? "support team" : "online" }}
                 </p>
             </div>
             <button v-if="phase === 'chat' && !preview" class="rp-icon" type="button" title="New conversation" aria-label="New conversation" :disabled="streaming" @click="newConversation">
@@ -472,9 +529,9 @@ onBeforeUnmount(() => {
 
         <main ref="scroller" class="rp-scroll" aria-live="polite" @scroll.passive="onScroll">
             <div class="rp-col">
-                <ChatBubble :message="welcome" :bot-initial="botInitial" />
+                <ChatBubble :message="welcome" :bot-initial="botInitial" :bot-icon="botIcon" />
                 <template v-for="(m, i) in messages" :key="m._id">
-                    <ChatBubble :message="m" :bot-initial="botInitial" :grouped="i > 0 ? messages[i - 1]!.role === m.role && m.role !== 'user' : m.role === 'assistant'">
+                    <ChatBubble :message="m" :bot-initial="botInitial" :bot-icon="botIcon" :grouped="i > 0 ? messages[i - 1]!.role === m.role && m.role !== 'user' : m.role === 'assistant'">
                         <ChatEmailCard
                             v-if="escalation && escalation.messageId === m._id && !preview && (escalation.doneEmail || !session?.visitorEmail)"
                             :pending="emailPending"
@@ -489,7 +546,7 @@ onBeforeUnmount(() => {
                 <div v-if="phase === 'loading'" class="rp-loading" aria-label="Loading conversation"><span /><span /></div>
                 <ChatIntro v-else-if="phase === 'intro'" class="rp-in" :pending="introPending" :error="introError" :initial-name="stored?.name" :initial-email="stored?.email" @submit="startSession" />
                 <ChatLimitCard
-                    v-if="limit && phase === 'chat'"
+                    v-if="limit && showLimit && phase === 'chat'"
                     class="rp-in"
                     :message="limit.message"
                     :sent="limit.sent"
@@ -505,7 +562,7 @@ onBeforeUnmount(() => {
         <footer class="rp-foot">
             <div class="rp-col">
                 <p v-if="banner" class="rp-banner" role="alert">{{ banner }}</p>
-                <ChatComposer v-if="phase === 'chat' && !limit" ref="composer" v-model="draft" :placeholder="theme.placeholder" :busy="streaming" :max="MAX_CHARS" :hint="composerHint" @send="send" />
+                <ChatComposer v-if="phase === 'chat' && !showLimit" ref="composer" v-model="draft" :placeholder="theme.placeholder" :busy="streaming" :max="MAX_CHARS" :hint="composerHint" @send="send" />
                 <p class="rp-powered">Powered by <a href="https://github.com/ramadasnet/ragpulse" target="_blank" rel="noopener">RAGPulse</a></p>
             </div>
         </footer>
@@ -665,6 +722,11 @@ onBeforeUnmount(() => {
         transform: rotate(360deg);
     }
 }
+/* Keeps an open sources overlay above the following messages */
+.rp .msg:has(.src-pop) {
+    position: relative;
+    z-index: 3;
+}
 .rp :focus-visible {
     outline: none;
     box-shadow: var(--c-ring);
@@ -724,6 +786,16 @@ onBeforeUnmount(() => {
     background: linear-gradient(135deg, var(--c-accent), var(--c-accent2));
     color: var(--c-accent-ink);
     box-shadow: 0 6px 18px -6px var(--c-accent);
+}
+.rp-avatar-icon {
+    background: #fff;
+    padding: 5px;
+    box-shadow: inset 0 0 0 1px var(--c-border);
+}
+.rp-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 .rp-id {
     flex: 1;

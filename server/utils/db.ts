@@ -116,6 +116,8 @@ async function ensureIndexes(c: Collections) {
         c.messages.createIndex({projectId: 1, createdAt: -1}),
         c.questions.createIndex({projectId: 1, status: 1, createdAt: -1}),
         c.questions.createIndex({sessionId: 1}),
+        // Escalated question retention cleanup
+        c.questions.createIndex({createdAt: 1}),
         c.apiTokens.createIndex({tokenHash: 1}, {unique: true}),
         c.apiTokens.createIndex({userId: 1}),
         c.syncRuns.createIndex({sourceId: 1, startedAt: -1}),

@@ -24,6 +24,24 @@ const importOpen = ref(false)
 const editing = ref<Faq | null>(null)
 const expanded = ref<Set<string>>(new Set())
 
+// `?faq=<id>` highlights one entry, e.g. the FAQ created from an answered question
+const route = useRoute()
+const highlightId = computed(() => (typeof route.query.faq === "string" ? route.query.faq : ""))
+const highlightMissing = computed(() => !!highlightId.value && status.value === "success" && !faqs.value.some((f) => f._id === highlightId.value))
+let scrolledTo = ""
+watch(
+    [highlightId, faqs],
+    async ([id, list]) => {
+        if (!id || id === scrolledTo || !list.some((f) => f._id === id)) return
+        scrolledTo = id
+        query.value = ""
+        expanded.value = new Set([...expanded.value, id])
+        await nextTick()
+        document.getElementById(`faq-${id}`)?.scrollIntoView({block: "center", behavior: "smooth"})
+    },
+    {immediate: true}
+)
+
 function add() {
     editing.value = null
     modalOpen.value = true
@@ -77,15 +95,16 @@ async function remove(f: Faq) {
             <UiButton size="sm" @click="refresh()">Retry</UiButton>
         </UiEmpty>
 
-        <UiEmpty v-else-if="!faqs.length" :icon="MessageCircleQuestionMark" title="No FAQ entries yet" description="Add the questions your customers ask most. Answers to unanswered questions can also be saved here.">
+        <UiEmpty v-else-if="!faqs.length" :icon="MessageCircleQuestionMark" title="No FAQ entries yet" description="Add the questions your customers ask most. Answers to escalated questions can also be saved here.">
             <UiButton variant="primary" @click="add"><Plus :size="15" /> Add FAQ</UiButton>
             <UiButton variant="ghost" @click="importOpen = true"><Upload :size="15" /> Import</UiButton>
         </UiEmpty>
 
         <template v-else>
+            <p v-if="highlightMissing" class="muted small">The linked FAQ entry no longer exists.</p>
             <p class="dim tiny">{{ filtered.length }} of {{ faqs.length }} entr{{ faqs.length === 1 ? "y" : "ies" }}</p>
             <ul class="faq-list">
-                <li v-for="f in filtered" :key="f._id" class="faq panel fade-in">
+                <li v-for="f in filtered" :id="`faq-${f._id}`" :key="f._id" class="faq panel fade-in" :class="{highlight: f._id === highlightId}">
                     <div class="faq-head">
                         <h3 class="q">{{ f.question }}</h3>
                         <div class="row" style="--gap: 2px">
@@ -144,6 +163,10 @@ async function remove(f: Faq) {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+.faq.highlight {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .faq-head {
     display: flex;

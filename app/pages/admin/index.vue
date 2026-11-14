@@ -23,7 +23,7 @@ function modelName(id: string) {
 
 const linkDefs: Array<{path: string; label: string; icon: any; perm: ProjectPermission}> = [
     {path: "conversations", label: "Conversations", icon: MessagesSquare, perm: "sessions:read"},
-    {path: "questions", label: "Unanswered", icon: Inbox, perm: "questions:reply"},
+    {path: "questions", label: "Escalated", icon: Inbox, perm: "questions:reply"},
     {path: "knowledge", label: "Knowledge", icon: BookOpen, perm: "sources:manage"},
     {path: "settings", label: "Settings", icon: Settings, perm: "settings:edit"}
 ]

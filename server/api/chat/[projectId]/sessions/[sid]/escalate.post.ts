@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
     return {
         ok: true,
         questionId,
-        message: message ? publicChatMessage(message) : undefined,
+        message: message ? publicChatMessage(message, project) : undefined,
         session: publicChatSession(session)
     }
 })

@@ -106,7 +106,7 @@ const vector = computed(() => {
                         <p v-if="data.embedding.current < data.embedding.total" class="small warn-text">
                             Re-indexing after an embedding model change: {{ formatNumber(data.embedding.current) }} of {{ formatNumber(data.embedding.total) }} chunks done.
                         </p>
-                        <NuxtLink to="/admin/settings" class="tiny accent">Change the embedding model in Settings</NuxtLink>
+                        <NuxtLink to="/admin/settings" class="tiny accent">Change the embedding model in Global Settings</NuxtLink>
                     </div>
                 </UiCard>
 

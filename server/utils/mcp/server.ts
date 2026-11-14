@@ -8,12 +8,12 @@ import {registerMcpSessionTools} from "./sessions"
 
 export const MCP_SERVER_VERSION = "1.0.0"
 
-const INSTRUCTIONS = `RAGPulse hosts AI support chats for websites and apps. Visitors ask questions; when the assistant cannot answer confidently (or the visitor asks for a human), the question is escalated as an "unanswered question".
+const INSTRUCTIONS = `RAGPulse hosts AI support chats for websites and apps. Visitors ask questions; when the assistant cannot answer confidently (or the visitor asks for a human), the question becomes an "escalated question".
 
 You act with the permissions of the user who created your API token.
 
 Typical workflow:
-1. list_unanswered_questions — see open questions (with conversation context) across your projects.
+1. list_unanswered_questions — see open escalated questions (with conversation context) across your projects.
 2. search_knowledge / list_faqs / get_session — research the answer in the project's knowledge base and conversation.
 3. reply_to_question — send the answer. It is posted into the visitor's chat and emailed to the visitor if they left an email. Set add_to_faq=true when the answer is generally useful, so the chat assistant can answer it next time.
 4. dismiss_question — for spam, duplicates or questions that need no answer.
@@ -23,7 +23,7 @@ Write replies directly to the visitor, in their language, concise and friendly. 
 
 function triagePrompt(projectId?: string): string {
     const scope = projectId ? `project "${projectId}"` : "all projects you can reply in"
-    return `Please triage the open unanswered questions in RAGPulse for ${scope}.
+    return `Please triage the open escalated questions in RAGPulse for ${scope}.
 
 1. Call list_unanswered_questions${projectId ? ` with project_id "${projectId}"` : ""} (status "open").
 2. For each question:
@@ -47,12 +47,12 @@ export function createRagpulseMcpServer(ctx: McpContext): McpServer {
     server.registerPrompt(
         "answer_unanswered_questions",
         {
-            title: "Answer unanswered questions",
+            title: "Answer escalated questions",
             description: "Guides you through triaging and answering open visitor questions using the knowledge base.",
             argsSchema: {project_id: z.string().optional().describe("Limit to one project (id); omit for all projects")}
         },
         ({project_id}) => ({
-            description: "Triage open unanswered questions",
+            description: "Triage open escalated questions",
             messages: [{role: "user", content: {type: "text", text: triagePrompt(project_id || undefined)}}]
         })
     )

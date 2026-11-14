@@ -45,7 +45,7 @@ const features = [
     {
         icon: MailQuestionMark,
         title: "Nothing falls through",
-        text: "What the AI can't answer confidently becomes an unanswered question: emailed to support, listed in the admin inbox, and the reply lands back in the visitor's chat."
+        text: "What the AI can't answer confidently becomes an escalated question: emailed to support, listed in the admin inbox, and the reply lands back in the visitor's chat."
     },
     {
         icon: Bot,

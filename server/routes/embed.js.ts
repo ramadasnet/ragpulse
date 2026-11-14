@@ -77,6 +77,7 @@ const SCRIPT = /* js */ `(function () {
         panel.appendChild(frame);
       }
       isOpen = true;
+      visibility(true);
       w.classList.add('o');
       btn.setAttribute('aria-expanded', 'true');
       btn.setAttribute('aria-label', 'Close chat');
@@ -85,12 +86,15 @@ const SCRIPT = /* js */ `(function () {
     function close() {
       if (!isOpen) return;
       isOpen = false;
+      visibility(false);
       w.classList.remove('o');
       btn.setAttribute('aria-expanded', 'false');
       btn.setAttribute('aria-label', 'Open chat');
       btn.focus();
     }
     function toggle() { isOpen ? close() : open(); }
+    // Lets the chat know whether the visitor can see it (answers are emailed to visitors who don't)
+    function visibility(visible) { try { frame.contentWindow.postMessage({ type: 'ragpulse:visibility', open: visible }, base); } catch (x) {} }
 
     btn.addEventListener('click', toggle);
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });

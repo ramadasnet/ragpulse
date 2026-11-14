@@ -19,7 +19,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
     server.registerTool(
         "list_unanswered_questions",
         {
-            title: "List unanswered questions",
+            title: "List escalated questions",
             description: "Lists visitor questions the chat assistant could not answer (escalations), newest first, each with the recent conversation as context. Without project_id, covers every project where you have questions:reply.",
             inputSchema: {
                 project_id: z.string().min(1).optional().describe("Project id; omit to list across all projects you can reply in"),
@@ -91,12 +91,12 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
         {
             title: "Reply to a question",
             description:
-                "Answers a visitor question: the answer is posted into the visitor's chat and emailed to them (if they left an email and notify_visitor is true). Optionally adds the Q&A to the project FAQ so the assistant can answer it next time. Requires questions:reply.",
+                "Answers a visitor question: the answer is posted into the visitor's chat (unless the conversation ended) and added to the project FAQ (once per question) so the assistant can answer it next time. When the visitor left an email and is not in the chat, the answer is emailed after the configured delay unless they open the chat meanwhile. Requires questions:reply.",
             inputSchema: {
                 question_id: z.string().min(1).describe("Question id (see list_unanswered_questions)"),
                 answer: z.string().trim().min(1).max(8000).describe("The answer to send to the visitor (markdown). Write it directly to the visitor."),
-                add_to_faq: z.boolean().default(false).describe("Also add this question and answer to the project FAQ (knowledge base)"),
-                notify_visitor: z.boolean().default(true).describe("Email the answer to the visitor if they left an email (default true)")
+                add_to_faq: z.boolean().default(true).describe("Add this question and answer to the project FAQ (knowledge base), default true"),
+                notify_visitor: z.boolean().default(true).describe("Email the answer to the visitor if they left an email and do not see it in the chat (default true)")
             },
             annotations: {readOnlyHint: false, destructiveHint: false, openWorldHint: true}
         },
@@ -110,19 +110,23 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
                     addToFaq: add_to_faq,
                     notifyVisitor: notify_visitor
                 })
-                // replyToQuestion sets visitorNotifiedAt to the same timestamp as answeredAt only when the email went out now
-                const {visitorNotifiedAt, answeredAt} = result.question
-                const emailed = !!visitorNotifiedAt && !!answeredAt && new Date(visitorNotifiedAt).getTime() === new Date(answeredAt).getTime()
                 const data = {
                     questionId: result.question._id,
                     status: result.question.status,
-                    messageId: result.message._id,
+                    messageId: result.message?._id,
                     sessionId: result.question.sessionId,
-                    visitorEmailed: emailed,
+                    email: result.email,
+                    emailDueAt: result.question.visitorEmailDueAt,
                     faqId: result.faq?._id
                 }
-                const parts = ["Answer posted to the visitor's chat"]
-                parts.push(emailed ? "and emailed to the visitor" : result.question.visitorEmail && notify_visitor ? "(email could not be sent — check SMTP settings)" : "(visitor not emailed)")
+                const emailText = {
+                    sent: "and emailed to the visitor",
+                    scheduled: `(the visitor is not in the chat: it will be emailed at ${result.question.visitorEmailDueAt ? new Date(result.question.visitorEmailDueAt).toISOString() : "a later time"} unless they open the chat)`,
+                    seen: "(the visitor is in the chat, no email needed)",
+                    failed: "(email could not be sent — check SMTP settings)",
+                    none: "(visitor not emailed)"
+                }[result.email]
+                const parts = [result.message ? "Answer posted to the visitor's chat" : "Answer recorded (the conversation ended, not posted to the chat)", emailText]
                 if (result.faq) parts.push(`; added to FAQ (id: ${result.faq._id})`)
                 return mcpOk(`${parts.join(" ")}.`, data)
             })

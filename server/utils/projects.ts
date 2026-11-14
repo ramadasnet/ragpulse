@@ -118,6 +118,7 @@ export const projectUpdateSchema = z
         icon: z.union([z.literal(""), iconSchema]),
         refreshIntervalHours: z.number().refine(isRefreshInterval, "Manual only (0) or 1 to 336 hours"),
         ingestDetail: z.enum(INGEST_DETAILS),
+        showCodeSources: z.boolean(),
         theme: themePatchSchema,
         enabled: z.boolean()
     })
@@ -141,6 +142,7 @@ export function buildProject(input: ProjectCreateInput): Project {
         rateLimit: 20,
         allowedDomains: [],
         refreshIntervalHours: DEFAULT_REFRESH_HOURS,
+        showCodeSources: true,
         theme: {...DEFAULT_THEME, botName: input.title.slice(0, 60)},
         enabled: true,
         createdAt: now,
@@ -154,7 +156,7 @@ export function buildProject(input: ProjectCreateInput): Project {
 export function buildProjectUpdate(project: Project, patch: ProjectUpdateInput): {$set: Partial<Project>; $unset: Record<string, "">} {
     const $set: Partial<Project> = {updatedAt: new Date()}
     const $unset: Record<string, ""> = {}
-    const simple = ["title", "website", "systemInstructions", "model", "temperature", "rateLimit", "refreshIntervalHours", "ingestDetail", "enabled"] as const
+    const simple = ["title", "website", "systemInstructions", "model", "temperature", "rateLimit", "refreshIntervalHours", "ingestDetail", "showCodeSources", "enabled"] as const
     for (const key of simple) {
         if (patch[key] !== undefined) ($set as any)[key] = patch[key]
     }

@@ -12,6 +12,10 @@ export default defineEventHandler(async (event) => {
     if (input.userAgent !== undefined) patch.userAgent = input.userAgent
     if (input.requestIntervalMs !== undefined) patch.requestIntervalMs = input.requestIntervalMs
     if (input.syncHistoryDays !== undefined) patch.syncHistoryDays = input.syncHistoryDays
+    if (input.questionRetentionDays !== undefined) patch.questionRetentionDays = input.questionRetentionDays
+    if (input.globalInstructions !== undefined) patch.globalInstructions = input.globalInstructions
+    if (input.answerEmailDelayMinutes !== undefined) patch.answerEmailDelayMinutes = input.answerEmailDelayMinutes
+    if (input.chatAutoCloseDays !== undefined) patch.chatAutoCloseDays = input.chatAutoCloseDays
 
     let embeddingChanged = false
     if (input.embeddingModel !== undefined || input.embeddingDimensions !== undefined) {
@@ -46,6 +50,12 @@ export default defineEventHandler(async (event) => {
         const saved = await saveAppSettings(patch, admin._id)
         if (input.syncHistoryDays !== undefined && input.syncHistoryDays !== current.syncHistoryDays) {
             await purgeOldSyncRuns(await useCollections(), saved.syncHistoryDays).catch((err) => logger.warn("Settings.patch", "Sync history cleanup failed", err))
+        }
+        if (input.questionRetentionDays !== undefined && input.questionRetentionDays !== current.questionRetentionDays) {
+            await purgeOldQuestions(await useCollections(), saved.questionRetentionDays).catch((err) => logger.warn("Settings.patch", "Escalated question cleanup failed", err))
+        }
+        if (input.chatAutoCloseDays !== undefined && input.chatAutoCloseDays !== current.chatAutoCloseDays) {
+            await closeInactiveChatSessions(await useCollections(), saved.chatAutoCloseDays).catch((err) => logger.warn("Settings.patch", "Closing inactive chat sessions failed", err))
         }
         if (embeddingChanged) {
             await refreshVectorIndex(saved.embeddingDimensions)

@@ -96,7 +96,7 @@ export interface ChatUiMessage {
     _id: string
     role: "user" | "assistant" | "agent"
     content: string
-    sources?: Array<{title: string; url?: string}>
+    sources?: Array<{title: string; url?: string; kind: "docs" | "code"}>
     escalated?: boolean
     createdAt?: string
     /** Assistant reply currently streaming */

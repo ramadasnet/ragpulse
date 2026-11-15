@@ -88,7 +88,7 @@ const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", r
                     <UiStat label="Escalations" :value="formatNumber(totals.escalated)" :hint="`${formatNumber(totals.answeredQuestions)} answered by humans`" />
                     <UiStat label="Open questions" :value="formatNumber(totals.openQuestions)" :tone="totals.openQuestions ? 'warning' : undefined" hint="Waiting for a reply" />
                     <UiStat label="Avg latency" :value="latency" hint="Time to full answer" />
-                    <UiStat label="Cost" :value="formatCost(totals.cost)" hint="OpenRouter usage" />
+                    <UiStat label="Cost" :value="formatCost(totals.cost)" hint="AI provider usage" />
                     <UiStat label="Tokens" :value="formatNumber(tokens)" :hint="`${formatNumber(totals.promptTokens)} in · ${formatNumber(totals.completionTokens)} out`" />
                 </template>
                 <template v-else>

@@ -9,7 +9,7 @@ interface SystemStats {
     embeddingDimensions: number
     embedding: {model: string; total: number; current: number}
     perProject: Array<{projectId: string; title: string; chunks: number; documents: number; sessions: number; messages: number; estimatedBytes: number}>
-    config: {openrouter: boolean; smtp: boolean; google: boolean; microsoft: boolean; googleDrive: string | null; adminUrl: string; chatUrl: string}
+    config: {aiProvider: boolean; smtp: boolean; google: boolean; microsoft: boolean; googleDrive: string | null; adminUrl: string; chatUrl: string}
     scheduler: {queued: number; syncing: number; errors: number; idle?: number; nextDue?: string}
 }
 
@@ -28,7 +28,12 @@ const checks = computed(() => {
     if (!c) return []
     const oauthAny = c.google || c.microsoft
     return [
-        {label: "OpenRouter API key", ok: c.openrouter, level: c.openrouter ? "ok" : "err", hint: c.openrouter ? "Chat and embeddings are available." : "Set NUXT_OPENROUTER_API_KEY — chat and indexing will fail without it."},
+        {
+            label: "AI provider",
+            ok: c.aiProvider,
+            level: c.aiProvider ? "ok" : "err",
+            hint: c.aiProvider ? "Chat and embeddings are available." : "Set an OpenRouter key or a custom provider in Global Settings → AI Provider — chat and indexing will fail without it."
+        },
         {label: "SMTP email", ok: c.smtp, level: c.smtp ? "ok" : "warn", hint: c.smtp ? "Escalations, replies and invites are emailed." : "Set NUXT_SMTP_PASS (Cloudflare API token) and NUXT_SMTP_FROM to email support, visitors and invitees."},
         {label: "Google sign-in", ok: c.google, level: c.google ? "ok" : oauthAny ? "warn" : "err", hint: c.google ? "Configured." : "Set NUXT_OAUTH_GOOGLE_CLIENT_ID / _CLIENT_SECRET."},
         {label: "Microsoft sign-in", ok: c.microsoft, level: c.microsoft ? "ok" : oauthAny ? "warn" : "err", hint: c.microsoft ? "Configured." : "Set NUXT_OAUTH_MICROSOFT_CLIENT_ID / _CLIENT_SECRET."},

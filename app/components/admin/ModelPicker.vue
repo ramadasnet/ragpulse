@@ -65,7 +65,7 @@ const filtered = computed(() => {
 
 const customId = computed(() => {
     const value = search.value.trim()
-    return /^[\w.:@~-]+\/[\w.:@/~-]+$/.test(value) && !models.value?.some((m) => m.id === value) ? value : ""
+    return /^[\w.:/@~-]+$/.test(value) && !models.value?.some((m) => m.id === value) ? value : ""
 })
 
 const optionCount = computed(() => filtered.value.length + (customId.value ? 1 : 0))

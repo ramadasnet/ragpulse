@@ -65,8 +65,8 @@ export default defineEventHandler(async (event) => {
             return
         }
 
-        if (!human && !useRuntimeConfig(event).openrouterApiKey) {
-            send("error", {message: "The assistant is not configured yet (missing OpenRouter API key). Please try again later."})
+        if (!human && !(await hasAiProvider())) {
+            send("error", {message: "The assistant is not configured yet (no AI provider). Please try again later."})
             return
         }
 

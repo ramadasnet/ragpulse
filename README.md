@@ -4,7 +4,7 @@ Self-hosted, single-tenant AI support chat for your projects. Index your docs (F
 chat on your sites, escalate what the AI can't answer to your support email — and plug your own bots and agents in via **MCP**
 so they can act on escalated questions.
 
-- **Stack:** TypeScript · Nuxt 4 · Bun · MongoDB (documents + vectors) · OpenRouter (chat + embeddings)
+- **Stack:** TypeScript · Nuxt 4 · Bun · MongoDB (documents + vectors) · OpenRouter or any OpenAI-compatible provider (chat + embeddings)
 - **Admin:** Google / Microsoft social login, Admin and Assistant roles with per-project permissions
 - **Chat:** JS embed (floating launcher) or iframe, light/dark themes with 3 custom colours, domain allowlist
 - **MCP:** Streamable HTTP endpoint at `/mcp`, authenticated with personal API tokens
@@ -93,35 +93,39 @@ no server needed (Pages: build command `bun run build:landing`, output directory
 
 All settings are environment variables, see [`.env.example`](.env.example). Both apps take the same configuration. The important ones:
 
-| Variable                                                       | Description                                                                                                                             |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `NUXT_PUBLIC_ADMIN_URL`                                        | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                                    |
-| `NUXT_PUBLIC_CHAT_URL`                                         | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                             |
-| `NUXT_APP_SECRET`                                              | 32+ chars secret for the admin session cookie and visitor IP hashing                                                                    |
-| `NUXT_ADMIN_EMAILS`                                            | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                          |
-| `NUXT_MONGODB_URI`                                             | MongoDB connection string                                                                                                               |
-| `NUXT_OPENROUTER_API_KEY`                                      | OpenRouter key, used for chat and embeddings                                                                                            |
-| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`           | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Global Settings** instead (see below)           |
-| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`               | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)                      |
-| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`   | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                               |
-| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS` | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)                 |
-| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                          |
-| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                              | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email                     |
-| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                            | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                                |
-| `NUXT_CHAT_SESSION_RETENTION_DAYS`                             | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever)         |
-| `NUXT_SYNC_HISTORY_DAYS`                                       | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Global Settings** instead (see below)            |
-| `NUXT_ANSWER_EMAIL_DELAY_MINUTES`                              | Minutes before an answer is emailed to a visitor who isn't in the chat (default 10, max 1440). Change it on **Global Settings** instead |
-| `RAGPULSE_LOG_LEVEL`                                           | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                                  |
-| `RAGPULSE_LOG_JSON`                                            | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                                 |
+| Variable                                                                             | Description                                                                                                                             |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_ADMIN_URL`                                                              | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                                    |
+| `NUXT_PUBLIC_CHAT_URL`                                                               | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                             |
+| `NUXT_APP_SECRET`                                                                    | 32+ chars secret for the admin session cookie and visitor IP hashing                                                                    |
+| `NUXT_ADMIN_EMAILS`                                                                  | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                          |
+| `NUXT_MONGODB_URI`                                                                   | MongoDB connection string                                                                                                               |
+| `NUXT_OPENROUTER_API_KEY`                                                            | OpenRouter key, used for chat and embeddings. Change it on **Global Settings** instead (see below)                                      |
+| `NUXT_CUSTOM_AI_PROVIDER` / `NUXT_AI_PROVIDER_BASE_URL` / `NUXT_AI_PROVIDER_API_KEY` | Custom OpenAI-compatible endpoint used instead of OpenRouter. Change it on **Global Settings** instead (see below)                      |
+| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`                                 | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Global Settings** instead (see below)           |
+| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`                                     | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)                      |
+| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`                         | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                               |
+| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS`                       | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)                 |
+| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                                      | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                          |
+| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                                                    | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email                     |
+| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                                                  | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                                |
+| `NUXT_CHAT_SESSION_RETENTION_DAYS`                                                   | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever)         |
+| `NUXT_SYNC_HISTORY_DAYS`                                                             | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Global Settings** instead (see below)            |
+| `NUXT_ANSWER_EMAIL_DELAY_MINUTES`                                                    | Minutes before an answer is emailed to a visitor who isn't in the chat (default 10, max 1440). Change it on **Global Settings** instead |
+| `RAGPULSE_LOG_LEVEL`                                                                 | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                                  |
+| `RAGPULSE_LOG_JSON`                                                                  | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                                 |
 
 ### Global Settings page
 
 Admins can change these workspace-wide settings on **Global Settings**; saved values override the environment defaults above:
 
+- **AI provider**: OpenRouter by default (the API key is editable here), or a custom OpenAI-compatible endpoint behind the
+  **Use a custom AI provider** toggle — set its base URL (e.g. `https://api.openai.com/v1` or `http://localhost:11434/v1`) and an
+  optional API key. Applies to chat answers, embeddings, vision and code summaries of all projects.
 - **Global system instructions**: base rules added to the chat answers of **all projects**, with precedence over each project's
   own instructions. The default forbids sharing credentials, private keys, environment variables, secrets and personal
   information, and guards against prompt injection. Leave empty to disable.
-- **Embedding model** and optional **dimensions** (any OpenRouter embedding model). The model is tested before it is applied.
+- **Embedding model** and optional **dimensions** (any embedding model the configured provider offers). The model is tested before it is applied.
   Vectors of different models can't be compared, so changing it re-indexes the knowledge of **all projects**: the scheduler
   re-embeds the stored chunks in the background (no re-fetching), the vector index is updated automatically, and progress is
   shown on **Global Settings** and **System**. Until it finishes, answers only use the knowledge that has already been re-indexed.
@@ -168,7 +172,7 @@ tries again). Secrets are never written to disk or baked into the images; rotate
 
 ### Projects
 
-Each project is a website/app/service with its own title, website, system instructions, OpenRouter model, chat theme,
+Each project is a website/app/service with its own title, website, system instructions, chat model, chat theme,
 knowledge, rate limit (max visitor messages per session before redirecting to support), support email and allowed domains.
 
 When a project is created, its website's home page and stylesheets are analyzed in the background (theme-color, brand
@@ -202,10 +206,10 @@ Requests` responses slow the site down and are retried after `Retry-After`. A cr
   **Viewer**, and set `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY` to the JSON key (a different key can be pasted per source).
 - **PDFs, images and Office files** (PNG, JPEG, WebP, GIF, Word, PowerPoint, Excel, up to 20 MB) from repositories, URLs and
   Drive — the text of PDFs is extracted locally and Word/PowerPoint/Excel files are converted to Markdown locally.
-  Images and scanned PDFs are transcribed by the OpenRouter vision model (`NUXT_VISION_MODEL`); tiny images such as icons are
+  Images and scanned PDFs are transcribed by the configured vision model (`NUXT_VISION_MODEL`); tiny images such as icons are
   skipped and results are cached, so unchanged files are never sent twice.
 
-Everything is converted to Markdown, split into heading-aware chunks, embedded through OpenRouter and stored in MongoDB.
+Everything is converted to Markdown, split into heading-aware chunks, embedded through the configured AI provider and stored in MongoDB.
 Unchanged documents and chunks are never re-embedded. Sources refresh automatically: every 2 days by default, configurable per
 project and per source (every 2, 4, 12 or 24 hours, every 2, 3, 7 or 14 days, or **Manual only** — synced only when you click
 Sync). Sources are edited on their own page; the type of a source (website, git, Drive) can't be changed once it's added. Each source keeps a history of its sync runs (files, total size and duration per run,

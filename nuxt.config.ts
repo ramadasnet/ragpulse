@@ -67,6 +67,10 @@ export default defineNuxtConfig({
         mongodbUri: "mongodb://127.0.0.1:27017/ragpulse",
         openrouterApiKey: "",
         openrouterBaseUrl: "https://openrouter.ai/api/v1",
+        // Custom OpenAI-compatible provider used instead of OpenRouter (overridden by Global Settings → AI Provider)
+        customAiProvider: false,
+        aiProviderBaseUrl: "",
+        aiProviderApiKey: "",
         // Defaults: the embedding model can be changed on the Settings page (stored chunks are then re-embedded)
         embeddingModel: "openai/text-embedding-3-small",
         embeddingDimensions: 1536,

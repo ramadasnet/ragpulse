@@ -120,7 +120,7 @@ export default defineEventHandler(async (event) => {
         embedding,
         perProject,
         config: {
-            openrouter: !!config.openrouterApiKey,
+            aiProvider: await hasAiProvider(),
             smtp: isMailConfigured(),
             google: !!(oauth.google?.clientId && oauth.google?.clientSecret),
             microsoft: !!(oauth.microsoft?.clientId && oauth.microsoft?.clientSecret),

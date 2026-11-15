@@ -299,6 +299,8 @@ const GIT_ENV_KEYS = [
     "http_proxy",
     "https_proxy",
     "no_proxy",
+    "ALL_PROXY",
+    "all_proxy",
     "GIT_EXEC_PATH",
     "GIT_SSH_COMMAND",
     "SSL_CERT_FILE",
@@ -317,6 +319,17 @@ function gitEnv(): Record<string, string> {
     env.GCM_INTERACTIVE = "never"
     env.GIT_LFS_SKIP_SMUDGE = "1"
     return env
+}
+
+/**
+ * Pins git's connection to the addresses that passed the public-host check, so the clone can't resolve the
+ * hostname to something else in between (DNS rebinding). No-op for IP literals and when private URLs are allowed.
+ */
+function pinArgs(url: URL, addresses: string[]): string[] {
+    if (!addresses.length) return []
+    const port = url.port || "443"
+    const list = addresses.map((a) => (a.includes(":") ? `[${a}]` : a)).join(",")
+    return ["-c", `http.curloptResolve=${url.hostname}:${port}:${list}`]
 }
 
 function run(cmd: string, args: string[], opts: {cwd?: string; timeout: number}): Promise<string> {
@@ -361,10 +374,10 @@ export function parseLsRemote(output: string, branch?: string): string | undefin
 }
 
 /** Current commit of the branch on the remote, without cloning. Undefined when it can't be determined. */
-async function remoteCommit(cloneUrl: string, branch?: string): Promise<string | undefined> {
+async function remoteCommit(cloneUrl: string, branch?: string, pin: string[] = []): Promise<string | undefined> {
     const patterns = branch ? [`refs/heads/${branch}`, `refs/tags/${branch}`, `refs/tags/${branch}^{}`] : ["HEAD"]
     try {
-        const out = await run("git", ["-c", "credential.helper=", "ls-remote", "--", cloneUrl, ...patterns], {timeout: LS_REMOTE_TIMEOUT_MS})
+        const out = await run("git", [...pin, "-c", "credential.helper=", "ls-remote", "--", cloneUrl, ...patterns], {timeout: LS_REMOTE_TIMEOUT_MS})
         return parseLsRemote(out, branch)
     } catch {
         return undefined
@@ -493,7 +506,8 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
         throw new Error("Invalid repository URL")
     }
     if (url.protocol !== "https:") throw new Error("Only https:// repository URLs are supported")
-    await assertPublicHost(url, "Repository URL")
+    const addresses = await assertPublicHost(url, "Repository URL", {fresh: true})
+    const pin = pinArgs(url, addresses)
     url.username = ""
     url.password = ""
     const cloneUrl = new URL(url.href)
@@ -506,7 +520,7 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
 
     const revisionOf = (commit: string) => `${GIT_CONVERTER_VERSION}:${commit}:${ctx.revisionSalt ?? ""}`
     if (ctx.knownRevision) {
-        const commit = await remoteCommit(cloneUrl.href, branch)
+        const commit = await remoteCommit(cloneUrl.href, branch, pin)
         if (commit && revisionOf(commit) === ctx.knownRevision) {
             ctx.log?.(`${url.hostname}${url.pathname}@${branch || "HEAD"}: unchanged since the last sync (${commit.slice(0, 12)}), not cloned`)
             return {...outcome, revision: ctx.knownRevision, upToDate: true}
@@ -516,7 +530,7 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
     const dir = await mkdtemp(join(tmpdir(), "ragpulse-git-"))
     const secrets = [token]
     try {
-        const args = ["-c", "credential.helper=", "-c", "core.symlinks=false", "clone", "--depth", "1", "--single-branch", "--no-tags"]
+        const args = [...pin, "-c", "credential.helper=", "-c", "core.symlinks=false", "clone", "--depth", "1", "--single-branch", "--no-tags"]
         if (branch) args.push("--branch", branch)
         args.push("--", cloneUrl.href, dir)
         try {

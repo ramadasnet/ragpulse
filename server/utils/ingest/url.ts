@@ -5,7 +5,7 @@ import {binaryMimeFromName, binaryMimeFromType, MAX_BINARY_BYTES, type BinaryMim
 import {tidyMarkdown, htmlToMarkdown, prepareMarkdownFile} from "./markdown"
 import {HostThrottle, parseRetryAfter} from "./throttle"
 import {emptyFetchOutcome, type FetchContext, type FetchOutcome, type FetchedDocument} from "./types"
-import {assertPublicHost} from "../public-url"
+import {safeFetch} from "../public-url"
 
 const MAX_BYTES = 5 * 1024 * 1024
 const TIMEOUT_MS = 20_000
@@ -60,24 +60,12 @@ function hostOf(url: string): string {
  */
 async function politeFetch(url: string, ctx: UrlContext, headers: Record<string, string>, timeoutMs?: number): Promise<Response> {
     const host = hostOf(url)
-    await assertPublicHost(url, "URL")
     for (let attempt = 0; ; attempt++) {
         await ctx.throttle.wait(host, ctx.signal)
-        const res = await fetch(url, {redirect: "follow", signal: signalFor(ctx, timeoutMs), headers})
+        const res = await safeFetch(url, {signal: signalFor(ctx, timeoutMs), headers})
         const retryAfter = parseRetryAfter(res.headers.get("retry-after"))
         const limited = res.status === 429 || (res.status === 503 && retryAfter !== undefined)
         if (!limited) {
-            // Redirects are followed inside fetch: the final URL needs its own check (the request went out,
-            // but a private target's content is never read or indexed)
-            const finalUrl = res.url || url
-            if (finalUrl !== url) {
-                try {
-                    await assertPublicHost(finalUrl, "Redirect target")
-                } catch (err) {
-                    await res.body?.cancel().catch(() => {})
-                    throw err
-                }
-            }
             return res
         }
         await res.body?.cancel().catch(() => {})

@@ -113,33 +113,70 @@ export function assertPublicUrl(input: string | URL, what = "URL"): void {
     if (issue) throw new Error(`${what} ${issue}`)
 }
 
-const dnsCache = new Map<string, {at: number; issue: string | null}>()
+const dnsCache = new Map<string, {at: number; issue: string | null; addresses: string[]}>()
+const MAX_REDIRECTS = 5
 
 /**
  * `assertPublicUrl` plus DNS resolution: every address the hostname resolves to must be public, catching
- * domains that point at private ranges. Results are cached for five minutes. Throws on any failure.
+ * domains that point at private ranges. Returns the validated addresses (empty for IP literals), so callers
+ * that can pin a connection (git) use exactly what was checked. Results are cached for five minutes unless
+ * `fresh` is set. Throws on any failure.
  */
-export async function assertPublicHost(input: string | URL, what = "URL"): Promise<void> {
+export async function assertPublicHost(input: string | URL, what = "URL", opts: {fresh?: boolean} = {}): Promise<string[]> {
     assertPublicUrl(input, what)
-    if (allowPrivateUrls()) return
+    if (allowPrivateUrls()) return []
     const {host} = hostOf(input)!
-    if (isIpLiteral(host)) return
-    const cached = dnsCache.get(host)
+    if (isIpLiteral(host)) return []
+    const cached = opts.fresh ? undefined : dnsCache.get(host)
     if (cached && Date.now() - cached.at < DNS_CACHE_TTL_MS) {
         if (cached.issue) throw new Error(`${what} ${cached.issue}`)
-        return
+        return cached.addresses
     }
     let issue: string | null = null
+    let addresses: string[] = []
     try {
         const {lookup} = await import("node:dns/promises")
-        const addresses = await lookup(host, {all: true})
-        const bad = addresses.find((a) => (a.family === 4 ? privateIpv4(a.address) : privateIpv6(a.address)))
+        const resolved = await lookup(host, {all: true})
+        addresses = resolved.map((a) => a.address)
+        const bad = resolved.find((a) => (a.family === 4 ? privateIpv4(a.address) : privateIpv6(a.address)))
         if (bad) issue = `resolves to a private or reserved address (${host} → ${bad.address})`
-        else if (!addresses.length) issue = `does not resolve (${host})`
+        else if (!resolved.length) issue = `does not resolve (${host})`
     } catch (err: any) {
         issue = `could not be resolved (${host}${err?.code ? `: ${err.code}` : ""})`
     }
     if (dnsCache.size > 500) dnsCache.clear()
-    dnsCache.set(host, {at: Date.now(), issue})
+    dnsCache.set(host, {at: Date.now(), issue, addresses})
     if (issue) throw new Error(`${what} ${issue}`)
+    return addresses
+}
+
+/**
+ * `fetch` that validates the target before every request, redirects included: each hop is resolved afresh
+ * and checked before it is requested, so a public page can't bounce the server onto a private host.
+ * Redirects are handled here instead of inside `fetch`; the response of the last hop is returned, with `url`
+ * set to its address.
+ */
+export async function safeFetch(url: string, init: RequestInit = {}, what = "URL"): Promise<Response> {
+    let target = url
+    for (let hop = 0; ; hop++) {
+        await assertPublicHost(target, hop === 0 ? what : "Redirect target", {fresh: true})
+        const res = await fetch(target, {...init, redirect: "manual"})
+        const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null
+        if (!location) {
+            // Manual redirects leave `url` at the first request: expose the real final URL like fetch does
+            if (target !== url) Object.defineProperty(res, "url", {value: target})
+            return res
+        }
+        await res.body?.cancel().catch(() => {})
+        if (hop >= MAX_REDIRECTS) throw new Error(`${what} redirected too many times`)
+        try {
+            target = new URL(location, target).href
+        } catch {
+            throw new Error(`${what} redirected to an invalid location`)
+        }
+        // A 303 (and a POST after 301/302) turns into a body-less GET
+        if (res.status === 303 || ((res.status === 301 || res.status === 302) && init.method && init.method.toUpperCase() === "POST")) {
+            init = {...init, method: "GET", body: undefined}
+        }
+    }
 }

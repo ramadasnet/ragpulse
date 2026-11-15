@@ -53,8 +53,12 @@ jobs:
             - name: Redeploy in Dokploy
               if: env.DOKPLOY_ENABLED == 'true'
               env:
-                  DOKPLOY_APP_ID: ${{ matrix.app == 'admin' && vars.DOKPLOY_ADMIN_APP_ID || vars.DOKPLOY_CHAT_APP_ID }}
+                  DOKPLOY_APP_ID: ${{ matrix.app == 'admin' && vars.DOKPLOY_ADMIN_APP_ID || matrix.app == 'chat' && vars.DOKPLOY_CHAT_APP_ID || '' }}
               run: |
+                  if [ -z "${DOKPLOY_APP_ID}" ]; then
+                    echo "::error::No Dokploy application ID set for ${{ matrix.app }} (DOKPLOY_ADMIN_APP_ID / DOKPLOY_CHAT_APP_ID)"
+                    exit 1
+                  fi
                   curl -fsSL -X POST "${{ secrets.DOKPLOY_URL }}/api/application.deploy" \
                     -H "x-api-key: ${{ secrets.DOKPLOY_API_KEY }}" \
                     -H "Content-Type: application/json" \

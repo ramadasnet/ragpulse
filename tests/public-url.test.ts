@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, test} from "bun:test"
-import {assertPublicHost, publicUrlIssue} from "../server/utils/public-url"
+import {assertPublicHost, publicUrlIssue, safeFetch} from "../server/utils/public-url"
 
 // Other test files allow private URLs for their local Bun.serve fixtures: force the strict mode here
 beforeEach(() => {
@@ -67,5 +67,32 @@ describe("assertPublicHost", () => {
     test("literal checks apply without DNS", async () => {
         await expect(assertPublicHost("http://169.254.169.254/")).rejects.toThrow("private or reserved")
         await expect(assertPublicHost("http://metadata/")).rejects.toThrow("can't resolve publicly")
+    })
+})
+
+describe("safeFetch", () => {
+    test("rejects a private first hop", async () => {
+        await expect(safeFetch("http://127.0.0.1:1/")).rejects.toThrow("private or reserved")
+    })
+
+    test("follows redirects manually and reports the final URL", async () => {
+        process.env.RAGPULSE_ALLOW_PRIVATE_URLS = "true"
+        const server = Bun.serve({
+            port: 0,
+            fetch(req) {
+                const path = new URL(req.url).pathname
+                if (path === "/a") return new Response(null, {status: 302, headers: {Location: "/b"}})
+                if (path === "/loop") return new Response(null, {status: 302, headers: {Location: "/loop"}})
+                return new Response("ok")
+            }
+        })
+        try {
+            const res = await safeFetch(`http://127.0.0.1:${server.port}/a`)
+            expect(await res.text()).toBe("ok")
+            expect(res.url).toBe(`http://127.0.0.1:${server.port}/b`)
+            await expect(safeFetch(`http://127.0.0.1:${server.port}/loop`)).rejects.toThrow("too many times")
+        } finally {
+            server.stop(true)
+        }
     })
 })

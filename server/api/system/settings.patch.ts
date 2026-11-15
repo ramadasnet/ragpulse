@@ -37,6 +37,13 @@ export default defineEventHandler(async (event) => {
     if (candidate.customAiProvider && !candidate.aiProviderBaseUrl.trim()) {
         throw createError({statusCode: 400, statusMessage: "The custom AI provider needs a base URL"})
     }
+    if (input.aiProviderBaseUrl?.trim()) {
+        try {
+            await assertPublicHost(input.aiProviderBaseUrl.trim(), "The AI provider base URL")
+        } catch (err: any) {
+            throw createError({statusCode: 400, statusMessage: String(err?.message || "Invalid AI provider base URL")})
+        }
+    }
 
     let embeddingChanged = false
     if (input.embeddingModel !== undefined || input.embeddingDimensions !== undefined) {

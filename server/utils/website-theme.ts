@@ -1,5 +1,6 @@
 import {parseHTML} from "linkedom"
 import type {ChatTheme, Project} from "#shared/types"
+import {assertPublicHost} from "./public-url"
 import {CHAT_THEME_PRESETS, type ChatThemePreset} from "../../shared/utils/chat-theme"
 import logger from "./logger"
 
@@ -540,12 +541,23 @@ export async function fetchPrefix(
     opts: {userAgent: string; accept: string; timeoutMs: number; maxBytes: number; signal?: AbortSignal}
 ): Promise<{url: string; type: string; charset: string; bytes: Uint8Array; truncated: boolean} | null> {
     try {
+        await assertPublicHost(url, "URL")
         const timeout = AbortSignal.timeout(opts.timeoutMs)
         const res = await fetch(url, {
             redirect: "follow",
             signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
             headers: {"User-Agent": opts.userAgent, Accept: opts.accept}
         })
+        // Redirects are followed inside fetch: the final URL needs its own check
+        const finalUrl = res.url || url
+        if (finalUrl !== url) {
+            try {
+                await assertPublicHost(finalUrl, "Redirect target")
+            } catch {
+                await res.body?.cancel().catch(() => {})
+                return null
+            }
+        }
         if (!res.ok || !res.body) {
             await res.body?.cancel().catch(() => {})
             return null

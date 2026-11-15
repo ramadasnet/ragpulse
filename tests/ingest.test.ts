@@ -68,6 +68,8 @@ describe("robots.txt", () => {
 describe("URL fetching with rate limits", () => {
     let server: ReturnType<typeof Bun.serve>
     const hits = new Map<string, number>()
+    // Tests crawl a local Bun.serve: allow private addresses
+    process.env.RAGPULSE_ALLOW_PRIVATE_URLS = "true"
     const base = () => `http://127.0.0.1:${server.port}`
     const ctx = {userAgent: "TestBot/1.0", requestIntervalMs: 0}
 

@@ -3,6 +3,7 @@ import {z} from "zod"
 import type {ChatTheme, Project, ProjectAccess, ProjectPermission, User} from "#shared/types"
 import {DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, isRefreshInterval, PROJECT_PERMISSIONS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
+import {publicUrlIssue} from "./public-url"
 
 // ---------- Validation helpers ----------
 
@@ -60,7 +61,12 @@ const hexColor = z
 
 const supportEmailSchema = z.union([z.literal(""), z.email("Support email must be a valid email address")])
 
-const websiteSchema = z.string().trim().max(500).refine(isHttpUrl, "Website must be a valid http(s) URL")
+const websiteSchema = z
+    .string()
+    .trim()
+    .max(500)
+    .refine(isHttpUrl, "Website must be a valid http(s) URL")
+    .refine((v) => !publicUrlIssue(v), "Website can't point to a private or reserved address")
 
 const systemInstructionsSchema = z.string().max(20_000)
 

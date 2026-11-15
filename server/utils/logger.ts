@@ -13,6 +13,7 @@ logger.setOptions({
     levels: levelsFrom(process.env.RAGPULSE_LOG_LEVEL || "info"),
     preprocessors: ["friendlyErrors", "maskSecrets"],
     preprocessorOptions: {
+        errorStack: true,
         maskedFields: [
             "authorization",
             "cookie",

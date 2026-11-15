@@ -65,7 +65,17 @@ export function newId(length = 16): string {
 async function connect(): Promise<DbState> {
     const config = useRuntimeConfig()
     const client = new MongoClient(config.mongodbUri, {maxPoolSize: 20, appName: "ragpulse"})
-    await client.connect()
+    // Hostnames only, never credentials: failed connects must show where the client tried to connect
+    const hosts = client.options.hosts.join(", ")
+    try {
+        await client.connect()
+    } catch (err: any) {
+        // anyhow prints an error's object `reason` (TopologyDescription) as "[object Object]"; friendlyMessage takes precedence over it
+        const servers = err?.reason?.servers
+        const detail = servers instanceof Map ? [...servers.values()].map((s) => `${s.address} (${s.error?.message || s.type})`).join(", ") : ""
+        err.friendlyMessage = `Connection to ${detail || hosts} failed`
+        throw err
+    }
     const db = client.db()
     const collections: Collections = {
         users: db.collection<User>("users"),
@@ -90,7 +100,7 @@ async function connect(): Promise<DbState> {
     const stored = await collections.settings.findOne({_id: "app"}, {projection: {embeddingDimensions: 1}})
     vectorMode = await ensureVectorIndex(db, collections, Number(stored?.embeddingDimensions || config.embeddingDimensions))
     state.vectorMode = vectorMode
-    logger.info("Database.connect", `Connected to ${db.databaseName}, vector search: ${vectorMode}`)
+    logger.info("Database.connect", `Connected to ${db.databaseName} at ${hosts}, vector search: ${vectorMode}`)
     return state
 }
 

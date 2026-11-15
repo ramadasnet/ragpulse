@@ -35,6 +35,16 @@ export interface User {
     lastLoginAt?: Date
 }
 
+/** Optional webhook fired when a question is escalated. Disabled while `url` is empty. */
+export interface EscalationWebhook {
+    /** http(s) endpoint that receives the POST (must resolve publicly, like sources) */
+    url: string
+    /** Extra request headers, e.g. `Authorization` */
+    headers: Record<string, string>
+    /** JSON body template: `{{placeholder}}` renders a JSON value. Empty = the default body */
+    bodyTemplate: string
+}
+
 export interface ChatTheme {
     mode: "light" | "dark"
     /** Primary accent (buttons, user bubbles, launcher) */
@@ -69,6 +79,8 @@ export interface Project {
     refreshIntervalHours: number
     /** How much of the fetched content is indexed. Unset = `DEFAULT_INGEST_DETAIL`. */
     ingestDetail?: IngestDetail
+    /** POSTed when a question is escalated. Unset or empty `url` disables it */
+    escalationWebhook?: EscalationWebhook
     /** Show source code references under chat answers */
     showCodeSources: boolean
     theme: ChatTheme
@@ -255,6 +267,8 @@ export interface Question {
     answeredBy?: {userId?: string; name: string; via: "admin" | "mcp"}
     answeredAt?: Date
     supportNotifiedAt?: Date
+    /** The project's escalation webhook was delivered for this question */
+    webhookSentAt?: Date
     visitorNotifiedAt?: Date
     /** The answer is emailed at this time unless the visitor sees the chat before */
     visitorEmailDueAt?: Date

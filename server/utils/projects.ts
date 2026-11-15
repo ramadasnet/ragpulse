@@ -70,6 +70,30 @@ const websiteSchema = z
 
 const systemInstructionsSchema = z.string().max(20_000)
 
+/** Header name token per RFC 7230; values can't carry control characters. */
+const headerNameSchema = z
+    .string()
+    .trim()
+    .regex(/^[!#$%&'*+.^_`|~0-9a-zA-Z-]+$/, "Invalid header name")
+const escalationWebhookSchema = z.object({
+    url: z
+        .string()
+        .trim()
+        .max(2000)
+        .refine((v) => !v || isHttpUrl(v), "Webhook URL must be a valid http(s) URL")
+        .refine((v) => !v || !publicUrlIssue(v), "Webhook URL can't point to a private or reserved address"),
+    headers: z
+        .record(
+            headerNameSchema,
+            z
+                .string()
+                .max(2000)
+                .refine((v) => !/[\x00-\x1f\x7f]/u.test(v), "Invalid header value")
+        )
+        .refine((h) => Object.keys(h).length <= 20, "At most 20 headers"),
+    bodyTemplate: z.string().max(50_000)
+})
+
 const modelSchema = z
     .string()
     .trim()
@@ -124,6 +148,7 @@ export const projectUpdateSchema = z
         icon: z.union([z.literal(""), iconSchema]),
         refreshIntervalHours: z.number().refine(isRefreshInterval, "Manual only (0) or 1 to 336 hours"),
         ingestDetail: z.enum(INGEST_DETAILS),
+        escalationWebhook: escalationWebhookSchema,
         showCodeSources: z.boolean(),
         theme: themePatchSchema,
         enabled: z.boolean()
@@ -183,6 +208,11 @@ export function buildProjectUpdate(project: Project, patch: ProjectUpdateInput):
             if (!normalized.includes(domain)) normalized.push(domain)
         }
         $set.allowedDomains = normalized
+    }
+    if (patch.escalationWebhook !== undefined) {
+        const webhook = patch.escalationWebhook
+        if (!webhook.url && !Object.keys(webhook.headers).length && !webhook.bodyTemplate.trim()) $unset.escalationWebhook = ""
+        else $set.escalationWebhook = webhook
     }
     if (patch.theme) {
         const theme: ChatTheme = {...DEFAULT_THEME, ...project.theme}

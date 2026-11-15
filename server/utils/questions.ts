@@ -57,6 +57,8 @@ export async function createQuestion(params: {project: Project; session: ChatSes
         }
     }
 
+    await sendEscalationWebhook(project, session, question)
+
     return question
 }
 

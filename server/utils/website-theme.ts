@@ -1,5 +1,6 @@
 import {parseHTML} from "linkedom"
 import type {ChatTheme, Project} from "#shared/types"
+import {safeFetch} from "./public-url"
 import {CHAT_THEME_PRESETS, type ChatThemePreset} from "../../shared/utils/chat-theme"
 import logger from "./logger"
 
@@ -541,8 +542,7 @@ export async function fetchPrefix(
 ): Promise<{url: string; type: string; charset: string; bytes: Uint8Array; truncated: boolean} | null> {
     try {
         const timeout = AbortSignal.timeout(opts.timeoutMs)
-        const res = await fetch(url, {
-            redirect: "follow",
+        const res = await safeFetch(url, {
             signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
             headers: {"User-Agent": opts.userAgent, Accept: opts.accept}
         })

@@ -2,6 +2,7 @@
 // or a custom OpenAI-compatible endpoint (Global Settings → AI Provider).
 // Docs: https://openrouter.ai/docs/api-reference
 import {parseRetryAfter} from "./ingest/throttle"
+import {assertPublicHost} from "./public-url"
 import type {AppSettings} from "#shared/types"
 
 export type LlmContentPart = {type: "text"; text: string} | {type: "image_url"; image_url: {url: string}} | {type: "file"; file: {filename: string; file_data: string}}
@@ -26,6 +27,11 @@ export interface ChatCompletionOptions {
 }
 
 export type ChatStreamEvent = {type: "delta"; text: string} | {type: "usage"; usage: LlmUsage}
+
+/** Deadlines for provider calls without a caller-supplied signal — a hung endpoint must not stall sync jobs */
+const CHAT_TIMEOUT_MS = 300_000
+const EMBEDDINGS_TIMEOUT_MS = 120_000
+const MODELS_TIMEOUT_MS = 30_000
 
 /** Resolved endpoint for chat and embeddings: OpenRouter, or a custom OpenAI-compatible API. */
 export interface AiProvider {
@@ -76,6 +82,16 @@ export async function hasAiProvider(): Promise<boolean> {
     return app.customAiProvider ? !!app.aiProviderBaseUrl.trim() : !!app.openrouterApiKey
 }
 
+/** A custom endpoint is re-checked before every request: DNS can change after the base URL was saved. */
+async function guardProvider(p: Pick<AiProvider, "baseUrl" | "openrouter">): Promise<void> {
+    if (p.openrouter) return
+    try {
+        await assertPublicHost(p.baseUrl, "The AI provider base URL")
+    } catch (err: any) {
+        throw createError({statusCode: 502, statusMessage: String(err?.message || "Invalid AI provider base URL")})
+    }
+}
+
 function headers(p: AiProvider) {
     const h: Record<string, string> = {"Content-Type": "application/json"}
     if (p.apiKey) h.Authorization = `Bearer ${p.apiKey}`
@@ -110,10 +126,12 @@ async function failFromResponse(res: Response, what: string, providerName = "AI 
 /** Non streaming chat completion. */
 export async function chatCompletion(opts: ChatCompletionOptions): Promise<{content: string; usage?: LlmUsage}> {
     const s = await provider()
+    await guardProvider(s)
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
+        redirect: s.openrouter ? "follow" : "error",
         method: "POST",
         headers: headers(s),
-        signal: opts.signal,
+        signal: opts.signal ?? AbortSignal.timeout(CHAT_TIMEOUT_MS),
         body: JSON.stringify({
             model: opts.model,
             messages: opts.messages,
@@ -131,10 +149,12 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<{cont
 /** Streaming chat completion, yields text deltas and (at the end) usage. */
 export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {
     const s = await provider()
+    await guardProvider(s)
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
+        redirect: s.openrouter ? "follow" : "error",
         method: "POST",
         headers: headers(s),
-        signal: opts.signal,
+        signal: opts.signal ?? AbortSignal.timeout(CHAT_TIMEOUT_MS),
         body: JSON.stringify({
             model: opts.model,
             messages: opts.messages,
@@ -205,9 +225,12 @@ export async function createEmbeddings(texts: string[], opts: EmbeddingOptions =
         const batch = texts.slice(i, i + batchSize)
         let attempt = 0
         while (true) {
+            await guardProvider(s)
             const res = await fetch(`${s.baseUrl}/embeddings`, {
+                redirect: s.openrouter ? "follow" : "error",
                 method: "POST",
                 headers: headers(s),
+                signal: AbortSignal.timeout(EMBEDDINGS_TIMEOUT_MS),
                 body: JSON.stringify({model, input: batch, ...(dimensions ? {dimensions} : {})})
             })
             if ((res.status === 429 || res.status >= 500) && attempt < 3) {
@@ -262,7 +285,12 @@ export async function listModels(kind: "chat" | "embedding" = "chat"): Promise<O
     const cached = modelsCache.get(cacheKey)
     if (cached && Date.now() - cached.at < 3600_000) return cached.models
     // OpenRouter's model lists are public; a custom endpoint may need its key
-    const res = await fetch(`${baseUrl}/${custom || kind === "chat" ? "models" : "embeddings/models"}`, {headers: custom && app.aiProviderApiKey ? {Authorization: `Bearer ${app.aiProviderApiKey}`} : {}})
+    if (custom) await guardProvider({baseUrl, openrouter: false})
+    const res = await fetch(`${baseUrl}/${custom || kind === "chat" ? "models" : "embeddings/models"}`, {
+        redirect: custom ? "error" : "follow",
+        headers: custom && app.aiProviderApiKey ? {Authorization: `Bearer ${app.aiProviderApiKey}`} : {},
+        signal: AbortSignal.timeout(MODELS_TIMEOUT_MS)
+    })
     if (!res.ok) await failFromResponse(res, "models", custom ? "AI provider" : "OpenRouter")
     const data: any = await res.json()
     const output = kind === "embedding" ? "embeddings" : "text"

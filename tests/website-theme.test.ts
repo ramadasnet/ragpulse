@@ -90,6 +90,8 @@ describe("website theme matching", () => {
 describe("detectWebsiteTheme", () => {
     let server: ReturnType<typeof Bun.serve>
     beforeAll(() => {
+        // The theme fetcher rejects private addresses; tests run against a local Bun.serve
+        process.env.RAGPULSE_ALLOW_PRIVATE_URLS = "true"
         server = Bun.serve({
             port: 0,
             fetch(req) {

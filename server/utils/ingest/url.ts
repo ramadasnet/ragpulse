@@ -5,6 +5,7 @@ import {binaryMimeFromName, binaryMimeFromType, MAX_BINARY_BYTES, type BinaryMim
 import {tidyMarkdown, htmlToMarkdown, prepareMarkdownFile} from "./markdown"
 import {HostThrottle, parseRetryAfter} from "./throttle"
 import {emptyFetchOutcome, type FetchContext, type FetchOutcome, type FetchedDocument} from "./types"
+import {safeFetch} from "../public-url"
 
 const MAX_BYTES = 5 * 1024 * 1024
 const TIMEOUT_MS = 20_000
@@ -61,10 +62,12 @@ async function politeFetch(url: string, ctx: UrlContext, headers: Record<string,
     const host = hostOf(url)
     for (let attempt = 0; ; attempt++) {
         await ctx.throttle.wait(host, ctx.signal)
-        const res = await fetch(url, {redirect: "follow", signal: signalFor(ctx, timeoutMs), headers})
+        const res = await safeFetch(url, {signal: signalFor(ctx, timeoutMs), headers})
         const retryAfter = parseRetryAfter(res.headers.get("retry-after"))
         const limited = res.status === 429 || (res.status === 503 && retryAfter !== undefined)
-        if (!limited) return res
+        if (!limited) {
+            return res
+        }
         await res.body?.cancel().catch(() => {})
         const backoff = Math.min(60_000, 2000 * 2 ** attempt) + Math.round(Math.random() * 500)
         const delay = retryAfter ?? backoff

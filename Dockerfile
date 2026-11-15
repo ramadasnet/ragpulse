@@ -22,8 +22,10 @@ CMD ["bun", "--preload", "./server/preload.ts", ".output/server/index.mjs"]
 
 FROM runtime AS chat
 COPY --from=build-chat /app/.output ./.output
+USER bun
 
 FROM runtime AS admin
 # git is required to index git repositories
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build-admin /app/.output ./.output
+USER bun

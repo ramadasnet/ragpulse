@@ -9,6 +9,7 @@ import {stripComments} from "./comments"
 import {matchesAnyGlob} from "./glob"
 import {adocToMarkdown, tidyMarkdown, htmlToMarkdown, prepareMarkdownFile, rstToMarkdown} from "./markdown"
 import {emptyFetchOutcome, type CodeFile, type CodeSummaries, type FetchContext, type FetchOutcome} from "./types"
+import {assertPublicHost} from "../public-url"
 
 const CLONE_TIMEOUT_MS = 120_000
 const LS_REMOTE_TIMEOUT_MS = 30_000
@@ -283,6 +284,54 @@ function tokenUsername(host: string): string {
     return "x-access-token"
 }
 
+/** The clone needs a minimal environment — server secrets stay out of child processes. */
+const GIT_ENV_KEYS = [
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "SYSTEMROOT",
+    "COMSPEC",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "GIT_EXEC_PATH",
+    "GIT_SSH_COMMAND",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "GIT_SSL_CAINFO"
+]
+
+function gitEnv(): Record<string, string> {
+    const env: Record<string, string> = {}
+    for (const key of GIT_ENV_KEYS) {
+        if (process.env[key]) env[key] = process.env[key]!
+    }
+    env.GIT_TERMINAL_PROMPT = "0"
+    env.GIT_ASKPASS = "echo"
+    env.SSH_ASKPASS = "echo"
+    env.GCM_INTERACTIVE = "never"
+    env.GIT_LFS_SKIP_SMUDGE = "1"
+    return env
+}
+
+/**
+ * Pins git's connection to the addresses that passed the public-host check, so the clone can't resolve the
+ * hostname to something else in between (DNS rebinding). No-op for IP literals and when private URLs are allowed.
+ */
+function pinArgs(url: URL, addresses: string[]): string[] {
+    if (!addresses.length) return []
+    const port = url.port || "443"
+    const list = addresses.map((a) => (a.includes(":") ? `[${a}]` : a)).join(",")
+    return ["-c", `http.curloptResolve=${url.hostname}:${port}:${list}`]
+}
+
 function run(cmd: string, args: string[], opts: {cwd?: string; timeout: number}): Promise<string> {
     return new Promise((resolve, reject) => {
         execFile(
@@ -292,7 +341,7 @@ function run(cmd: string, args: string[], opts: {cwd?: string; timeout: number})
                 cwd: opts.cwd,
                 timeout: opts.timeout,
                 maxBuffer: 4 * 1024 * 1024,
-                env: {...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo", SSH_ASKPASS: "echo", GCM_INTERACTIVE: "never", GIT_LFS_SKIP_SMUDGE: "1"}
+                env: gitEnv()
             },
             (err, stdout, stderr) => {
                 if (err) {
@@ -325,10 +374,10 @@ export function parseLsRemote(output: string, branch?: string): string | undefin
 }
 
 /** Current commit of the branch on the remote, without cloning. Undefined when it can't be determined. */
-async function remoteCommit(cloneUrl: string, branch?: string): Promise<string | undefined> {
+async function remoteCommit(cloneUrl: string, branch?: string, pin: string[] = []): Promise<string | undefined> {
     const patterns = branch ? [`refs/heads/${branch}`, `refs/tags/${branch}`, `refs/tags/${branch}^{}`] : ["HEAD"]
     try {
-        const out = await run("git", ["-c", "credential.helper=", "ls-remote", "--", cloneUrl, ...patterns], {timeout: LS_REMOTE_TIMEOUT_MS})
+        const out = await run("git", [...pin, "-c", "credential.helper=", "ls-remote", "--", cloneUrl, ...patterns], {timeout: LS_REMOTE_TIMEOUT_MS})
         return parseLsRemote(out, branch)
     } catch {
         return undefined
@@ -457,6 +506,8 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
         throw new Error("Invalid repository URL")
     }
     if (url.protocol !== "https:") throw new Error("Only https:// repository URLs are supported")
+    const addresses = await assertPublicHost(url, "Repository URL", {fresh: true})
+    const pin = pinArgs(url, addresses)
     url.username = ""
     url.password = ""
     const cloneUrl = new URL(url.href)
@@ -469,7 +520,7 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
 
     const revisionOf = (commit: string) => `${GIT_CONVERTER_VERSION}:${commit}:${ctx.revisionSalt ?? ""}`
     if (ctx.knownRevision) {
-        const commit = await remoteCommit(cloneUrl.href, branch)
+        const commit = await remoteCommit(cloneUrl.href, branch, pin)
         if (commit && revisionOf(commit) === ctx.knownRevision) {
             ctx.log?.(`${url.hostname}${url.pathname}@${branch || "HEAD"}: unchanged since the last sync (${commit.slice(0, 12)}), not cloned`)
             return {...outcome, revision: ctx.knownRevision, upToDate: true}
@@ -479,7 +530,7 @@ export async function fetchGitSource(repoUrl: string, options: GitSourceOptions,
     const dir = await mkdtemp(join(tmpdir(), "ragpulse-git-"))
     const secrets = [token]
     try {
-        const args = ["-c", "credential.helper=", "-c", "core.symlinks=false", "clone", "--depth", "1", "--single-branch", "--no-tags"]
+        const args = [...pin, "-c", "credential.helper=", "-c", "core.symlinks=false", "clone", "--depth", "1", "--single-branch", "--no-tags"]
         if (branch) args.push("--branch", branch)
         args.push("--", cloneUrl.href, dir)
         try {

@@ -4,6 +4,7 @@ import {isRefreshInterval, type Source, type SourceOptions, type SourceType} fro
 import {driveFolderUrl, parseDriveFolderId} from "#shared/utils/drive"
 import {parseServiceAccountKey} from "./drive"
 import {CRAWL_MAX_PAGES} from "./url"
+import {publicUrlIssue} from "../public-url"
 
 const globList = z.array(z.string().trim().min(1).max(300)).max(50)
 
@@ -53,6 +54,8 @@ export function validateSourceUrl(type: SourceType, input: string): string {
     } catch {
         throw createError({statusCode: 400, statusMessage: "Invalid URL"})
     }
+    const issue = publicUrlIssue(url)
+    if (issue) throw createError({statusCode: 400, statusMessage: `URL ${issue}`})
     if (type === "git") {
         if (url.protocol !== "https:") throw createError({statusCode: 400, statusMessage: "Git repositories must use an https:// URL"})
         if (url.username || url.password) throw createError({statusCode: 400, statusMessage: "Do not put credentials in the URL, use the access token field"})

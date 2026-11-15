@@ -372,7 +372,7 @@ async function deleteProject() {
 
             <UiCard title="Escalation webhook" description="POST a JSON event to your endpoint whenever a question is escalated. Leave the URL empty to disable it.">
                 <div class="stack" style="--gap: 18px">
-                    <UiInput v-model="form.webhookUrl" label="Webhook URL" optional inputmode="url" :placeholder="webhookUrlPlaceholder" :error="errors.webhookUrl" hint="Must be a public http(s) endpoint." />
+                    <UiInput v-model="form.webhookUrl" label="Webhook URL" optional inputmode="url" :placeholder="webhookUrlPlaceholder" :error="errors.webhookUrl" hint="Public http(s) endpoint by default; private URLs need RAGPULSE_ALLOW_PRIVATE_URLS=true." />
                     <UiTextarea
                         v-model="form.webhookHeaders"
                         label="Headers"

@@ -236,7 +236,7 @@ Visitors tell the chat how they want to be called, then ask away. Answers are ge
 model can't answer confidently, the visitor asks to talk to a human (in any language), or a visitor hits the rate limit, the
 question becomes an **escalated question**: it's emailed to the project's support email and shows up in the admin inbox and over MCP. Projects can also get the
 event pushed to an HTTP endpoint: **Settings → Escalation webhook** POSTs the escalation as JSON, with an editable `{{placeholder}}` body template (project, chat URL, visitor,
-question and the whole conversation) and optional headers. Replies (from the admin UI or an agent via MCP) are posted
+question and up to 500 conversation messages) and optional headers. Replies (from the admin UI or an agent via MCP) are posted
 into the visitor's chat and added to the project FAQ (once per question, with a link from the answered question to view or
 delete the entry). Visitors who left an email only get it by email when they don't see it in the chat: the chat reports when it's
 open and visible (the embed widget also tells it when it's closed). Visitors in the chat are never emailed; otherwise the email

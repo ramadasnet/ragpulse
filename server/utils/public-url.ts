@@ -150,13 +150,26 @@ export async function assertPublicHost(input: string | URL, what = "URL", opts: 
     return addresses
 }
 
+const CREDENTIAL_HEADERS = ["authorization", "cookie", "proxy-authorization"]
+
+function stripCredentialHeaders(headers: HeadersInit | undefined): Headers | undefined {
+    if (!headers) return undefined
+    const clean = new Headers(headers)
+    for (const name of CREDENTIAL_HEADERS) clean.delete(name)
+    return clean
+}
+
 /**
  * `fetch` that validates the target before every request, redirects included: each hop is resolved afresh
  * and checked before it is requested, so a public page can't bounce the server onto a private host.
  * Redirects are handled here instead of inside `fetch`; the response of the last hop is returned, with `url`
  * set to its address.
+ *
+ * A redirect to another origin drops the `Authorization`, `Cookie` and `Proxy-Authorization` headers, like browsers do.
+ * With `sameOriginOnly`, any cross-origin redirect is refused instead, so custom credential headers and bodies
+ * never leave the configured host.
  */
-export async function safeFetch(url: string, init: RequestInit = {}, what = "URL"): Promise<Response> {
+export async function safeFetch(url: string, init: RequestInit = {}, what = "URL", options: {sameOriginOnly?: boolean} = {}): Promise<Response> {
     let target = url
     for (let hop = 0; ; hop++) {
         await assertPublicHost(target, hop === 0 ? what : "Redirect target", {fresh: true})
@@ -169,11 +182,17 @@ export async function safeFetch(url: string, init: RequestInit = {}, what = "URL
         }
         await res.body?.cancel().catch(() => {})
         if (hop >= MAX_REDIRECTS) throw new Error(`${what} redirected too many times`)
+        let next: URL
         try {
-            target = new URL(location, target).href
+            next = new URL(location, target)
         } catch {
             throw new Error(`${what} redirected to an invalid location`)
         }
+        if (next.origin !== new URL(target).origin) {
+            if (options.sameOriginOnly) throw new Error(`${what} redirected to another origin`)
+            init = {...init, headers: stripCredentialHeaders(init.headers)}
+        }
+        target = next.href
         // A 303 (and a POST after 301/302) turns into a body-less GET
         if (res.status === 303 || ((res.status === 301 || res.status === 302) && init.method && init.method.toUpperCase() === "POST")) {
             init = {...init, method: "GET", body: undefined}

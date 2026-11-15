@@ -24,6 +24,26 @@ export async function readZodBody<T extends z.ZodType>(event: H3Event, schema: T
     return result.data
 }
 
+/** True when the URL embeds credentials (`https://user:pass@host`), which `fetch` refuses. */
+function hasUrlCredentials(value: string): boolean {
+    try {
+        const url = new URL(value)
+        return !!url.username || !!url.password
+    } catch {
+        return false
+    }
+}
+
+/**
+ * The project as shown to a user: the escalation webhook (target URL and auth headers) is a secret
+ * that only users who can edit settings get back, everyone else with access to the project doesn't.
+ */
+export function projectForUser<T extends Project>(user: User, project: T): T {
+    if (!project.escalationWebhook || projectPermissions(user, project._id).includes("settings:edit")) return project
+    const {escalationWebhook: _hidden, ...visible} = project
+    return visible as T
+}
+
 export function isHttpUrl(value: string): boolean {
     try {
         const url = new URL(value)
@@ -82,6 +102,7 @@ const escalationWebhookSchema = z.object({
         .trim()
         .max(2000)
         .refine((v) => !v || isHttpUrl(v), "Webhook URL must be a valid http(s) URL")
+        .refine((v) => !v || !hasUrlCredentials(v), "Webhook URL can't include a username or password, use a header instead")
         .refine((v) => !v || !publicUrlIssue(v), "Webhook URL can't point to a private or reserved address"),
     headers: z
         .record(
@@ -263,7 +284,7 @@ export async function listProjectSummaries(user: User) {
         countByProject(questions, {...inProjects, status: "open"})
     ])
     return list.map((project) => ({
-        ...project,
+        ...projectForUser(user, project),
         permissions: projectPermissions(user, project._id) as ProjectPermission[],
         stats: {
             sources: s.get(project._id) ?? 0,

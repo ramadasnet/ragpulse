@@ -27,8 +27,8 @@ export const DEFAULT_ESCALATION_WEBHOOK_BODY = `{
     "createdAt": {{createdAt}}
 }`
 
-const QUOTED_PLACEHOLDER_RE = /"\{\{\s*([a-zA-Z]\w*)\s*\}\}"/g
-const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z]\w*)\s*\}\}/g
+/** Quoted ("{{key}}") or bare ({{key}}) placeholder, matched in a single pass so substituted values are never rescanned. */
+const PLACEHOLDER_RE = /"\{\{\s*([a-zA-Z]\w*)\s*\}\}"|\{\{\s*([a-zA-Z]\w*)\s*\}\}/g
 
 /**
  * Renders a webhook body template: `{{placeholder}}` (quoted or not) is replaced by the JSON encoding
@@ -36,6 +36,8 @@ const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z]\w*)\s*\}\}/g
  * it parses as JSON before sending.
  */
 export function renderWebhookBody(template: string, data: Record<string, unknown>): string {
-    const fill = (match: string, key: string) => (key in data ? JSON.stringify(data[key]) : match)
-    return template.replace(QUOTED_PLACEHOLDER_RE, fill).replace(PLACEHOLDER_RE, fill)
+    return template.replace(PLACEHOLDER_RE, (match, quotedKey?: string, bareKey?: string) => {
+        const key = quotedKey ?? bareKey
+        return key && Object.hasOwn(data, key) ? JSON.stringify(data[key]) : match
+    })
 }

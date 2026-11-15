@@ -11,7 +11,8 @@ const WEBHOOK_TIMEOUT_MS = 15_000
  * POSTs the project's escalation webhook for a newly escalated question: renders the editable body
  * template (`{{placeholder}}` → JSON value) and delivers it with the configured headers through
  * `safeFetch`, so private/reserved targets and redirect hops are checked like every other
- * admin-configured URL. `chatUrl` is the origin embedding the widget, or the standalone chat page.
+ * admin-configured URL; redirects to another origin are refused so the headers and transcript stay with the
+ * configured host. `chatUrl` is the origin embedding the widget, or the standalone chat page.
  * Never throws; marks `question.webhookSentAt` on success.
  */
 export async function sendEscalationWebhook(project: Project, session: ChatSession, question: Question): Promise<void> {
@@ -40,7 +41,7 @@ export async function sendEscalationWebhook(project: Project, session: ChatSessi
             logger.warn("Webhook.escalation", `Body of project ${project._id} does not render valid JSON, webhook not sent`)
             return
         }
-        const res = await safeFetch(webhook.url, {method: "POST", headers: {"content-type": "application/json", ...webhook.headers}, body, signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS)}, "Escalation webhook")
+        const res = await safeFetch(webhook.url, {method: "POST", headers: {"content-type": "application/json", ...webhook.headers}, body, signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS)}, "Escalation webhook", {sameOriginOnly: true})
         await res.body?.cancel().catch(() => {})
         if (!res.ok) {
             logger.warn("Webhook.escalation", `Project ${project._id} webhook returned ${res.status}`)

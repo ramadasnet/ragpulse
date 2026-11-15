@@ -27,6 +27,11 @@ export interface ChatCompletionOptions {
 
 export type ChatStreamEvent = {type: "delta"; text: string} | {type: "usage"; usage: LlmUsage}
 
+/** Deadlines for provider calls without a caller-supplied signal — a hung endpoint must not stall sync jobs */
+const CHAT_TIMEOUT_MS = 300_000
+const EMBEDDINGS_TIMEOUT_MS = 120_000
+const MODELS_TIMEOUT_MS = 30_000
+
 /** Resolved endpoint for chat and embeddings: OpenRouter, or a custom OpenAI-compatible API. */
 export interface AiProvider {
     name: string
@@ -113,7 +118,7 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<{cont
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
         method: "POST",
         headers: headers(s),
-        signal: opts.signal,
+        signal: opts.signal ?? AbortSignal.timeout(CHAT_TIMEOUT_MS),
         body: JSON.stringify({
             model: opts.model,
             messages: opts.messages,
@@ -134,7 +139,7 @@ export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncG
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
         method: "POST",
         headers: headers(s),
-        signal: opts.signal,
+        signal: opts.signal ?? AbortSignal.timeout(CHAT_TIMEOUT_MS),
         body: JSON.stringify({
             model: opts.model,
             messages: opts.messages,
@@ -208,6 +213,7 @@ export async function createEmbeddings(texts: string[], opts: EmbeddingOptions =
             const res = await fetch(`${s.baseUrl}/embeddings`, {
                 method: "POST",
                 headers: headers(s),
+                signal: AbortSignal.timeout(EMBEDDINGS_TIMEOUT_MS),
                 body: JSON.stringify({model, input: batch, ...(dimensions ? {dimensions} : {})})
             })
             if ((res.status === 429 || res.status >= 500) && attempt < 3) {
@@ -262,7 +268,10 @@ export async function listModels(kind: "chat" | "embedding" = "chat"): Promise<O
     const cached = modelsCache.get(cacheKey)
     if (cached && Date.now() - cached.at < 3600_000) return cached.models
     // OpenRouter's model lists are public; a custom endpoint may need its key
-    const res = await fetch(`${baseUrl}/${custom || kind === "chat" ? "models" : "embeddings/models"}`, {headers: custom && app.aiProviderApiKey ? {Authorization: `Bearer ${app.aiProviderApiKey}`} : {}})
+    const res = await fetch(`${baseUrl}/${custom || kind === "chat" ? "models" : "embeddings/models"}`, {
+        headers: custom && app.aiProviderApiKey ? {Authorization: `Bearer ${app.aiProviderApiKey}`} : {},
+        signal: AbortSignal.timeout(MODELS_TIMEOUT_MS)
+    })
     if (!res.ok) await failFromResponse(res, "models", custom ? "AI provider" : "OpenRouter")
     const data: any = await res.json()
     const output = kind === "embedding" ? "embeddings" : "text"

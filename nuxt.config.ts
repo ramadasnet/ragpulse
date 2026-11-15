@@ -23,6 +23,15 @@ const adminOnly = [
     "server/plugins/scheduler.ts"
 ]
 const landingOnly = ["app/pages/landing.vue"]
+
+/** Baseline headers for routes that must never be framed (dashboard, login) — chat pages set their own CSP in server/middleware/chat-security.ts */
+const noFrameHeaders = {
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains"
+}
 // Nitro's srcDir is `server/`: a bare `server/**` ignore collapses to `**` there, which also excludes every public
 // asset when Nitro copies them — so server files are excluded per directory instead.
 const serverOnly = ["server/api/**", "server/middleware/**", "server/plugins/**", "server/routes/**", "server/utils/**", "server/preload.ts"]
@@ -122,10 +131,16 @@ export default defineNuxtConfig({
         }
     },
 
-    routeRules: {
-        "/admin/**": {ssr: false},
-        "/login": {ssr: false}
-    },
+    // Landing is a fully static site: its headers live in landing/public/_headers instead (routeRules would
+    // emit a generated _headers and clobber it)
+    routeRules: landing
+        ? {}
+        : {
+              "/": {headers: noFrameHeaders},
+              "/admin/**": {ssr: false, headers: noFrameHeaders},
+              "/login": {ssr: false, headers: noFrameHeaders},
+              "/embed.js": {headers: {"X-Content-Type-Options": "nosniff"}}
+          },
 
     nitro: {
         preset: landing ? "static" : "bun",

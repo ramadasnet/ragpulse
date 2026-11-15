@@ -1,0 +1,9 @@
+// Static landing site deployed as a Workers static-assets project (wrangler deploy, no worker script).
+{
+    "name": "ragpulse",
+    "compatibility_date": "2025-11-15",
+    "assets": {
+        "directory": ".output/public",
+        "not_found_handling": "404-page"
+    }
+}

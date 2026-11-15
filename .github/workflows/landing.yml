@@ -26,4 +26,4 @@ jobs:
               with:
                   apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
                   accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-                  command: pages deploy .output/public --project-name ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'ragpulse' }} --branch ${{ github.ref_name }}
+                  command: deploy --name ${{ vars.CLOUDFLARE_PROJECT_NAME || 'ragpulse' }}

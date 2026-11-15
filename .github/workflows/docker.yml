@@ -1,40 +1,61 @@
 name: Docker images
 on:
-  push:
-    branches:
-      - master
-  workflow_dispatch:
+    push:
+        branches:
+            - master
+    workflow_dispatch:
 concurrency:
-  group: docker-${{ github.ref }}
-  cancel-in-progress: true
+    group: docker-${{ github.ref }}
+    cancel-in-progress: true
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        app: [admin, chat]
-    steps:
-      - uses: actions/checkout@v7
-      - id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ragpulse-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: ${{ matrix.app }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ steps.image.outputs.name }}:${{ github.sha }}
-            ${{ steps.image.outputs.name }}:latest
-          cache-from: type=gha,scope=${{ matrix.app }}
-          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+    check:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+            - run: bun install --frozen-lockfile
+            - run: bun run check
+    build:
+        needs: check
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        env:
+            DOKPLOY_ENABLED: ${{ secrets.DOKPLOY_API_KEY != '' && secrets.DOKPLOY_URL != '' }}
+        strategy:
+            matrix:
+                app: [admin, chat]
+        steps:
+            - uses: actions/checkout@v7
+            - id: image
+              run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ragpulse-${{ matrix.app }}" >> "$GITHUB_OUTPUT"
+            - uses: docker/setup-qemu-action@v4
+            - uses: docker/setup-buildx-action@v4
+            - uses: docker/login-action@v4
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+            - uses: docker/build-push-action@v7
+              with:
+                  context: .
+                  target: ${{ matrix.app }}
+                  platforms: linux/amd64,linux/arm64
+                  push: true
+                  tags: |
+                      ${{ steps.image.outputs.name }}:${{ github.sha }}
+                      ${{ steps.image.outputs.name }}:latest
+                  cache-from: type=gha,scope=${{ matrix.app }}
+                  cache-to: type=gha,scope=${{ matrix.app }},mode=max
+            - name: Redeploy in Dokploy
+              if: env.DOKPLOY_ENABLED == 'true'
+              env:
+                  DOKPLOY_APP_ID: ${{ matrix.app == 'admin' && vars.DOKPLOY_ADMIN_APP_ID || vars.DOKPLOY_CHAT_APP_ID }}
+              run: |
+                  curl -fsSL -X POST "${{ secrets.DOKPLOY_URL }}/api/application.deploy" \
+                    -H "x-api-key: ${{ secrets.DOKPLOY_API_KEY }}" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"applicationId\": \"${DOKPLOY_APP_ID}\"}"

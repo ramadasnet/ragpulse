@@ -1,0 +1,29 @@
+name: Landing page
+on:
+    push:
+        branches:
+            - master
+    workflow_dispatch:
+concurrency:
+    group: landing-${{ github.ref }}
+    cancel-in-progress: true
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v7
+            - uses: oven-sh/setup-bun@v2
+            - run: bun install --frozen-lockfile
+            - run: bun run check
+            - name: Build landing
+              run: bun run build:landing
+              env:
+                  NUXT_PUBLIC_ADMIN_URL: ${{ secrets.NUXT_PUBLIC_ADMIN_URL }}
+                  NUXT_PUBLIC_CHAT_URL: ${{ secrets.NUXT_PUBLIC_CHAT_URL }}
+            - uses: cloudflare/wrangler-action@v4
+              with:
+                  apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+                  command: pages deploy .output/public --project-name ${{ vars.CLOUDFLARE_PAGES_PROJECT || 'ragpulse' }} --branch ${{ github.ref_name }}

@@ -3,6 +3,7 @@ import {z} from "zod"
 import type {ChatTheme, Project, ProjectAccess, ProjectPermission, User} from "#shared/types"
 import {DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, isRefreshInterval, PROJECT_PERMISSIONS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
+import {DEFAULT_ESCALATION_WEBHOOK_BODY} from "#shared/utils/webhook"
 import {publicUrlIssue} from "./public-url"
 
 // ---------- Validation helpers ----------
@@ -211,7 +212,10 @@ export function buildProjectUpdate(project: Project, patch: ProjectUpdateInput):
     }
     if (patch.escalationWebhook !== undefined) {
         const webhook = patch.escalationWebhook
-        if (!webhook.url && !Object.keys(webhook.headers).length && !webhook.bodyTemplate.trim()) $unset.escalationWebhook = ""
+        const template = webhook.bodyTemplate.trim()
+        // The untouched default template doesn't count as configured data: without a URL, headers
+        // or a custom template there is nothing to store (the settings UI pre-fills the default).
+        if (!webhook.url && !Object.keys(webhook.headers).length && (!template || template === DEFAULT_ESCALATION_WEBHOOK_BODY.trim())) $unset.escalationWebhook = ""
         else $set.escalationWebhook = webhook
     }
     if (patch.theme) {

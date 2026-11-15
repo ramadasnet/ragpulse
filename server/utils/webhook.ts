@@ -41,7 +41,9 @@ export async function sendEscalationWebhook(project: Project, session: ChatSessi
             logger.warn("Webhook.escalation", `Body of project ${project._id} does not render valid JSON, webhook not sent`)
             return
         }
-        const res = await safeFetch(webhook.url, {method: "POST", headers: {"content-type": "application/json", ...webhook.headers}, body, signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS)}, "Escalation webhook", {sameOriginOnly: true})
+        const headers = new Headers(webhook.headers)
+        if (!headers.has("content-type")) headers.set("content-type", "application/json")
+        const res = await safeFetch(webhook.url, {method: "POST", headers, body, signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS)}, "Escalation webhook", {sameOriginOnly: true})
         await res.body?.cancel().catch(() => {})
         if (!res.ok) {
             logger.warn("Webhook.escalation", `Project ${project._id} webhook returned ${res.status}`)

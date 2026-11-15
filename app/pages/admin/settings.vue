@@ -103,8 +103,10 @@ const errors = computed(() => {
     const e: Partial<Record<keyof Form, string>> = {}
     if (!f) return e
     const baseUrl = f.aiProviderBaseUrl.trim()
-    if (f.customAiProvider && !baseUrl) e.aiProviderBaseUrl = "Base URL is required"
-    else if (baseUrl && !isHttpUrl(baseUrl)) e.aiProviderBaseUrl = "Enter a valid http(s) URL"
+    if (f.customAiProvider) {
+        if (!baseUrl) e.aiProviderBaseUrl = "Base URL is required"
+        else if (!isHttpUrl(baseUrl)) e.aiProviderBaseUrl = "Enter a valid http(s) URL"
+    }
     if (!f.embeddingModel.trim()) e.embeddingModel = "Choose an embedding model"
     const dims = f.embeddingDimensions.trim()
     if (dims && (!/^\d+$/.test(dims) || Number(dims) < 32 || Number(dims) > 8192)) e.embeddingDimensions = "A whole number between 32 and 8192, or empty"
@@ -181,7 +183,7 @@ async function save() {
                 method: "PATCH",
                 body: {
                     customAiProvider: f.customAiProvider,
-                    aiProviderBaseUrl: f.aiProviderBaseUrl.trim(),
+                    ...(f.customAiProvider ? {aiProviderBaseUrl: f.aiProviderBaseUrl.trim()} : {}),
                     ...(f.removeOpenrouterApiKey ? {openrouterApiKey: ""} : f.openrouterApiKey.trim() ? {openrouterApiKey: f.openrouterApiKey.trim()} : {}),
                     ...(f.removeAiProviderApiKey ? {aiProviderApiKey: ""} : f.aiProviderApiKey.trim() ? {aiProviderApiKey: f.aiProviderApiKey.trim()} : {}),
                     ...(embeddingChanged.value ? {embeddingModel: f.embeddingModel.trim(), embeddingDimensions: f.embeddingDimensions.trim() ? Number(f.embeddingDimensions) : null} : {}),
@@ -328,7 +330,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         <p class="tiny dim">{{ formatNumber(embedding?.current ?? 0) }} of {{ formatNumber(embedding?.total ?? 0) }} chunks done. Answers use the re-indexed knowledge only until this finishes.</p>
                     </div>
 
-                    <AdminModelPicker v-model="form.embeddingModel" kind="embedding" label="Embedding model" hint="Any embedding model of the configured provider. Prices are USD per 1M tokens." />
+                    <AdminModelPicker v-model="form.embeddingModel" kind="embedding" label="Embedding model" hint="Any embedding model of the configured provider. Prices are USD per 1M tokens, shown when the provider reports them." />
                     <p v-if="errors.embeddingModel" class="field-error">{{ errors.embeddingModel }}</p>
                     <UiInput
                         v-model="form.embeddingDimensions"
@@ -371,7 +373,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         description="Each code file is summarized with the whole repository as context, and an overview of how the application works is written from all summaries. Helps the assistant answer technical questions. Summaries are cached: unchanged files are never sent twice."
                     />
                     <template v-if="form.summarize">
-                        <AdminModelPicker v-model="form.codeSummaryModel" label="Summary model" hint="A fast model with a large context window works best. Prices are USD per 1M input / output tokens." />
+                        <AdminModelPicker v-model="form.codeSummaryModel" label="Summary model" hint="A fast model with a large context window works best. Prices are USD per 1M input / output tokens, shown when the provider reports them." />
                         <p v-if="errors.codeSummaryModel" class="field-error">{{ errors.codeSummaryModel }}</p>
                     </template>
                     <p v-else class="tiny dim">Code files are still indexed as plain code when a repository source includes them.</p>

@@ -109,7 +109,7 @@ async function submit() {
 
             <UiCard title="Assistant" description="Pick the model and describe how the assistant should behave.">
                 <div class="stack" style="--gap: 16px">
-                    <AdminModelPicker v-model="form.model" label="Model" placeholder="Server default model" hint="Any chat model of the configured provider. Prices are USD per 1M input / output tokens." />
+                    <AdminModelPicker v-model="form.model" label="Model" placeholder="Server default model" hint="Any chat model of the configured provider. Prices are USD per 1M input / output tokens, shown when the provider reports them." />
                     <UiTextarea v-model="form.systemInstructions" label="System instructions" :rows="14" mono hint="Combined with the retrieved knowledge on every answer." @input="onInstructionsInput">
                         <template #aside>
                             <button v-if="instructionsTouched" type="button" class="link-btn tiny" @click="resetTemplate">Reset to template</button>

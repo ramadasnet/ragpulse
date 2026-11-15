@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
     if (Object.keys(patch).length || unset.length) {
         const saved = await saveAppSettings(patch, admin._id, unset)
         if (providerChanged) {
-            logger.info("Settings.patch", `AI provider changed to ${saved.customAiProvider ? `custom (${saved.aiProviderBaseUrl})` : "OpenRouter"} by ${admin.email}`)
+            logger.info("Settings.patch", `AI provider changed to ${saved.customAiProvider ? "custom" : "OpenRouter"} by ${admin.email}`)
         }
         if (input.syncHistoryDays !== undefined && input.syncHistoryDays !== current.syncHistoryDays) {
             await purgeOldSyncRuns(await useCollections(), saved.syncHistoryDays).catch((err) => logger.warn("Settings.patch", "Sync history cleanup failed", err))

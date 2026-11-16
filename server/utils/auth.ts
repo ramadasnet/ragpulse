@@ -1,7 +1,7 @@
 import type {H3Event} from "h3"
 import {createHash, randomBytes} from "node:crypto"
 import type {ApiToken, Project, ProjectPermission, User} from "#shared/types"
-import {PROJECT_PERMISSIONS} from "#shared/types"
+import {PROJECT_PERMISSIONS} from "../../shared/types"
 
 export function sha256(value: string): string {
     return createHash("sha256").update(value).digest("hex")

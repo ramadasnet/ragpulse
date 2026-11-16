@@ -80,7 +80,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
                 )
 
                 const summary = items.length
-                    ? `${items.length} ${status === "all" ? "" : `${status} `}question(s):\n${items.map((q) => `- [${q.projectTitle}] ${q.visitorName}: "${q.question.slice(0, 140)}" (id: ${q.id}, ${q.reason}${q.visitorHasEmail ? ", visitor will be emailed" : ""})`).join("\n")}`
+                    ? `${items.length} ${status === "all" ? "" : `${status} `}question(s):\n${items.map((q) => `- [${q.projectTitle}] ${q.visitorName || "Visitor"}: "${q.question.slice(0, 140)}" (id: ${q.id}, ${q.reason}${q.visitorHasEmail ? ", visitor will be emailed" : ""})`).join("\n")}`
                     : `No ${status === "all" ? "" : `${status} `}questions.`
                 return mcpOk(summary, {questions: items})
             })

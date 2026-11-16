@@ -2,12 +2,13 @@ import {z} from "zod"
 import type {ChatSession} from "#shared/types"
 
 const schema = z.object({
-    name: z.string().trim().min(1, "Please tell us your name").max(80),
+    name: z.string().trim().max(80).optional(),
     email: z.union([z.literal(""), z.email().max(200)]).optional(),
     parentOrigin: z.string().max(300).optional()
 })
 
-// Starts a chat session for a visitor. The plain token is only returned here.
+// Starts a chat session for a visitor (anonymous until they share their details on escalation).
+// The plain token is only returned here.
 export default defineEventHandler(async (event) => {
     const project = await requireChatProject(event)
     enforceRateLimit(event, "chat-session", 20, 3600_000)
@@ -33,7 +34,7 @@ export default defineEventHandler(async (event) => {
     const session: ChatSession = {
         _id: newId(),
         projectId: project._id,
-        visitorName: name.replace(/[\r\n\t]+/g, " "),
+        visitorName: (name || "").replace(/[\r\n\t]+/g, " "),
         visitorEmail: email ? email.toLowerCase() : undefined,
         tokenHash: sha256(token),
         ipHash: hashIp(chatClientIp(event)),

@@ -75,7 +75,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                 const list = await sessions.find(filter, {projection: sessionProjection}).sort({lastMessageAt: -1}).limit(limit).toArray()
                 const items = list.map(mcpSessionView)
                 const summary = items.length
-                    ? `${items.length} session(s) in ${project.title}:\n${items.map((s) => `- ${s.visitorName} (id: ${s.id}) — ${s.messageCount} msg, ${s.unansweredCount} unanswered, last ${new Date(s.lastMessageAt).toISOString()}`).join("\n")}`
+                    ? `${items.length} session(s) in ${project.title}:\n${items.map((s) => `- ${s.visitorName || "Visitor"} (id: ${s.id}) — ${s.messageCount} msg, ${s.unansweredCount} unanswered, last ${new Date(s.lastMessageAt).toISOString()}`).join("\n")}`
                     : `No matching sessions in ${project.title}.`
                 return mcpOk(summary, {sessions: items})
             })
@@ -104,7 +104,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                     questions: related.map((q) => ({id: q._id, question: q.question, status: q.status, reason: q.reason, answer: q.answer, createdAt: q.createdAt}))
                 }
                 const transcript = items.map((m) => `[${m.role}${m.author ? `: ${m.author.name}` : ""}] ${m.content}`).join("\n")
-                return mcpOk(`Session ${session._id} with ${session.visitorName} — ${session.messageCount} message(s), ${session.unansweredCount} unanswered.\n\n${transcript}`, data)
+                return mcpOk(`Session ${session._id} with ${session.visitorName || "a visitor"} — ${session.messageCount} message(s), ${session.unansweredCount} unanswered.\n\n${transcript}`, data)
             })
     )
 
@@ -134,7 +134,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                     createdAt: new Date()
                 }
                 await commitSessionMessage(message)
-                return mcpOk(`Message posted to session ${session._id} (${session.visitorName}).`, {message: mcpMessageView(message)})
+                return mcpOk(`Message posted to session ${session._id} (${session.visitorName || "visitor"}).`, {message: mcpMessageView(message)})
             })
     )
 

@@ -11,7 +11,7 @@ const activeSessions = new Set<string>()
 
 /**
  * Sends a visitor message and streams the answer as Server-Sent Events:
- * `meta` {userMessageId} · `delta` {text} · `done` {message} · `escalated` {questionId, message, needsEmail}
+ * `meta` {userMessageId} · `delta` {text} · `done` {message} · `escalated` {questionId, message, needsDetails}
  * · `limit` {message, hasSupport} · `human` {} (a team member handles the conversation, no assistant reply) · `error` {message}
  */
 export default defineEventHandler(async (event) => {
@@ -88,7 +88,7 @@ export default defineEventHandler(async (event) => {
             for await (const ev of generateAnswer({project, session, userMessage, startedAt})) {
                 if (ev.type === "delta") send("delta", {text: ev.text})
                 else if (ev.type === "done") send("done", {message: publicChatMessage(ev.message, project)})
-                else send("escalated", {questionId: ev.question._id, message: publicChatMessage(ev.message, project), needsEmail: !session.visitorEmail})
+                else send("escalated", {questionId: ev.question._id, message: publicChatMessage(ev.message, project), needsDetails: !session.visitorEmail || !session.visitorName})
             }
         } catch (err: any) {
             logger.error("Chat.messages", `Answer failed for session ${session._id}`, err)

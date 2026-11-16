@@ -193,7 +193,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
     {name: "send_session_message", description: "Post a proactive follow-up message into a visitor's chat.", permission: "questions:reply"},
     {name: "finish_session", description: "Mark a session finished (or reopen it) and learn a sanitized FAQ from human replies.", permission: "questions:reply"},
     {name: "search_knowledge", description: "Semantic search over the project knowledge base using the chat retrieval index."},
-    {name: "get_document", description: "Read the full indexed Markdown of a page, repository file or Drive file."},
+    {name: "get_document", description: "Read the indexed Markdown of a page, repository file or Drive file, in slices (offset / max_chars)."},
     {name: "list_faqs", description: "FAQ entries of a project, optionally filtered by text."},
     {name: "add_faq", description: "Add a question/answer pair to the FAQ and index it.", permission: "sources:manage"},
     {name: "update_faq", description: "Update an existing FAQ entry and re-index it.", permission: "sources:manage"},

@@ -11,6 +11,14 @@ export default defineEventHandler(async (event) => {
         return mcpHttpError(event, 405, -32000, "Method not allowed. This MCP server is stateless: use POST.", {Allow: "POST, OPTIONS"})
     }
 
+    // Per-IP limit before any token lookup, so floods of invalid bearer tokens are rejected without touching MongoDB
+    try {
+        enforceRateLimit(event, "mcp-ip", 1200, 600_000)
+    } catch (err: any) {
+        if (err?.statusCode === 429) return mcpHttpError(event, 429, -32000, err.statusMessage || "Too many requests")
+        throw err
+    }
+
     const header = getRequestHeader(event, "authorization") || ""
     const bearer = header.match(/^Bearer\s+(\S+)$/i)?.[1]
     const auth = bearer ? await authenticateApiTokenRecord(bearer) : null

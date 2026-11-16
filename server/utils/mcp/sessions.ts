@@ -72,7 +72,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                 limit: z.number().int().min(1).max(100).default(20).describe("Max sessions to return (1-100, default 20)"),
                 query: z.string().trim().max(100).optional().describe("Case-insensitive filter on visitor name or email"),
                 since: z.string().optional().describe("Only sessions with activity at or after this ISO 8601 date/time"),
-                before: z.string().optional().describe("Pagination cursor: only sessions with activity strictly before this ISO 8601 date/time"),
+                before: z.string().optional().describe("Pagination cursor: pass the nextBefore value of the previous page (or an ISO 8601 date/time to return only sessions with activity strictly before it)"),
                 only_unanswered: z.boolean().default(false).describe("Only sessions that still have open (unanswered) questions")
             },
             annotations: {readOnlyHint: true}
@@ -81,21 +81,27 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
             mcpSafely(async () => {
                 const project = await mcpProject(ctx, project_id, "sessions:read")
                 const sinceDate = mcpParseDate(since, "since")
-                const beforeDate = mcpParseDate(before, "before")
+                const [beforeRaw, beforeId] = before?.split("|") ?? []
+                const beforeDate = mcpParseDate(beforeRaw, "before")
                 const {sessions} = await useCollections()
                 const filter: Record<string, any> = {projectId: project._id}
-                if (sinceDate || beforeDate) {
-                    filter.lastMessageAt = {...(sinceDate ? {$gte: sinceDate} : {}), ...(beforeDate ? {$lt: beforeDate} : {})}
+                const and: Record<string, any>[] = []
+                if (sinceDate) filter.lastMessageAt = {$gte: sinceDate}
+                if (beforeDate) {
+                    // Ties on lastMessageAt are broken by _id so no session is skipped between pages
+                    if (beforeId) and.push({$or: [{lastMessageAt: {$lt: beforeDate}}, {lastMessageAt: beforeDate, _id: {$lt: beforeId}}]})
+                    else and.push({lastMessageAt: {$lt: beforeDate}})
                 }
                 if (only_unanswered) filter.unansweredCount = {$gt: 0}
                 if (query) {
                     const re = {$regex: mcpEscapeRegex(query), $options: "i"}
-                    filter.$or = [{visitorName: re}, {visitorEmail: re}]
+                    and.push({$or: [{visitorName: re}, {visitorEmail: re}]})
                 }
-                const [list, settings] = await Promise.all([sessions.find(filter, {projection: sessionProjection}).sort({lastMessageAt: -1}).limit(limit).toArray(), getAppSettings()])
+                if (and.length) filter.$and = and
+                const [list, settings] = await Promise.all([sessions.find(filter, {projection: sessionProjection}).sort({lastMessageAt: -1, _id: -1}).limit(limit).toArray(), getAppSettings()])
                 const items = list.map((s) => mcpSessionView(s, settings.chatAutoCloseDays))
                 const last = list[list.length - 1]
-                const nextBefore = list.length === limit && last ? new Date(last.lastMessageAt).toISOString() : undefined
+                const nextBefore = list.length === limit && last ? `${new Date(last.lastMessageAt).toISOString()}|${last._id}` : undefined
                 const summary = items.length
                     ? `${items.length} session(s) in ${project.title}:\n${items.map((s) => `- ${s.visitorName} (id: ${s.id}) - ${s.messageCount} msg, ${s.unansweredCount} unanswered, last ${new Date(s.lastMessageAt).toISOString()}`).join("\n")}`
                     : `No matching sessions in ${project.title}.`

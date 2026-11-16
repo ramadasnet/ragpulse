@@ -41,6 +41,23 @@ async function tryIndexFaq(faq: Faq): Promise<{indexed: boolean; warning?: strin
     }
 }
 
+/** Serializes in-process operations per FAQ entry so an update can never interleave with a delete or another update (and resurrect a deleted index chunk). */
+const faqLocks = new Map<string, Promise<unknown>>()
+async function withFaqLock<T>(faqId: string, fn: () => Promise<T>): Promise<T> {
+    const previous = faqLocks.get(faqId) ?? Promise.resolve()
+    const run = previous.catch(() => undefined).then(fn)
+    const tail = run.catch(() => undefined)
+    faqLocks.set(faqId, tail)
+    try {
+        return await run
+    } finally {
+        if (faqLocks.get(faqId) === tail) faqLocks.delete(faqId)
+    }
+}
+
+const DOCUMENT_DEFAULT_CHARS = 20000
+const DOCUMENT_MAX_CHARS = 50000
+
 export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
     server.registerTool(
         "list_sources",
@@ -131,19 +148,26 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
         "get_document",
         {
             title: "Get indexed document",
-            description: "Returns the full indexed Markdown of a document (web page, git file or Drive file) from `search_knowledge`.",
+            description: `Returns the indexed Markdown of a document (web page, git file or Drive file) from \`search_knowledge\`, in slices of up to ${DOCUMENT_MAX_CHARS} characters. Pass the returned nextOffset as offset to read the next slice.`,
             inputSchema: {
                 project_id: mcpProjectIdArg,
-                document_id: z.string().min(1).describe("Document id (see search_knowledge)")
+                document_id: z.string().min(1).describe("Document id (see search_knowledge)"),
+                offset: z.number().int().min(0).default(0).describe("Character offset to start reading from (default 0)"),
+                max_chars: z.number().int().min(1).max(DOCUMENT_MAX_CHARS).default(DOCUMENT_DEFAULT_CHARS).describe(`Max characters to return (1-${DOCUMENT_MAX_CHARS}, default ${DOCUMENT_DEFAULT_CHARS})`)
             },
             annotations: {readOnlyHint: true}
         },
-        ({project_id, document_id}) =>
+        ({project_id, document_id, offset, max_chars}) =>
             mcpSafely(async () => {
                 const project = await mcpProject(ctx, project_id)
                 const {documents} = await useCollections()
                 const doc = await documents.findOne({_id: document_id, projectId: project._id})
                 if (!doc) throw new McpToolError(`Document "${document_id}" not found in project ${project.title}.`)
+                const markdown = doc.markdown ?? ""
+                const totalChars = markdown.length
+                const slice = markdown.slice(offset, offset + max_chars)
+                const end = offset + slice.length
+                const nextOffset = end < totalChars ? end : undefined
                 const document = {
                     id: doc._id,
                     sourceId: doc.sourceId,
@@ -152,10 +176,14 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
                     title: doc.title,
                     chunkCount: doc.chunkCount,
                     updatedAt: doc.updatedAt,
-                    markdown: doc.markdown
+                    totalChars,
+                    offset,
+                    ...(nextOffset !== undefined ? {nextOffset} : {})
                 }
                 const header = `# ${doc.title || doc.ref}${doc.url ? `\nURL: ${doc.url}` : `\nRef: ${doc.ref}`}`
-                return {content: [{type: "text", text: `${header}\n\n${doc.markdown}`}], structuredContent: mcpJson({document})}
+                const range = totalChars ? `\n\n[Characters ${offset}-${end} of ${totalChars}${nextOffset !== undefined ? `; call again with offset ${nextOffset} for the next slice` : ""}]` : ""
+                // The Markdown is returned once, as text; structuredContent carries only the metadata and paging info
+                return {content: [{type: "text", text: `${header}${range}\n\n${slice}`}], structuredContent: mcpJson({document})}
             })
     )
 
@@ -232,10 +260,14 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
                 const patch: Partial<Faq> = {updatedAt: new Date()}
                 if (question !== undefined) patch.question = question
                 if (answer !== undefined) patch.answer = answer
-                const faq = await faqs.findOneAndUpdate({_id: faq_id, projectId: project._id}, {$set: patch}, {returnDocument: "after"})
-                if (!faq) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)
-                const {indexed, warning} = await tryIndexFaq(faq)
-                return mcpOk(indexed ? `FAQ entry ${faq._id} updated.` : `FAQ entry ${faq._id} updated. ${warning}`, {faq: faqView(faq), indexed, warning})
+                return withFaqLock(faq_id, async () => {
+                    const faq = await faqs.findOneAndUpdate({_id: faq_id, projectId: project._id}, {$set: patch}, {returnDocument: "after"})
+                    if (!faq) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)
+                    const {indexed, warning} = await tryIndexFaq(faq)
+                    // A failed re-index must not leave the previous answer searchable
+                    if (!indexed) await removeFaqIndex(faq._id).catch((err) => logger.error("MCP.knowledge", `Could not drop stale FAQ index for ${faq._id}`, err))
+                    return mcpOk(indexed ? `FAQ entry ${faq._id} updated.` : `FAQ entry ${faq._id} updated. ${warning}`, {faq: faqView(faq), indexed, warning})
+                })
             })
     )
 
@@ -254,11 +286,15 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             mcpSafely(async () => {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {faqs, questions} = await useCollections()
-                const res = await faqs.deleteOne({_id: faq_id, projectId: project._id})
-                if (!res.deletedCount) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)
-                await removeFaqIndex(faq_id)
-                await questions.updateMany({projectId: project._id, faqId: faq_id}, {$unset: {faqId: ""}})
-                return mcpOk(`FAQ entry ${faq_id} deleted from ${project.title}.`, {faqId: faq_id, deleted: true})
+                return withFaqLock(faq_id, async () => {
+                    // The row goes last: if cleanup fails the entry still exists and the delete can simply be retried
+                    const faq = await faqs.findOne({_id: faq_id, projectId: project._id}, {projection: {_id: 1}})
+                    if (!faq) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)
+                    await removeFaqIndex(faq_id)
+                    await questions.updateMany({projectId: project._id, faqId: faq_id}, {$unset: {faqId: ""}})
+                    await faqs.deleteOne({_id: faq_id, projectId: project._id})
+                    return mcpOk(`FAQ entry ${faq_id} deleted from ${project.title}.`, {faqId: faq_id, deleted: true})
+                })
             })
     )
 }

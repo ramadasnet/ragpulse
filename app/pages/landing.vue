@@ -18,6 +18,11 @@ useHead({
 const repo = "https://github.com/ramadasnet/ragpulse"
 const docs = "https://deepwiki.com/ramadasnet/ragpulse"
 
+// Live chat: the floating launcher is served by the chat instance (NUXT_PUBLIC_CHAT_URL at build time)
+const chatProject = "hjYGYN6O8roWyns9"
+const chatBase = String(useRuntimeConfig().public.chatUrl || "").replace(/\/+$/, "")
+if (chatBase) useHead({script: [{src: `${chatBase}/embed.js`, "data-project": chatProject, async: true, tagPosition: "bodyClose"}]})
+
 const sources = [
     {icon: CircleQuestionMark, label: "FAQ"},
     {icon: Globe, label: "Websites"},

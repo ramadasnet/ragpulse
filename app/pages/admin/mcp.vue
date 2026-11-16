@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {Bot, KeyRound, Plus, Trash2, TriangleAlert, Wrench} from "lucide-vue-next"
 import type {ProjectPermission} from "#shared/types"
-import {PERMISSION_INFO} from "#shared/types"
+import {PERMISSION_INFO, PROJECT_PERMISSIONS} from "#shared/types"
 
 useHead({title: "MCP & API · RAGPulse"})
 
@@ -9,6 +9,9 @@ interface TokenRow {
     _id: string
     name: string
     prefix: string
+    projectIds?: string[]
+    permissions?: ProjectPermission[]
+    expiresAt?: string
     lastUsedAt?: string
     createdAt: string
 }
@@ -20,22 +23,56 @@ interface CreatedToken extends TokenRow {
 const toast = useToast()
 const {confirm} = useConfirm()
 const {run, pending: creating} = useAction()
+const {projects, ensure: ensureProjects} = useProjects()
 
 const endpoint = computed(() => `${publicBaseUrl("admin")}/mcp`)
 
 const {data: tokens, pending: loading, refresh, error: loadError} = await useFetch<TokenRow[]>("/api/tokens", {default: () => []})
+onMounted(() => ensureProjects())
 
 const createOpen = ref(false)
 const newName = ref("")
+const expiresInDays = ref<number>(0)
+const restrictProjects = ref(false)
+const selectedProjectIds = ref<string[]>([])
+const restrictPermissions = ref(false)
+const selectedPermissions = ref<ProjectPermission[]>([...PROJECT_PERMISSIONS])
 const nameError = ref("")
+const scopeError = ref("")
 const created = ref<CreatedToken | null>(null)
 const revoking = ref<string | null>(null)
 
-function openCreate() {
+const expiryOptions = [
+    {value: 0, label: "Never expires"},
+    {value: 7, label: "7 days"},
+    {value: 30, label: "30 days"},
+    {value: 90, label: "90 days"},
+    {value: 365, label: "1 year"}
+]
+
+const projectTitleById = computed(() => new Map(projects.value.map((p) => [p._id, p.title])))
+
+function isExpired(expiresAt?: string): boolean {
+    return !!expiresAt && new Date(expiresAt).getTime() <= Date.now()
+}
+
+function projectScopeTitle(ids?: string[]): string {
+    if (!ids?.length) return ""
+    return ids.map((id) => projectTitleById.value.get(id) || id).join(", ")
+}
+
+async function openCreate() {
     newName.value = ""
+    expiresInDays.value = 0
+    restrictProjects.value = false
+    selectedProjectIds.value = []
+    restrictPermissions.value = false
+    selectedPermissions.value = [...PROJECT_PERMISSIONS]
     nameError.value = ""
+    scopeError.value = ""
     created.value = null
     createOpen.value = true
+    await ensureProjects()
 }
 
 async function createToken() {
@@ -45,7 +82,16 @@ async function createToken() {
         return
     }
     nameError.value = ""
-    const result = await run(() => $fetch<CreatedToken>("/api/tokens", {method: "POST", body: {name}}))
+    if (restrictProjects.value && !selectedProjectIds.value.length) {
+        scopeError.value = "Select at least one project, or turn off project restriction."
+        return
+    }
+    scopeError.value = ""
+    const body: Record<string, unknown> = {name}
+    if (expiresInDays.value > 0) body.expiresInDays = expiresInDays.value
+    if (restrictProjects.value) body.projectIds = selectedProjectIds.value
+    if (restrictPermissions.value) body.permissions = selectedPermissions.value
+    const result = await run(() => $fetch<CreatedToken>("/api/tokens", {method: "POST", body}))
     if (!result) return
     created.value = result
     await refresh()
@@ -78,7 +124,7 @@ async function revoke(token: TokenRow) {
 
 type SnippetKey = "json" | "claude" | "remote" | "curl"
 const snippetTabs: Array<{key: SnippetKey; label: string; hint: string}> = [
-    {key: "json", label: "MCP config", hint: "For clients with remote (HTTP) MCP support — Claude, Cursor, VS Code, Grok, Duet, Muse and most agent frameworks."},
+    {key: "json", label: "MCP config", hint: "For clients with remote (HTTP) MCP support: Claude, Cursor, VS Code, Grok, Duet, Muse and most agent frameworks."},
     {key: "claude", label: "Claude Code", hint: "Adds the server to Claude Code from your terminal."},
     {key: "remote", label: "stdio (mcp-remote)", hint: "For clients that only support local stdio servers. Requires Node.js."},
     {key: "curl", label: "curl", hint: "Quick connectivity test: lists the available tools."}
@@ -113,20 +159,46 @@ function snippet(key: SnippetKey, token: string): string {
 const pageTab = ref<SnippetKey>("json")
 const modalTab = ref<SnippetKey>("json")
 
+function onTabKeydown(e: KeyboardEvent, current: SnippetKey, set: (key: SnippetKey) => void) {
+    const idx = snippetTabs.findIndex((t) => t.key === current)
+    let next = -1
+    if (e.key === "ArrowRight") next = (idx + 1) % snippetTabs.length
+    else if (e.key === "ArrowLeft") next = (idx - 1 + snippetTabs.length) % snippetTabs.length
+    else if (e.key === "Home") next = 0
+    else if (e.key === "End") next = snippetTabs.length - 1
+    if (next === -1) return
+    e.preventDefault()
+    set(snippetTabs[next]!.key)
+    const list = e.currentTarget as HTMLElement | null
+    const buttons = list?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    const btn = buttons?.[next]
+    btn?.focus()
+    btn?.scrollIntoView({block: "nearest", inline: "nearest"})
+}
+
+function selectTab(e: MouseEvent, set: (key: SnippetKey) => void, key: SnippetKey) {
+    set(key)
+    ;(e.currentTarget as HTMLElement | null)?.scrollIntoView({block: "nearest", inline: "nearest"})
+}
+
 const tools: Array<{name: string; description: string; permission?: ProjectPermission}> = [
     {name: "list_projects", description: "Projects you can access, with open question counts and your permissions."},
-    {name: "get_project", description: "Project details, knowledge sources summary and FAQ count."},
-    {name: "get_project_stats", description: "Sessions, messages, escalations and question counts for the last N days.", permission: "analytics:read"},
-    {name: "list_unanswered_questions", description: "Escalated visitor questions with conversation context, across projects.", permission: "questions:reply"},
-    {name: "reply_to_question", description: "Answer a question: posted into the visitor's chat and emailed; optionally added to the FAQ.", permission: "questions:reply"},
-    {name: "dismiss_question", description: "Dismiss spam, duplicates or questions that need no answer.", permission: "questions:reply"},
-    {name: "list_sessions", description: "Recent chat sessions of a project, optionally only those with open questions.", permission: "sessions:read"},
+    {name: "get_project", description: "Project details, knowledge source summary and FAQ count."},
+    {name: "get_project_stats", description: "Sessions, messages, latency, token cost, top cited sources and escalations over the last N days.", permission: "analytics:read"},
+    {name: "list_unanswered_questions", description: "Escalated visitor questions with conversation context and human-handling state.", permission: "questions:reply"},
+    {name: "reply_to_question", description: "Answer an open question: posted into the visitor's chat, emailed when away, and optionally added to the FAQ.", permission: "questions:reply"},
+    {name: "dismiss_question", description: "Dismiss spam or duplicates, or reopen a dismissed question.", permission: "questions:reply"},
+    {name: "list_sessions", description: "Recent chat sessions of a project, with visitor search and cursor pagination.", permission: "sessions:read"},
     {name: "get_session", description: "A full conversation with its messages and related questions.", permission: "sessions:read"},
     {name: "send_session_message", description: "Post a proactive follow-up message into a visitor's chat.", permission: "questions:reply"},
-    {name: "search_knowledge", description: "Semantic search over the project knowledge — the same retrieval the chat uses."},
+    {name: "finish_session", description: "Mark a session finished (or reopen it) and learn a sanitized FAQ from human replies.", permission: "questions:reply"},
+    {name: "search_knowledge", description: "Semantic search over the project knowledge base using the chat retrieval index."},
+    {name: "get_document", description: "Read the full indexed Markdown of a page, repository file or Drive file."},
     {name: "list_faqs", description: "FAQ entries of a project, optionally filtered by text."},
     {name: "add_faq", description: "Add a question/answer pair to the FAQ and index it.", permission: "sources:manage"},
-    {name: "list_sources", description: "Knowledge sources (websites, git repos) with sync status.", permission: "sources:manage"},
+    {name: "update_faq", description: "Update an existing FAQ entry and re-index it.", permission: "sources:manage"},
+    {name: "delete_faq", description: "Delete a FAQ entry and remove it from the vector index.", permission: "sources:manage"},
+    {name: "list_sources", description: "Knowledge sources (websites, git repos, Google Drive folders) with sync status.", permission: "sources:manage"},
     {name: "trigger_sync", description: "Queue an immediate re-sync of one or all sources.", permission: "sources:manage"}
 ]
 </script>
@@ -137,9 +209,9 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
             <div>
                 <div class="eyebrow">Integrations</div>
                 <h1>MCP &amp; API</h1>
-                <p>Connect your own bots and agents — Grok, Duet, Muse, Claude or any MCP client — so they can triage escalated questions, research the knowledge base and reply to visitors on your behalf.</p>
+                <p>Connect your own bots and agents - Grok, Duet, Muse, Claude or any MCP client - so they can triage escalated questions, research the knowledge base and reply to visitors on your behalf.</p>
             </div>
-            <UiButton variant="primary" @click="openCreate"> <Plus :size="16" /> Create token </UiButton>
+            <UiButton variant="primary" @click="openCreate"> <Plus :size="16" aria-hidden="true" /> Create token </UiButton>
         </header>
 
         <div class="stack" style="--gap: 20px">
@@ -159,15 +231,15 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                         </div>
                         <div>
                             <dt>Permissions</dt>
-                            <dd>Tokens act with the permissions of the user who created them.</dd>
+                            <dd>Scoped to the creator's access, optionally narrowed per token.</dd>
                         </div>
                     </dl>
                 </div>
             </UiCard>
 
-            <UiCard title="API tokens" description="Your personal tokens. Create one per bot or agent so you can revoke them individually." :pad="false">
+            <UiCard title="API tokens" description="Your personal tokens. Create one per bot or agent, optionally scoped to specific projects, permissions and an expiration date." :pad="false">
                 <template #actions>
-                    <UiButton size="sm" @click="openCreate"> <Plus :size="14" /> New </UiButton>
+                    <UiButton size="sm" @click="openCreate"> <Plus :size="14" aria-hidden="true" /> New </UiButton>
                 </template>
 
                 <div v-if="loading && !tokens?.length" class="stack token-skeleton" style="--gap: 10px">
@@ -176,7 +248,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                 <div v-else-if="loadError" class="card-pad danger-text small">{{ errorMessage(loadError) }}</div>
                 <div v-else-if="!tokens?.length" class="card-pad">
                     <UiEmpty :icon="KeyRound" title="No tokens yet" description="Create a token, then paste the generated config into your MCP client.">
-                        <UiButton variant="primary" size="sm" @click="openCreate"> <Plus :size="14" /> Create token </UiButton>
+                        <UiButton variant="primary" size="sm" @click="openCreate"> <Plus :size="14" aria-hidden="true" /> Create token </UiButton>
                     </UiEmpty>
                 </div>
                 <div v-else class="table-scroll">
@@ -185,6 +257,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                             <tr>
                                 <th scope="col">Name</th>
                                 <th scope="col">Token</th>
+                                <th scope="col">Scope</th>
                                 <th scope="col">Last used</th>
                                 <th scope="col">Created</th>
                                 <th scope="col"><span class="sr-only">Actions</span></th>
@@ -192,9 +265,23 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                         </thead>
                         <tbody>
                             <tr v-for="t in tokens" :key="t._id">
-                                <td class="strong">{{ t.name }}</td>
+                                <td>
+                                    <div class="strong">{{ t.name }}</div>
+                                    <div v-if="t.expiresAt" class="tiny" :class="isExpired(t.expiresAt) ? 'danger-text' : 'dim'">
+                                        {{ isExpired(t.expiresAt) ? `Expired ${formatDate(t.expiresAt)}` : `Expires ${formatDate(t.expiresAt)}` }}
+                                    </div>
+                                </td>
                                 <td>
                                     <code class="muted">{{ t.prefix }}…</code>
+                                </td>
+                                <td>
+                                    <span v-if="!t.projectIds && !t.permissions" class="dim small">Full access</span>
+                                    <div v-else class="row wrap" style="--gap: 6px">
+                                        <UiBadge v-if="t.projectIds" tone="neutral" :title="projectScopeTitle(t.projectIds)"> {{ t.projectIds.length }} {{ t.projectIds.length === 1 ? "project" : "projects" }} </UiBadge>
+                                        <UiBadge v-if="t.permissions" :tone="t.permissions.length ? 'accent' : 'neutral'" :title="t.permissions.join(', ') || 'Read-only knowledge access'">
+                                            {{ t.permissions.length ? `${t.permissions.length} ${t.permissions.length === 1 ? "perm" : "perms"}` : "read-only" }}
+                                        </UiBadge>
+                                    </div>
                                 </td>
                                 <td>
                                     <span v-if="t.lastUsedAt" class="row" style="--gap: 8px"><span class="dot ok" />{{ timeAgo(t.lastUsedAt) }}</span>
@@ -202,7 +289,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                                 </td>
                                 <td class="muted" :title="formatDate(t.createdAt, true)">{{ formatDate(t.createdAt) }}</td>
                                 <td class="actions">
-                                    <UiButton size="sm" variant="ghost" :loading="revoking === t._id" :aria-label="`Revoke token ${t.name}`" @click="revoke(t)"> <Trash2 :size="14" /> Revoke </UiButton>
+                                    <UiButton size="sm" variant="ghost" :loading="revoking === t._id" :aria-label="`Revoke token ${t.name}`" @click="revoke(t)"> <Trash2 :size="14" aria-hidden="true" /> Revoke </UiButton>
                                 </td>
                             </tr>
                         </tbody>
@@ -212,21 +299,33 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
 
             <UiCard pad title="Connect a client" description="Replace &lt;YOUR_TOKEN&gt; with a token. Creating a token shows these snippets pre-filled.">
                 <div class="stack" style="--gap: 12px">
-                    <div class="tabs" role="tablist" aria-label="Client configuration">
-                        <button v-for="tab in snippetTabs" :key="tab.key" role="tab" class="tab" :class="{active: pageTab === tab.key}" :aria-selected="pageTab === tab.key" @click="pageTab = tab.key">
+                    <div class="tabs" role="tablist" aria-label="Client configuration" @keydown="onTabKeydown($event, pageTab, (k) => (pageTab = k))">
+                        <button
+                            v-for="tab in snippetTabs"
+                            :id="`page-tab-${tab.key}`"
+                            :key="tab.key"
+                            type="button"
+                            role="tab"
+                            class="tab"
+                            :aria-selected="pageTab === tab.key"
+                            :tabindex="pageTab === tab.key ? 0 : -1"
+                            @click="selectTab($event, (k) => (pageTab = k), tab.key)"
+                        >
                             {{ tab.label }}
                         </button>
                     </div>
-                    <p class="muted small">{{ snippetTabs.find((t) => t.key === pageTab)?.hint }}</p>
-                    <UiCopy :value="snippet(pageTab, '<YOUR_TOKEN>')" multiline />
+                    <div role="tabpanel" :aria-labelledby="`page-tab-${pageTab}`" class="stack" style="--gap: 10px">
+                        <p class="muted small">{{ snippetTabs.find((t) => t.key === pageTab)?.hint }}</p>
+                        <UiCopy :value="snippet(pageTab, '<YOUR_TOKEN>')" multiline />
+                    </div>
                 </div>
             </UiCard>
 
-            <UiCard title="Tools" description="What connected agents can do. Each tool checks the token owner's permission on the project." :pad="false">
+            <UiCard title="Tools" description="What connected agents can do. Each tool checks the token's effective permission on the project." :pad="false">
                 <template #actions>
-                    <UiBadge tone="violet"><Wrench :size="12" /> {{ tools.length }} tools</UiBadge>
+                    <UiBadge tone="violet"><Wrench :size="12" aria-hidden="true" /> {{ tools.length }} tools</UiBadge>
                 </template>
-                <ul class="tools divider-list">
+                <ul class="tools divider-list" role="list">
                     <li v-for="tool in tools" :key="tool.name" class="tool">
                         <div class="grow">
                             <code class="tool-name">{{ tool.name }}</code>
@@ -240,7 +339,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
                 </ul>
                 <template #footer>
                     <div class="row grow small muted" style="--gap: 8px">
-                        <Bot :size="15" />
+                        <Bot :size="15" aria-hidden="true" />
                         <span>Prompt <code>answer_unanswered_questions</code> walks an agent through the escalated questions triage workflow.</span>
                     </div>
                 </template>
@@ -250,30 +349,70 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
         <UiModal
             v-model:open="createOpen"
             :title="created ? 'Token created' : 'Create API token'"
-            :description="created ? undefined : 'The token acts with your permissions. Name it after the bot or agent that will use it.'"
-            :width="created ? '680px' : '480px'"
+            :description="created ? undefined : 'Name the token after the bot or agent that will use it, and optionally narrow its scope.'"
+            :width="created ? '680px' : '520px'"
         >
-            <form v-if="!created" id="create-token" class="stack" @submit.prevent="createToken">
+            <form v-if="!created" id="create-token" class="stack" style="--gap: 16px" @submit.prevent="createToken">
                 <UiInput v-model="newName" label="Name" placeholder="e.g. Support triage bot" maxlength="80" :error="nameError" autofocus />
+                <UiSelect v-model.number="expiresInDays" label="Expiration" :options="expiryOptions" />
+
+                <UiToggle v-model="restrictProjects" label="Limit to specific projects" description="When off, the token can access every project you have access to." />
+                <fieldset v-if="restrictProjects" class="scope-box">
+                    <legend class="scope-legend">Allowed projects</legend>
+                    <p v-if="!projects.length" class="small dim">No projects available.</p>
+                    <div v-else class="scope-grid">
+                        <label v-for="p in projects" :key="p._id" class="scope-check">
+                            <input v-model="selectedProjectIds" type="checkbox" :value="p._id" />
+                            <span>{{ p.title }}</span>
+                        </label>
+                    </div>
+                    <p v-if="scopeError" class="field-error">{{ scopeError }}</p>
+                </fieldset>
+
+                <UiToggle v-model="restrictPermissions" label="Limit permissions" description="Restrict which actions this token can perform (uncheck all for read-only knowledge search)." />
+                <fieldset v-if="restrictPermissions" class="scope-box">
+                    <legend class="scope-legend">Allowed permissions</legend>
+                    <div class="stack" style="--gap: 8px">
+                        <label v-for="perm in PROJECT_PERMISSIONS" :key="perm" class="scope-check">
+                            <input v-model="selectedPermissions" type="checkbox" :value="perm" />
+                            <span>
+                                <strong>{{ PERMISSION_INFO[perm].label }}</strong>
+                                <span class="dim small"> ({{ perm }}) - {{ PERMISSION_INFO[perm].description }}</span>
+                            </span>
+                        </label>
+                    </div>
+                </fieldset>
             </form>
 
             <div v-else class="stack fade-in" style="--gap: 16px">
                 <div class="warning" role="alert">
-                    <TriangleAlert :size="16" />
-                    <span>Copy this token now — it will not be shown again. Store it like a password.</span>
+                    <TriangleAlert :size="16" aria-hidden="true" />
+                    <span>Copy this token now - it will not be shown again. Store it like a password.</span>
                 </div>
                 <UiField :label="created.name">
                     <UiCopy :value="created.token" />
                 </UiField>
                 <div class="stack" style="--gap: 10px">
                     <h3 class="section-title">Ready-to-paste config</h3>
-                    <div class="tabs" role="tablist" aria-label="Client configuration for the new token">
-                        <button v-for="tab in snippetTabs" :key="tab.key" role="tab" class="tab" :class="{active: modalTab === tab.key}" :aria-selected="modalTab === tab.key" @click="modalTab = tab.key">
+                    <div class="tabs" role="tablist" aria-label="Client configuration for the new token" @keydown="onTabKeydown($event, modalTab, (k) => (modalTab = k))">
+                        <button
+                            v-for="tab in snippetTabs"
+                            :id="`modal-tab-${tab.key}`"
+                            :key="tab.key"
+                            type="button"
+                            role="tab"
+                            class="tab"
+                            :aria-selected="modalTab === tab.key"
+                            :tabindex="modalTab === tab.key ? 0 : -1"
+                            @click="selectTab($event, (k) => (modalTab = k), tab.key)"
+                        >
                             {{ tab.label }}
                         </button>
                     </div>
-                    <p class="muted small">{{ snippetTabs.find((t) => t.key === modalTab)?.hint }}</p>
-                    <UiCopy :value="snippet(modalTab, created.token)" multiline />
+                    <div role="tabpanel" :aria-labelledby="`modal-tab-${modalTab}`" class="stack" style="--gap: 10px">
+                        <p class="muted small">{{ snippetTabs.find((t) => t.key === modalTab)?.hint }}</p>
+                        <UiCopy :value="snippet(modalTab, created.token)" multiline />
+                    </div>
                 </div>
             </div>
 
@@ -330,7 +469,9 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
 .tabs {
     display: flex;
     gap: 4px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
     padding: 3px;
     background: var(--bg-elev);
     border: 1px solid var(--border);
@@ -338,7 +479,13 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
     width: fit-content;
     max-width: 100%;
 }
+.tabs::-webkit-scrollbar {
+    display: none;
+}
 .tab {
+    position: relative;
+    flex: none;
+    min-block-size: 30px;
     background: none;
     border: 0;
     color: var(--text-muted);
@@ -353,9 +500,46 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
 .tab:hover {
     color: var(--text);
 }
-.tab.active {
+.tab[aria-selected="true"] {
     background: var(--surface-3);
     color: var(--text);
+}
+.tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    inset: auto 8px 0;
+    border-block-end: 2px solid var(--accent);
+}
+
+.scope-box {
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-elev);
+}
+.scope-legend {
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.scope-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+}
+.scope-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    min-block-size: 24px;
+    cursor: pointer;
+}
+.scope-check input {
+    margin-top: 3px;
+    accent-color: var(--accent);
 }
 
 .tools {

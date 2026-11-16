@@ -301,6 +301,7 @@ Create a token in **MCP & API**, then point any MCP client at `https://admin.rag
 }
 ```
 
-Tools include `list_projects`, `list_sessions`, `get_session`, `finish_session`, `list_unanswered_questions`, `reply_to_question`,
-`dismiss_question`, `send_session_message`, `trigger_sync`, `list_sources`, `search_knowledge`, `add_faq`, `list_faqs` and
-`get_project_stats`. Tokens act with the permissions of the user who created them.
+Tools include `list_projects`, `get_project`, `get_project_stats`, `list_sessions`, `get_session`, `send_session_message`,
+`finish_session`, `list_unanswered_questions`, `reply_to_question`, `dismiss_question`, `search_knowledge`, `get_document`,
+`list_faqs`, `add_faq`, `update_faq`, `delete_faq`, `list_sources` and `trigger_sync`. Tokens act with the permissions of the user
+who created them and can optionally be scoped to specific projects, permissions and an expiration period.

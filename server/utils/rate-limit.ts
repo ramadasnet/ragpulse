@@ -20,12 +20,12 @@ export function chatClientIp(event: H3Event): string {
 }
 
 /**
- * Records a hit for `bucket` + client IP and throws 429 when more than `limit` hits happened within `windowMs`.
+ * Records a hit for `bucket` + `subject` (defaults to client IP) and throws 429 when more than `limit` hits happened within `windowMs`.
  */
-export function enforceRateLimit(event: H3Event, bucket: string, limit: number, windowMs: number): void {
+export function enforceRateLimit(event: H3Event, bucket: string, limit: number, windowMs: number, subject?: string): void {
     const now = Date.now()
     sweep(now)
-    const key = `${bucket}:${chatClientIp(event)}`
+    const key = `${bucket}:${subject || chatClientIp(event)}`
     const hits = (windows.get(key) || []).filter((t) => now - t < windowMs)
     if (hits.length >= limit) {
         windows.set(key, hits)

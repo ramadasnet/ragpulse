@@ -1,8 +1,9 @@
 import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js"
 import {z} from "zod"
 import type {Faq} from "#shared/types"
-import {type McpContext, McpToolError, mcpEscapeRegex, mcpOk, mcpProject, mcpSafely, mcpTruncate} from "./context"
+import {type McpContext, McpToolError, mcpEscapeRegex, mcpJson, mcpOk, mcpProject, mcpSafely, mcpTruncate} from "./context"
 import {mcpProjectIdArg} from "./projects"
+import {RAG_MIN_SCORE} from "../rag"
 import logger from "../logger"
 
 function sourceView(source: Parameters<typeof serializeSource>[0]) {
@@ -26,6 +27,18 @@ function sourceView(source: Parameters<typeof serializeSource>[0]) {
 
 function faqView(f: Faq) {
     return {id: f._id, question: f.question, answer: f.answer, updatedAt: f.updatedAt}
+}
+
+/** Indexes a FAQ entry and captures any embedding error as a non-fatal warning. */
+async function tryIndexFaq(faq: Faq): Promise<{indexed: boolean; warning?: string}> {
+    try {
+        await indexFaq(faq)
+        return {indexed: true}
+    } catch (err: any) {
+        const warning = `FAQ saved but indexing failed: ${err?.message || err}`
+        logger.error("MCP.knowledge", `FAQ indexing failed for ${faq._id}`, err)
+        return {indexed: false, warning}
+    }
 }
 
 export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
@@ -78,7 +91,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
         "search_knowledge",
         {
             title: "Search knowledge",
-            description: "Semantic search over a project's knowledge base (FAQ, websites, repos) — the same retrieval the chat assistant uses. Use it to research answers before replying to visitors.",
+            description: "Semantic search over a project's knowledge base (FAQ, websites, repos, Drive) using the same retrieval as the chat assistant. Returns documentId/faqId so you can inspect full documents or update FAQs.",
             inputSchema: {
                 project_id: mcpProjectIdArg,
                 query: z.string().trim().min(1).max(2000).describe("What to search for (natural language)"),
@@ -95,14 +108,54 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
                     url: h.url,
                     heading: h.heading,
                     sourceType: h.sourceType,
+                    ...(h.sourceType === "faq" ? {faqId: h.documentId} : {documentId: h.documentId, sourceId: h.sourceId}),
                     score: Math.round(h.score * 1000) / 1000,
+                    ...(h.score < RAG_MIN_SCORE ? {belowChatThreshold: true} : {}),
                     content: mcpTruncate(h.content, 2000)
                 }))
                 const summary = items.length
-                    ? `${items.length} result(s) for "${query}" in ${project.title}:\n\n${items.map((h, i) => `### ${i + 1}. ${h.title}${h.heading && h.heading !== h.title ? ` — ${h.heading}` : ""} (score ${h.score})${h.url ? `\n${h.url}` : ""}\n${h.content}`).join("\n\n")}`
+                    ? `${items.length} result(s) for "${query}" in ${project.title}:\n\n${items
+                          .map((h, i) => {
+                              const idNote = "faqId" in h ? `, faqId: ${h.faqId}` : `, documentId: ${h.documentId}`
+                              const thresholdNote = h.belowChatThreshold ? ", below chat threshold" : ""
+                              return `### ${i + 1}. ${h.title}${h.heading && h.heading !== h.title ? ` - ${h.heading}` : ""} (score ${h.score}${thresholdNote}${idNote})${h.url ? `\n${h.url}` : ""}\n${h.content}`
+                          })
+                          .join("\n\n")}`
                     : `No knowledge found for "${query}" in ${project.title}.`
                 // Text already contains the hits; avoid duplicating them as JSON in the text content
-                return {content: [{type: "text", text: summary}], structuredContent: {results: JSON.parse(JSON.stringify(items))}}
+                return {content: [{type: "text", text: summary}], structuredContent: {results: mcpJson(items)}}
+            })
+    )
+
+    server.registerTool(
+        "get_document",
+        {
+            title: "Get indexed document",
+            description: "Returns the full indexed Markdown of a document (web page, git file or Drive file) from `search_knowledge`.",
+            inputSchema: {
+                project_id: mcpProjectIdArg,
+                document_id: z.string().min(1).describe("Document id (see search_knowledge)")
+            },
+            annotations: {readOnlyHint: true}
+        },
+        ({project_id, document_id}) =>
+            mcpSafely(async () => {
+                const project = await mcpProject(ctx, project_id)
+                const {documents} = await useCollections()
+                const doc = await documents.findOne({_id: document_id, projectId: project._id})
+                if (!doc) throw new McpToolError(`Document "${document_id}" not found in project ${project.title}.`)
+                const document = {
+                    id: doc._id,
+                    sourceId: doc.sourceId,
+                    ref: doc.ref,
+                    url: doc.url,
+                    title: doc.title,
+                    chunkCount: doc.chunkCount,
+                    updatedAt: doc.updatedAt,
+                    markdown: doc.markdown
+                }
+                const header = `# ${doc.title || doc.ref}${doc.url ? `\nURL: ${doc.url}` : `\nRef: ${doc.ref}`}`
+                return {content: [{type: "text", text: `${header}\n\n${doc.markdown}`}], structuredContent: mcpJson({document})}
             })
     )
 
@@ -141,8 +194,8 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             description: "Adds a question/answer pair to the project FAQ and indexes it so the chat assistant can use it. Requires sources:manage.",
             inputSchema: {
                 project_id: mcpProjectIdArg,
-                question: z.string().trim().min(3).max(1000).describe("The question, phrased as a visitor would ask it"),
-                answer: z.string().trim().min(1).max(8000).describe("The answer (markdown)")
+                question: z.string().trim().min(1).max(1000).describe("The question, phrased as a visitor would ask it"),
+                answer: z.string().trim().min(1).max(20000).describe("The answer (markdown)")
             },
             annotations: {readOnlyHint: false, destructiveHint: false}
         },
@@ -153,16 +206,59 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
                 const now = new Date()
                 const faq: Faq = {_id: newId(), projectId: project._id, question, answer, createdAt: now, updatedAt: now}
                 await faqs.insertOne(faq)
-                let indexed = true
-                let warning: string | undefined
-                try {
-                    await indexFaq(faq)
-                } catch (err: any) {
-                    indexed = false
-                    warning = `FAQ saved but indexing failed: ${err?.message || err}`
-                    logger.error("MCP.knowledge", `FAQ indexing failed for ${faq._id}`, err)
-                }
+                const {indexed, warning} = await tryIndexFaq(faq)
                 return mcpOk(indexed ? `FAQ entry added to ${project.title} (id: ${faq._id}).` : `FAQ entry added to ${project.title} (id: ${faq._id}). ${warning}`, {faq: faqView(faq), indexed, warning})
+            })
+    )
+
+    server.registerTool(
+        "update_faq",
+        {
+            title: "Update FAQ entry",
+            description: "Updates an existing FAQ question and/or answer and re-indexes it. Requires sources:manage.",
+            inputSchema: {
+                project_id: mcpProjectIdArg,
+                faq_id: z.string().min(1).describe("FAQ id (see list_faqs or search_knowledge)"),
+                question: z.string().trim().min(1).max(1000).optional().describe("Updated question text"),
+                answer: z.string().trim().min(1).max(20000).optional().describe("Updated answer (markdown)")
+            },
+            annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true}
+        },
+        ({project_id, faq_id, question, answer}) =>
+            mcpSafely(async () => {
+                if (question === undefined && answer === undefined) throw new McpToolError("Provide at least one of question or answer to update.")
+                const project = await mcpProject(ctx, project_id, "sources:manage")
+                const {faqs} = await useCollections()
+                const patch: Partial<Faq> = {updatedAt: new Date()}
+                if (question !== undefined) patch.question = question
+                if (answer !== undefined) patch.answer = answer
+                const faq = await faqs.findOneAndUpdate({_id: faq_id, projectId: project._id}, {$set: patch}, {returnDocument: "after"})
+                if (!faq) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)
+                const {indexed, warning} = await tryIndexFaq(faq)
+                return mcpOk(indexed ? `FAQ entry ${faq._id} updated.` : `FAQ entry ${faq._id} updated. ${warning}`, {faq: faqView(faq), indexed, warning})
+            })
+    )
+
+    server.registerTool(
+        "delete_faq",
+        {
+            title: "Delete FAQ entry",
+            description: "Deletes a FAQ entry and removes it from the vector index. Requires sources:manage.",
+            inputSchema: {
+                project_id: mcpProjectIdArg,
+                faq_id: z.string().min(1).describe("FAQ id (see list_faqs)")
+            },
+            annotations: {readOnlyHint: false, destructiveHint: true, idempotentHint: true}
+        },
+        ({project_id, faq_id}) =>
+            mcpSafely(async () => {
+                const project = await mcpProject(ctx, project_id, "sources:manage")
+                const {faqs, questions} = await useCollections()
+                const res = await faqs.deleteOne({_id: faq_id, projectId: project._id})
+                if (!res.deletedCount) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)
+                await removeFaqIndex(faq_id)
+                await questions.updateMany({projectId: project._id, faqId: faq_id}, {$unset: {faqId: ""}})
+                return mcpOk(`FAQ entry ${faq_id} deleted from ${project.title}.`, {faqId: faq_id, deleted: true})
             })
     )
 }

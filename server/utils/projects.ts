@@ -3,6 +3,7 @@ import {z} from "zod"
 import type {ChatTheme, Project, ProjectAccess, ProjectPermission, User} from "#shared/types"
 import {DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, isRefreshInterval, PROJECT_PERMISSIONS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
+import {DEFAULT_ESCALATION_WEBHOOK_BODY} from "#shared/utils/webhook"
 import {publicUrlIssue} from "./public-url"
 
 // ---------- Validation helpers ----------
@@ -21,6 +22,26 @@ export async function readZodBody<T extends z.ZodType>(event: H3Event, schema: T
     const result = schema.safeParse(body ?? {})
     if (!result.success) throw createError({statusCode: 400, statusMessage: zodErrorMessage(result.error)})
     return result.data
+}
+
+/** True when the URL embeds credentials (`https://user:pass@host`), which `fetch` refuses. */
+function hasUrlCredentials(value: string): boolean {
+    try {
+        const url = new URL(value)
+        return !!url.username || !!url.password
+    } catch {
+        return false
+    }
+}
+
+/**
+ * The project as shown to a user: the escalation webhook (target URL and auth headers) is a secret
+ * that only users who can edit settings get back, everyone else with access to the project doesn't.
+ */
+export function projectForUser<T extends Project>(user: User, project: T): T {
+    if (!project.escalationWebhook || projectPermissions(user, project._id).includes("settings:edit")) return project
+    const {escalationWebhook: _hidden, ...visible} = project
+    return visible as T
 }
 
 export function isHttpUrl(value: string): boolean {
@@ -69,6 +90,31 @@ const websiteSchema = z
     .refine((v) => !publicUrlIssue(v), "Website can't point to a private or reserved address")
 
 const systemInstructionsSchema = z.string().max(20_000)
+
+/** Header name token per RFC 7230; values can't carry control characters. */
+const headerNameSchema = z
+    .string()
+    .trim()
+    .regex(/^[!#$%&'*+.^_`|~0-9a-zA-Z-]+$/, "Invalid header name")
+const escalationWebhookSchema = z.object({
+    url: z
+        .string()
+        .trim()
+        .max(2000)
+        .refine((v) => !v || isHttpUrl(v), "Webhook URL must be a valid http(s) URL")
+        .refine((v) => !v || !hasUrlCredentials(v), "Webhook URL can't include a username or password, use a header instead")
+        .refine((v) => !v || !publicUrlIssue(v), "Webhook URL can't point to a private or reserved address"),
+    headers: z
+        .record(
+            headerNameSchema,
+            z
+                .string()
+                .max(2000)
+                .refine((v) => !/[\x00-\x1f\x7f]/u.test(v), "Invalid header value")
+        )
+        .refine((h) => Object.keys(h).length <= 20, "At most 20 headers"),
+    bodyTemplate: z.string().max(50_000)
+})
 
 const modelSchema = z
     .string()
@@ -124,6 +170,7 @@ export const projectUpdateSchema = z
         icon: z.union([z.literal(""), iconSchema]),
         refreshIntervalHours: z.number().refine(isRefreshInterval, "Manual only (0) or 1 to 336 hours"),
         ingestDetail: z.enum(INGEST_DETAILS),
+        escalationWebhook: escalationWebhookSchema,
         showCodeSources: z.boolean(),
         theme: themePatchSchema,
         enabled: z.boolean()
@@ -184,6 +231,14 @@ export function buildProjectUpdate(project: Project, patch: ProjectUpdateInput):
         }
         $set.allowedDomains = normalized
     }
+    if (patch.escalationWebhook !== undefined) {
+        const webhook = patch.escalationWebhook
+        const template = webhook.bodyTemplate.trim()
+        // The untouched default template doesn't count as configured data: without a URL, headers
+        // or a custom template there is nothing to store (the settings UI pre-fills the default).
+        if (!webhook.url && !Object.keys(webhook.headers).length && (!template || template === DEFAULT_ESCALATION_WEBHOOK_BODY.trim())) $unset.escalationWebhook = ""
+        else $set.escalationWebhook = webhook
+    }
     if (patch.theme) {
         const theme: ChatTheme = {...DEFAULT_THEME, ...project.theme}
         for (const [key, value] of Object.entries(patch.theme)) {
@@ -229,7 +284,7 @@ export async function listProjectSummaries(user: User) {
         countByProject(questions, {...inProjects, status: "open"})
     ])
     return list.map((project) => ({
-        ...project,
+        ...projectForUser(user, project),
         permissions: projectPermissions(user, project._id) as ProjectPermission[],
         stats: {
             sources: s.get(project._id) ?? 0,

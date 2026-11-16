@@ -3,6 +3,7 @@ import {AlertTriangle, Globe, ImageUp, RotateCcw, Trash2} from "lucide-vue-next"
 import type {IngestDetail, Project, ProjectPermission} from "#shared/types"
 import {INGEST_DETAIL_INFO, INGEST_DETAILS, MANUAL_REFRESH, projectIngestDetail, REFRESH_PRESETS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
+import {DEFAULT_ESCALATION_WEBHOOK_BODY, ESCALATION_WEBHOOK_PLACEHOLDERS} from "#shared/utils/webhook"
 
 type ProjectWithPerms = Project & {permissions: ProjectPermission[]}
 
@@ -31,6 +32,9 @@ interface Form {
     supportEmail: string
     refreshIntervalHours: number
     ingestDetail: IngestDetail
+    webhookUrl: string
+    webhookHeaders: string
+    webhookBody: string
 }
 
 function toForm(p: Project): Form {
@@ -45,8 +49,25 @@ function toForm(p: Project): Form {
         rateLimit: p.rateLimit,
         supportEmail: p.supportEmail || "",
         refreshIntervalHours: p.refreshIntervalHours,
-        ingestDetail: projectIngestDetail(p)
+        ingestDetail: projectIngestDetail(p),
+        webhookUrl: p.escalationWebhook?.url || "",
+        webhookHeaders: Object.entries(p.escalationWebhook?.headers || {})
+            .map(([name, value]) => `${name}: ${value}`)
+            .join("\n"),
+        webhookBody: p.escalationWebhook?.bodyTemplate || DEFAULT_ESCALATION_WEBHOOK_BODY
     }
+}
+
+/** Parses the headers textarea (`Name: value` per line) into the stored record. */
+function parseHeaders(text: string): Record<string, string> {
+    const headers: Record<string, string> = {}
+    for (const line of text.split("\n")) {
+        const at = line.indexOf(":")
+        if (at === -1) continue
+        const name = line.slice(0, at).trim()
+        if (name) headers[name] = line.slice(at + 1).trim()
+    }
+    return headers
 }
 
 const form = ref<Form | null>(null)
@@ -78,6 +99,21 @@ const errors = computed(() => {
     }
     if (f.supportEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.supportEmail.trim())) e.supportEmail = "Enter a valid email"
     if (!Number.isInteger(Number(f.rateLimit)) || f.rateLimit < 0 || f.rateLimit > 1000) e.rateLimit = "Between 0 and 1000"
+    if (f.webhookUrl.trim()) {
+        try {
+            const u = new URL(f.webhookUrl.trim())
+            if (!/^https?:$/.test(u.protocol)) e.webhookUrl = "Must be an http(s) URL"
+        } catch {
+            e.webhookUrl = "Enter a valid URL, e.g. https://example.com/hook"
+        }
+    }
+    for (const line of f.webhookHeaders.split("\n")) {
+        const t = line.trim()
+        if (t && !/^[!#$%&'*+.^_`|~0-9a-zA-Z-]+\s*:/.test(t)) {
+            e.webhookHeaders = "One header per line, as Name: value"
+            break
+        }
+    }
     if (!f.model.trim()) e.model = "Choose a model"
     return e
 })
@@ -101,6 +137,9 @@ const temperatureLabel = computed(() => {
     return "Wild"
 })
 
+const webhookUrlPlaceholder = "https://example.com/hooks/escalated"
+const webhookBodyHint = `Placeholders render a JSON value, quoted or not: ${ESCALATION_WEBHOOK_PLACEHOLDERS.map((p) => `{{${p}}}`).join(", ")}`
+
 const {run, pending} = useAction()
 
 async function save() {
@@ -122,7 +161,8 @@ async function save() {
                     rateLimit: Number(f.rateLimit),
                     supportEmail: f.supportEmail.trim(),
                     refreshIntervalHours: Number(f.refreshIntervalHours),
-                    ingestDetail: f.ingestDetail
+                    ingestDetail: f.ingestDetail,
+                    escalationWebhook: {url: f.webhookUrl.trim(), headers: parseHeaders(f.webhookHeaders), bodyTemplate: f.webhookBody}
                 }
             }),
         reindex ? "Settings saved, sources are being re-indexed" : "Settings saved"
@@ -138,6 +178,10 @@ function discard() {
 
 function insertTemplate() {
     if (form.value) form.value.systemInstructions = defaultSystemInstructions(form.value.title, form.value.website)
+}
+
+function resetWebhookBody() {
+    if (form.value) form.value.webhookBody = DEFAULT_ESCALATION_WEBHOOK_BODY
 }
 
 // ----- Project icon -----
@@ -323,6 +367,28 @@ async function deleteProject() {
                 <div class="grid-2">
                     <UiInput v-model.number="form.rateLimit" type="number" min="0" max="1000" label="Messages per conversation" :error="errors.rateLimit" hint="Visitor messages before the chat offers to contact support. 0 = unlimited." />
                     <UiInput v-model="form.supportEmail" type="email" label="Support email" optional placeholder="support@example.com" :error="errors.supportEmail" hint="Receives escalated questions. Leave empty to disable email escalation." />
+                </div>
+            </UiCard>
+
+            <UiCard title="Escalation webhook" description="POST a JSON event to your endpoint whenever a question is escalated. Leave the URL empty to disable it.">
+                <div class="stack" style="--gap: 18px">
+                    <UiInput v-model="form.webhookUrl" label="Webhook URL" optional inputmode="url" :placeholder="webhookUrlPlaceholder" :error="errors.webhookUrl" hint="Public http(s) endpoint by default; private URLs need RAGPULSE_ALLOW_PRIVATE_URLS=true." />
+                    <UiTextarea
+                        v-model="form.webhookHeaders"
+                        label="Headers"
+                        optional
+                        :rows="3"
+                        mono
+                        spellcheck="false"
+                        placeholder="Authorization: Bearer …"
+                        :error="errors.webhookHeaders"
+                        hint="One header per line, as Name: value. Content-Type: application/json is sent by default."
+                    />
+                    <UiTextarea v-model="form.webhookBody" label="Body template" optional :rows="14" mono spellcheck="false" :error="errors.webhookBody" :hint="webhookBodyHint">
+                        <template #aside>
+                            <button type="button" class="link-btn tiny" @click="resetWebhookBody"><RotateCcw :size="12" /> Default body</button>
+                        </template>
+                    </UiTextarea>
                 </div>
             </UiCard>
 

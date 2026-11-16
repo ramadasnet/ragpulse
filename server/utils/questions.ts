@@ -57,6 +57,9 @@ export async function createQuestion(params: {project: Project; session: ChatSes
         }
     }
 
+    // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)
+    void sendEscalationWebhook(project, session, question)
+
     return question
 }
 

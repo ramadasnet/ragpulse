@@ -114,7 +114,7 @@ All settings are environment variables, see [`.env.example`](.env.example). Both
 | `NUXT_ANSWER_EMAIL_DELAY_MINUTES`                                                    | Minutes before an answer is emailed to a visitor who isn't in the chat (default 10, max 1440). Change it on **Global Settings** instead       |
 | `RAGPULSE_LOG_LEVEL`                                                                 | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                                        |
 | `RAGPULSE_LOG_JSON`                                                                  | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                                       |
-| `RAGPULSE_ALLOW_PRIVATE_URLS`                                                        | Allow source, branding and AI-provider URLs pointing at private/internal addresses (intranet installs, local inference). Keep unset otherwise |
+| `RAGPULSE_ALLOW_PRIVATE_URLS`                                                        | Allow source, branding, AI-provider and webhook URLs at private/internal addresses (intranet installs, local inference). Keep unset otherwise |
 
 ### Global Settings page
 
@@ -234,7 +234,9 @@ Projects without a preset use **Balanced**. Code summaries and vision results ar
 
 Visitors tell the chat how they want to be called, then ask away. Answers are generated from the retrieved knowledge only. When the
 model can't answer confidently, the visitor asks to talk to a human (in any language), or a visitor hits the rate limit, the
-question becomes an **escalated question**: it's emailed to the project's support email and shows up in the admin inbox and over MCP. Replies (from the admin UI or an agent via MCP) are posted
+question becomes an **escalated question**: it's emailed to the project's support email and shows up in the admin inbox and over MCP. Projects can also get the
+event pushed to an HTTP endpoint: **Settings → Escalation webhook** POSTs the escalation as JSON, with an editable `{{placeholder}}` body template (project, chat URL, visitor,
+question and up to 500 conversation messages) and optional headers. Replies (from the admin UI or an agent via MCP) are posted
 into the visitor's chat and added to the project FAQ (once per question, with a link from the answered question to view or
 delete the entry). Visitors who left an email only get it by email when they don't see it in the chat: the chat reports when it's
 open and visible (the embed widget also tells it when it's closed). Visitors in the chat are never emailed; otherwise the email

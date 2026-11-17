@@ -14,6 +14,7 @@ const sid = computed(() => String(route.params.sid))
 const allowed = await guardProjectPage(projectId.value!, "sessions:read")
 const {can} = useMe()
 const canReply = computed(() => can(projectId.value, "questions:reply"))
+const modifierKey = useModifierKey()
 
 const {data, error, status, refresh} = useFetch<Detail>(() => `/api/projects/${projectId.value}/sessions/${sid.value}`, {
     lazy: true,
@@ -185,7 +186,9 @@ function dayLabel(i: number): string | null {
                     <label class="sr-only" for="reply">Reply as support</label>
                     <textarea id="reply" v-model="reply" class="control" rows="3" maxlength="8000" placeholder="Reply to the visitor as a human agent… (Markdown supported)" @keydown="onKeydown" />
                     <div class="row between">
-                        <span class="tiny dim">Shown in the visitor's chat. <span class="kbd">⌘</span> + <span class="kbd">Enter</span> to send</span>
+                        <span class="tiny dim">
+                            Shown in the visitor's chat. <span class="kbd">{{ modifierKey }}</span> + <span class="kbd">Enter</span> to send
+                        </span>
                         <UiButton type="submit" variant="primary" size="sm" :loading="pending" :disabled="!reply.trim()"><Send :size="14" /> Send reply</UiButton>
                     </div>
                 </form>

@@ -41,7 +41,7 @@ export async function createQuestion(params: {project: Project; session: ChatSes
     if (project.supportEmail) {
         const link = publicUrl("admin", `/admin/projects/${project._id}/questions?q=${question._id}`)
         const reasonLabel = {low_confidence: "The assistant could not answer confidently", rate_limit: "The visitor reached the message limit", user_request: "The visitor asked to contact support"}[params.reason]
-        const sent = await sendMail({
+        void sendMail({
             to: project.supportEmail,
             replyTo: visitorEmail,
             subject: `[${project.title}] New question from ${session.visitorName}`,
@@ -51,10 +51,13 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 <blockquote style="border-left:3px solid #7c5cff;margin:0;padding:8px 12px;white-space:pre-wrap">${escapeHtml(question.question)}</blockquote>
 <p><a href="${escapeHtml(link)}">Reply in RAGPulse</a></p>`
         })
-        if (sent) {
-            question.supportNotifiedAt = new Date()
-            await questions.updateOne({_id: question._id}, {$set: {supportNotifiedAt: question.supportNotifiedAt}})
-        }
+            .then(async (sent) => {
+                if (sent) {
+                    question.supportNotifiedAt = new Date()
+                    await questions.updateOne({_id: question._id}, {$set: {supportNotifiedAt: question.supportNotifiedAt}})
+                }
+            })
+            .catch((err) => logger.error("Questions.create", `Support notification failed for ${question._id}`, err))
     }
 
     // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)

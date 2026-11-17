@@ -117,8 +117,8 @@ const composerHint = computed(() => {
     const q = selected.value
     if (!q) return undefined
     const parts: string[] = []
-    if (setMode.value) parts.push(`Summarized from ${chatReplies.value} ${chatReplies.value === 1 ? "reply" : "replies"} in the conversation, posted to the chat and saved as the answer.`)
-    else parts.push("Posted in the visitor's chat.")
+    if (setMode.value) parts.push(`Summarized from ${chatReplies.value} ${chatReplies.value === 1 ? "reply" : "replies"} in the conversation, posted to the chat (if the conversation is still open) and saved as the answer.`)
+    else parts.push("Posted in the visitor's chat if the conversation is still open.")
     if (!q.faqId && q.status === "open") parts.push("Added to the FAQ.")
     if (q.visitorEmail) parts.push(`Emailed to ${q.visitorEmail} only if they don't see it in the chat.`)
     return parts.join(" ")

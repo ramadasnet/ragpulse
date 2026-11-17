@@ -239,20 +239,27 @@ export async function replyToQuestion(params: {
     // When sanitizing removes everything the answer was only personal data, so no FAQ entry is created
     const faqAnswer = params.addToFaq !== false && !question.faqId ? cleanFaqText(answer, question, project.supportEmail, 8000) : ""
     if (faqAnswer) {
-        // The conversation was finished after the question was asked: its learned FAQ already covers it, so it becomes this question's entry
-        const learned = session?.learnedFaqId ? await faqs.findOne({_id: session.learnedFaqId, projectId: project._id}) : null
-        if (learned && new Date(learned.updatedAt) >= new Date(question.createdAt)) {
-            faq = {...learned, answer: faqAnswer, updatedAt: now}
-            await faqs.updateOne({_id: learned._id}, {$set: {answer: faqAnswer, updatedAt: now}})
-            await sessions.updateOne({_id: question.sessionId}, {$unset: {learnedFaqId: ""}})
-        } else {
-            // Scrub personal data from both the visitor's question and conversational greetings in the reply
-            const faqQuestion = cleanFaqText(question.question, question, project.supportEmail, 1000) || "Visitor question"
-            faq = {_id: newId(), projectId: project._id, question: faqQuestion, answer: faqAnswer, sessionId: question.sessionId, createdAt: now, updatedAt: now}
-            await faqs.insertOne(faq)
+        try {
+            // The conversation was finished after the question was asked: its learned FAQ already covers it, so it becomes this question's entry
+            const learned = session?.learnedFaqId ? await faqs.findOne({_id: session.learnedFaqId, projectId: project._id}) : null
+            if (learned && new Date(learned.updatedAt) >= new Date(question.createdAt)) {
+                faq = {...learned, answer: faqAnswer, updatedAt: now}
+                await faqs.updateOne({_id: learned._id}, {$set: {answer: faqAnswer, updatedAt: now}})
+                await sessions.updateOne({_id: question.sessionId}, {$unset: {learnedFaqId: ""}})
+            } else {
+                // Scrub personal data from both the visitor's question and conversational greetings in the reply
+                const faqQuestion = cleanFaqText(question.question, question, project.supportEmail, 1000) || "Visitor question"
+                faq = {_id: newId(), projectId: project._id, question: faqQuestion, answer: faqAnswer, sessionId: question.sessionId, createdAt: now, updatedAt: now}
+                await faqs.insertOne(faq)
+            }
+            update.faqId = faq._id
+            await indexFaq(faq).catch((err) => logger.error("Questions.reply", `FAQ indexing failed for ${faq!._id}`, err))
+        } catch (err) {
+            // The answer is already posted: a failed FAQ write must not fail the request, or a retry would post it again
+            logger.error("Questions.reply", `FAQ entry for question ${question._id} failed`, err)
+            faq = undefined
+            delete update.faqId
         }
-        update.faqId = faq._id
-        await indexFaq(faq).catch((err) => logger.error("Questions.reply", `FAQ indexing failed for ${faq!._id}`, err))
     }
 
     // Conditional so a concurrent dismiss or reopen is never overwritten
@@ -339,13 +346,14 @@ Rules:
 export async function extractEscalatedQuestion(project: Project, history: ChatMessage[], userMessage: ChatMessage, humanRequested: boolean): Promise<string> {
     const prior = history.filter((m) => m.role === "user" && m._id !== userMessage._id && m.content.trim())
     const fallback = (humanRequested && prior.length ? prior[prior.length - 1]!.content : userMessage.content).trim().slice(0, 4000)
-    if (!(await hasAiProvider())) return fallback
     const transcript = history
         .filter((m) => m.content.trim())
         .map((m) => `${m.role === "user" ? "Visitor" : m.role === "agent" ? "Support agent" : "AI assistant"}: ${m.content.trim()}`)
         .join("\n\n")
-        .slice(0, 24_000)
+        // Keep the tail: the latest visitor message is what triggered the escalation
+        .slice(-24_000)
     try {
+        if (!(await hasAiProvider())) return fallback
         const res = await chatCompletion({
             model: project.model,
             temperature: 0,
@@ -391,10 +399,17 @@ export async function maybePostEmailFallback(project: Project, session: ChatSess
     if (new Date(oldest.createdAt).getTime() + waitMinutes * 60_000 > Date.now()) return
     const now = new Date()
     // Claim before posting so concurrent polls can't double-post; only an open question newer than the last notice counts
-    const claimed = await sessions.updateOne({_id: session._id, $or: [{emailFallbackAt: {$exists: false}}, {emailFallbackAt: {$lt: oldest.createdAt}}]}, {$set: {emailFallbackAt: now}})
+    // A human taking over or the visitor ending the chat since the session was loaded also cancels the notice
+    const claimed = await sessions.updateOne({_id: session._id, humanHandledAt: {$exists: false}, endedAt: {$exists: false}, $or: [{emailFallbackAt: {$exists: false}}, {emailFallbackAt: {$lt: oldest.createdAt}}]}, {$set: {emailFallbackAt: now}})
     if (!claimed.modifiedCount) return
     const message: ChatMessage = {_id: newId(), projectId: project._id, sessionId: session._id, role: "assistant", content: emailFallbackText(project, !!session.visitorEmail), emailFallback: true, createdAt: now}
-    await messages.insertOne(message)
+    try {
+        await messages.insertOne(message)
+    } catch (err) {
+        // Release the claim so the next poll retries the notice
+        await sessions.updateOne({_id: session._id, emailFallbackAt: now}, session.emailFallbackAt ? {$set: {emailFallbackAt: session.emailFallbackAt}} : {$unset: {emailFallbackAt: ""}}).catch(() => {})
+        throw err
+    }
     await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
     logger.info("Questions.wait", `Email fallback posted for session ${session._id}`, `Project ${project._id}`)
 }

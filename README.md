@@ -83,7 +83,7 @@ bun run build:landing                  # landing: static HTML + assets in .outpu
 
 The landing page is a fully static site: deploy `.output/public` to Cloudflare Pages or Workers static assets,
 no server needed (Pages: build command `bun run build:landing`, output directory `.output/public`). Set
-`NUXT_PUBLIC_CHAT_URL` at build time so the live chat embedded on the page points at the chat instance.
+`NUXT_PUBLIC_CHAT_URL` and `NUXT_PUBLIC_CHAT_PROJECT` at build time so the live chat embedded on the page points at the chat instance.
 
 `make docker-build` builds both Docker images, `make up` / `make down` start and stop the Docker Compose stack.
 

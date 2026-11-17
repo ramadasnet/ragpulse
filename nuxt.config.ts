@@ -127,7 +127,9 @@ export default defineNuxtConfig({
             appName: "RAGPulse",
             // Public URLs of the admin and chat instances, e.g. https://admin.ragpulse.example.com (empty = current origin)
             adminUrl: "",
-            chatUrl: ""
+            chatUrl: "",
+            // Project whose live chat is embedded on the landing page
+            chatProject: ""
         }
     },
 

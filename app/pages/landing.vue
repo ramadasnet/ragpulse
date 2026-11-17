@@ -18,10 +18,49 @@ useHead({
 const repo = "https://github.com/ramadasnet/ragpulse"
 const docs = "https://deepwiki.com/ramadasnet/ragpulse"
 
-// Live chat: the floating launcher is served by the chat instance (NUXT_PUBLIC_CHAT_URL at build time)
-const chatProject = "hjYGYN6O8roWyns9"
+// Live chat: the floating launcher is served by the chat instance (NUXT_PUBLIC_CHAT_URL / NUXT_PUBLIC_CHAT_PROJECT at build time)
+const chatProject = String(useRuntimeConfig().public.chatProject || "")
 const chatBase = String(useRuntimeConfig().public.chatUrl || "").replace(/\/+$/, "")
-if (chatBase) useHead({script: [{src: `${chatBase}/embed.js`, "data-project": chatProject, async: true, tagPosition: "bodyClose"}]})
+if (chatBase && chatProject) useHead({script: [{src: `${chatBase}/embed.js`, "data-project": chatProject, async: true, tagPosition: "bodyClose"}]})
+
+// "Try it live" nudge next to the launcher: shows once it mounts, gone for good after the chat opens
+const hintSide = ref<"left" | "right" | null>(null)
+let hostObs: MutationObserver | undefined
+let openObs: MutationObserver | undefined
+
+onMounted(() => {
+    if (!chatBase || !chatProject || attachHint()) return
+    hostObs = new MutationObserver(() => attachHint() && hostObs?.disconnect())
+    hostObs.observe(document.body, {childList: true})
+})
+onBeforeUnmount(() => {
+    hostObs?.disconnect()
+    openObs?.disconnect()
+})
+
+// Locates the async-loaded launcher and hides the nudge once its chat opens
+function attachHint(): boolean {
+    const host = document.querySelector<HTMLElement>("div[data-ragpulse]")
+    const w = host?.shadowRoot?.querySelector(".w")
+    if (!host || !w) return false
+    if (w.classList.contains("o")) return true
+    hintSide.value = host.style.left === "0px" ? "left" : "right"
+    openObs = new MutationObserver(() => {
+        if (w.classList.contains("o")) {
+            hintSide.value = null
+            openObs?.disconnect()
+        }
+    })
+    openObs.observe(w, {attributes: true, attributeFilter: ["class"]})
+    return true
+}
+
+// The nudge itself opens the chat through the embed API
+function tryLive() {
+    hintSide.value = null
+    const api = (window as {RAGPulse?: {open?: () => void}}).RAGPulse
+    api?.open?.()
+}
 
 const sources = [
     {icon: CircleQuestionMark, label: "FAQ"},
@@ -234,6 +273,7 @@ function go(i: number) {
                     <img :src="lightboxShot.src" :alt="lightboxShot.alt" />
                 </picture>
             </div>
+            <button v-if="hintSide" class="live-hint" :class="hintSide" type="button" @click="tryLive"><span class="live-dot" aria-hidden="true" />Try it live</button>
         </Teleport>
 
         <!-- Footer -->
@@ -692,6 +732,74 @@ h1 em {
 }
 .shot-arrow.next {
     right: 12px;
+}
+
+/* ---------- Live chat nudge ---------- */
+.live-hint {
+    position: fixed;
+    bottom: 31px;
+    right: 92px;
+    z-index: 180;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: var(--shadow-lg);
+    transition:
+        border-color 0.15s var(--ease),
+        transform 0.18s var(--ease);
+}
+.live-hint:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+.live-hint::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -5px;
+    width: 9px;
+    height: 9px;
+    transform: translateY(-50%) rotate(45deg);
+    background: var(--surface-2);
+    border-top: 1px solid var(--border-strong);
+    border-right: 1px solid var(--border-strong);
+    transition: border-color 0.15s var(--ease);
+}
+.live-hint:hover::after {
+    border-color: var(--accent);
+}
+.live-hint.left {
+    right: auto;
+    left: 92px;
+}
+.live-hint.left::after {
+    right: auto;
+    left: -5px;
+    border-top: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-strong);
+    border-left: 1px solid var(--border-strong);
+}
+.live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    animation: pulse 1.6s infinite var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+    .live-dot {
+        animation: none;
+    }
 }
 
 /* ---------- OSS ---------- */

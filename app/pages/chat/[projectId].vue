@@ -278,8 +278,13 @@ function removeMessage(id: string) {
 async function send(content: string) {
     if (preview) return previewSend(content)
     if (streaming.value || showLimit.value) return
+    // Busy while the session is created, so a second submit can't start another one
+    streaming.value = true
     const st = await ensureSession()
-    if (!st?.token) return
+    if (!st?.token) {
+        streaming.value = false
+        return
+    }
     draft.value = ""
     banner.value = ""
     const userId = `local-u${++localId}`
@@ -293,7 +298,6 @@ async function send(content: string) {
     let handedOff = false
     // No typing indicator while a human handles the conversation
     if (!humanHandling.value) showBot()
-    streaming.value = true
     scrollToBottom(true)
     stick.value = true
 

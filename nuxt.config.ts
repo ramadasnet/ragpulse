@@ -73,7 +73,7 @@ export default defineNuxtConfig({
     },
 
     runtimeConfig: {
-        mongodbUri: "mongodb://127.0.0.1:27017/ragpulse",
+        mongodbUri: "mongodb://127.0.0.1:27017/ragpulse?directConnection=true",
         openrouterApiKey: "",
         openrouterBaseUrl: "https://openrouter.ai/api/v1",
         // Custom OpenAI-compatible provider used instead of OpenRouter (overridden by Global Settings → AI Provider)

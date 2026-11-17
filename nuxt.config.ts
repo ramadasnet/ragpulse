@@ -109,6 +109,8 @@ export default defineNuxtConfig({
         syncHistoryDays: 30,
         // Minutes to wait before emailing an answer to a visitor who is not in the chat, can be changed on the Settings page
         answerEmailDelayMinutes: 10,
+        // Minutes an escalated chat waits for a human to take over before telling the visitor the answer comes by email, can be changed on the Settings page
+        humanTakeoverWaitMinutes: 5,
         // Cloudflare Email Service by default: set NUXT_SMTP_PASS (API token) and NUXT_SMTP_FROM to send email
         smtp: {
             host: "smtp.mx.cloudflare.net",

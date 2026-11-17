@@ -103,20 +103,17 @@ async function pickSources(hits: SearchHit[]): Promise<MessageSourceRef[]> {
     return picked.map((hit) => ({title: hit.title || hit.url || "", ...(hit.url ? {url: hit.url} : {}), kind: codeIds.has(hit.documentId) ? "code" : "docs"}))
 }
 
-function escalationText(project: Project, hasEmail: boolean, humanRequested: boolean): string {
+/** Escalation message: a human is expected to take over the chat; email is only the fallback after the takeover wait. */
+function escalationText(project: Project, humanRequested: boolean): string {
     if (humanRequested) {
         // Without a support email the team is never notified, so don't promise a follow-up
         if (!project.supportEmail) return "Sure, I've noted your request for the team."
-        return hasEmail ? "Sure, I've passed this conversation to our team. A person will get back to you by email soon." : "Sure, I've passed this conversation to our team. Leave your details below and a person will get back to you."
+        return "Sure, I've flagged this conversation for our team. A person will take over the chat shortly."
     }
     if (project.supportEmail) {
-        return hasEmail
-            ? "I couldn't find a confident answer to that, so I've passed your question to our team. They'll get back to you by email soon."
-            : "I couldn't find a confident answer to that, so I've passed your question to our team. Leave your details below and they'll get back to you."
+        return "I couldn't find a confident answer to that, so I've flagged your question for our team. A person will take over the chat shortly."
     }
-    return hasEmail
-        ? "I'm sorry, I couldn't find a confident answer to that. I've noted your question for our team. You can also try rephrasing it."
-        : "I'm sorry, I couldn't find a confident answer to that. I've noted your question for our team: leave your details below if you'd like a reply, or try rephrasing it."
+    return "I'm sorry, I couldn't find a confident answer to that. I've noted your question for our team. You can also try rephrasing it."
 }
 
 /** Position of the first control token in `text`, or -1. */
@@ -200,7 +197,7 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
         projectId: project._id,
         sessionId: session._id,
         role: "assistant",
-        content: answer || escalationText(project, !!session.visitorEmail, humanRequested),
+        content: answer || escalationText(project, humanRequested),
         model: project.model,
         usage,
         latencyMs: Date.now() - startedAt,
@@ -222,7 +219,8 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
     const question = await createQuestion({
         project,
         session,
-        question: userMessage.content,
+        // The triggering message may only be the handoff request itself: the real question is extracted from the transcript
+        question: await extractEscalatedQuestion(project, history, userMessage, humanRequested),
         reason: humanRequested ? "user_request" : "low_confidence",
         messageId: userMessage._id
     })

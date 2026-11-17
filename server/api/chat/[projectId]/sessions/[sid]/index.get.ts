@@ -8,6 +8,8 @@ export default defineEventHandler(async (event) => {
     // `visible=0` clears the presence flag: the visitor closed the chat, so pending answers get emailed
     if (visible === "1") await markVisitorSeen(session._id)
     else if (visible === "0") await markVisitorAway(session._id)
+    // Nobody took over the escalated chat within the configured wait: post the email fallback notice once
+    await maybePostEmailFallback(project, session)
     const {messages} = await useCollections()
     const list = await messages.find({sessionId: session._id}).sort({createdAt: 1}).limit(500).toArray()
     setResponseHeader(event, "Cache-Control", "no-store")

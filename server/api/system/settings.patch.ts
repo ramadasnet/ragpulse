@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
     if (input.questionRetentionDays !== undefined) patch.questionRetentionDays = input.questionRetentionDays
     if (input.globalInstructions !== undefined) patch.globalInstructions = input.globalInstructions
     if (input.answerEmailDelayMinutes !== undefined) patch.answerEmailDelayMinutes = input.answerEmailDelayMinutes
+    if (input.humanTakeoverWaitMinutes !== undefined) patch.humanTakeoverWaitMinutes = input.humanTakeoverWaitMinutes
     if (input.chatAutoCloseDays !== undefined) patch.chatAutoCloseDays = input.chatAutoCloseDays
 
     // The effective provider of this patch: a removed key falls back to its environment variable

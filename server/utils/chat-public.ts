@@ -161,7 +161,7 @@ export function publicChatSession(session: ChatSession) {
         visitorEmail: session.visitorEmail,
         userMessageCount: session.userMessageCount,
         limitReached: session.limitReached,
-        /** A human from the team is replying: the assistant does not answer */
+        /** A human from the team is replying: the assistant does not answer (header shows "human" instead of "agent") */
         humanHandling: !!session.humanHandledAt,
         createdAt: session.createdAt
     }
@@ -178,6 +178,7 @@ export function publicChatMessage(message: ChatMessage, project: Pick<Project, "
         content: message.content,
         sources: sources?.length ? sources : undefined,
         escalated: message.escalated || undefined,
+        emailFallback: message.emailFallback || undefined,
         createdAt: message.createdAt
     }
 }

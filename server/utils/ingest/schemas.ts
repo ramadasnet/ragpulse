@@ -153,6 +153,10 @@ export const faqImportInputSchema = z.object({
     items: z.array(faqInputSchema).min(1).max(1000)
 })
 
+export const faqParseInputSchema = z.object({
+    text: z.string().trim().min(1).max(50_000)
+})
+
 export const knowledgeSearchSchema = z.object({
     query: z.string().trim().min(1).max(2000),
     limit: z.number().int().min(1).max(30).optional()

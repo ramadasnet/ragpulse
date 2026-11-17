@@ -40,6 +40,7 @@
         "zod": "^4.6.7"
     },
     "devDependencies": {
+        "@nuxt/kit": "^4.6.4",
         "@types/bun": "^1.4.4",
         "@types/dompurify": "^3.0.5",
         "@types/nodemailer": "^8.0.2",

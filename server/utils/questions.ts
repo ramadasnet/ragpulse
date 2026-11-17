@@ -7,6 +7,23 @@ export interface ReplyAuthor {
     via: "admin" | "mcp"
 }
 
+/** Support emails still being sent in the background, so shutdown can wait for them. */
+const pendingSupportEmails = new Set<Promise<unknown>>()
+
+/** Waits (up to `timeoutMs`) for the support emails that are still being sent, so a graceful restart does not drop them. */
+export async function waitForPendingSupportEmails(timeoutMs = 10_000): Promise<void> {
+    if (!pendingSupportEmails.size) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs)
+    })
+    try {
+        await Promise.race([Promise.allSettled([...pendingSupportEmails]), timeout])
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
 /**
  * Records a question the assistant could not answer and notifies the project's support email.
  * Re-uses an existing open question for the same message.
@@ -41,7 +58,7 @@ export async function createQuestion(params: {project: Project; session: ChatSes
     if (project.supportEmail) {
         const link = publicUrl("admin", `/admin/projects/${project._id}/questions?q=${question._id}`)
         const reasonLabel = {low_confidence: "The assistant could not answer confidently", rate_limit: "The visitor reached the message limit", user_request: "The visitor asked to contact support"}[params.reason]
-        void sendMail({
+        const task: Promise<unknown> = sendMail({
             to: project.supportEmail,
             replyTo: visitorEmail,
             subject: `[${project.title}] New question from ${session.visitorName}`,
@@ -58,6 +75,8 @@ export async function createQuestion(params: {project: Project; session: ChatSes
                 }
             })
             .catch((err) => logger.error("Questions.create", `Support notification failed for ${question._id}`, err))
+            .finally(() => pendingSupportEmails.delete(task))
+        pendingSupportEmails.add(task)
     }
 
     // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)

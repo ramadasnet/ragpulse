@@ -68,7 +68,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "list_sources", async () => {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {sources} = await useCollections()
                 const items = (await sources.find({projectId: project._id}).sort({createdAt: 1}).toArray()).map(sourceView)
@@ -91,7 +91,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true}
         },
         ({project_id, source_id}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "trigger_sync", async () => {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 if (source_id) {
                     const {sources} = await useCollections()
@@ -117,7 +117,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id, query, limit}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "search_knowledge", async () => {
                 const project = await mcpProject(ctx, project_id)
                 const hits = await searchKnowledge(project._id, query, {limit})
                 const items = hits.map((h) => ({
@@ -158,7 +158,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id, document_id, offset, max_chars}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "get_document", async () => {
                 const project = await mcpProject(ctx, project_id)
                 const {documents} = await useCollections()
                 const doc = await documents.findOne({_id: document_id, projectId: project._id})
@@ -200,7 +200,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id, query, limit}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "list_faqs", async () => {
                 const project = await mcpProject(ctx, project_id)
                 const {faqs} = await useCollections()
                 const filter: Record<string, any> = {projectId: project._id}
@@ -228,7 +228,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false}
         },
         ({project_id, question, answer}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "add_faq", async () => {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {faqs} = await useCollections()
                 const now = new Date()
@@ -253,7 +253,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true}
         },
         ({project_id, faq_id, question, answer}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "update_faq", async () => {
                 if (question === undefined && answer === undefined) throw new McpToolError("Provide at least one of question or answer to update.")
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {faqs} = await useCollections()
@@ -283,7 +283,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: true, idempotentHint: true}
         },
         ({project_id, faq_id}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "delete_faq", async () => {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {faqs, questions} = await useCollections()
                 return withFaqLock(faq_id, async () => {

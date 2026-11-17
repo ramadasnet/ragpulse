@@ -1,3 +1,5 @@
+import logger from "../../utils/logger"
+
 export default defineEventHandler(async (event) => {
     const admin = await requireAdmin(event)
     const userId = getRouterParam(event, "userId")!
@@ -10,5 +12,6 @@ export default defineEventHandler(async (event) => {
     }
     await apiTokens.deleteMany({userId: target._id})
     await users.deleteOne({_id: target._id})
+    logger.info("Users.delete", `User ${target._id} ${target.email} (${target.role})`, `By ${admin.email}`)
     return {ok: true}
 })

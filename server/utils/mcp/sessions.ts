@@ -78,7 +78,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id, limit, query, since, before, only_unanswered}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "list_sessions", async () => {
                 const project = await mcpProject(ctx, project_id, "sessions:read")
                 const sinceDate = mcpParseDate(since, "since")
                 const [beforeRaw, beforeId] = before?.split("|") ?? []
@@ -121,7 +121,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({session_id, message_limit}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "get_session", async () => {
                 const session = await sessionFor(ctx, session_id, "sessions:read")
                 await sessionEnded(session)
                 const {messages, questions} = await useCollections()
@@ -159,7 +159,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false, openWorldHint: true}
         },
         ({session_id, content, claim_handling}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "send_session_message", async () => {
                 const session = await sessionFor(ctx, session_id, "questions:reply")
                 await assertSessionNotEnded(session)
                 const author = {userId: ctx.user._id, name: mcpAuthorName(ctx), via: "mcp" as const}
@@ -191,7 +191,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false}
         },
         ({session_id, finished}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "finish_session", async () => {
                 const session = await sessionFor(ctx, session_id, "questions:reply")
                 const {session: next, learned} = await finishSession({session, finished, author: {userId: ctx.user._id, name: mcpAuthorName(ctx), via: "mcp"}})
                 let summary = finished ? `Session ${session._id} marked finished.` : `Session ${session._id} reopened.`

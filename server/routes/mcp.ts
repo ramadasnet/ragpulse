@@ -1,5 +1,6 @@
 import {MCP_HTTP_HEADERS, mcpHttpError, serveMcpHttp} from "../utils/mcp/context"
 import {createRagpulseMcpServer} from "../utils/mcp/server"
+import logger from "../utils/logger"
 
 export default defineEventHandler(async (event) => {
     setResponseHeaders(event, MCP_HTTP_HEADERS)
@@ -23,6 +24,7 @@ export default defineEventHandler(async (event) => {
     const bearer = header.match(/^Bearer\s+(\S+)$/i)?.[1]
     const auth = bearer ? await authenticateApiTokenRecord(bearer) : null
     if (!auth) {
+        if (bearer) logger.warn("MCP.auth", `Rejected bearer token ${bearer.slice(0, 10)}…`, `IP ${getRequestIP(event, {xForwardedFor: true}) || "unknown"}`)
         try {
             enforceRateLimit(event, "mcp-auth-fail", 30, 600_000)
         } catch (err: any) {

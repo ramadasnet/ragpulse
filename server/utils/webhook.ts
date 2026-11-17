@@ -51,6 +51,7 @@ export async function sendEscalationWebhook(project: Project, session: ChatSessi
         }
         question.webhookSentAt = new Date()
         await questions.updateOne({_id: question._id}, {$set: {webhookSentAt: question.webhookSentAt}})
+        logger.info("Webhook.escalation", `Project ${project._id}`, `Question ${question._id}`, `Delivered to ${webhook.url}`)
     } catch (err) {
         logger.warn("Webhook.escalation", `Project ${project._id} webhook failed`, err)
     }

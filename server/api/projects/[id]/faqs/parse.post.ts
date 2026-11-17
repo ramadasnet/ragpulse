@@ -1,4 +1,5 @@
 import {parseFaqJson, type FaqDraft} from "#shared/utils/faq-import"
+import logger from "../../../../utils/logger"
 
 const PARSE_PROMPT = `You turn pasted content into FAQ entries for a knowledge base.
 
@@ -49,5 +50,6 @@ export default defineEventHandler(async (event) => {
         return r.success ? [r.data] : []
     })
     ignored += drafts.length - items.length
+    logger.info("Faqs.parse", `Project ${project._id}`, `${items.length} entries extracted, ${ignored} ignored`)
     return {items: items.slice(0, 1000), ignored}
 })

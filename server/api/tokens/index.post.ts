@@ -1,6 +1,7 @@
 import {z} from "zod"
 import type {ApiToken} from "#shared/types"
 import {PROJECT_PERMISSIONS} from "#shared/types"
+import logger from "../../utils/logger"
 
 const MAX_TOKENS_PER_USER = 20
 
@@ -47,6 +48,12 @@ export default defineEventHandler(async (event) => {
         createdAt: now
     }
     await apiTokens.insertOne(record)
+    logger.info(
+        "Tokens.create",
+        `Token ${record._id} "${record.name}" (${record.prefix}…)`,
+        `By ${user.email}`,
+        `${projectIds ? `${projectIds.length} project(s)` : "all projects"}${permissions ? `, ${permissions.length} permission(s)` : ""}${expiresAt ? `, expires ${expiresAt.toISOString().slice(0, 10)}` : ", no expiry"}`
+    )
     return {
         token,
         _id: record._id,

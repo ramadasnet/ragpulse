@@ -1,11 +1,12 @@
 import logger from "../../utils/logger"
 
 export default defineEventHandler(async (event) => {
-    await requireAdmin(event)
+    const admin = await requireAdmin(event)
     const input = await readZodBody(event, projectCreateSchema)
     const project = buildProject(input)
     const {projects, sources} = await useCollections()
     await projects.insertOne(project)
+    logger.info("Projects.create", `Project ${project._id} "${project.title}"`, project.website, `By ${admin.email}`)
     if (input.indexWebsite !== false) {
         // The project website becomes the first knowledge source (crawled, first sync starts right away)
         const url = validateSourceUrl("url", project.website)

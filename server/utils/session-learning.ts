@@ -169,6 +169,7 @@ export async function finishSession(params: {session: ChatSession; finished: boo
     const {session, finished, author} = params
     if (!finished) {
         await sessions.updateOne({_id: session._id}, {$unset: {finishedAt: "", finishedBy: ""}})
+        logger.info("Session.finish", `Session ${session._id}`, `Reopened by ${author.name} (${author.via})`)
         const {finishedAt, finishedBy, ...rest} = session
         return {session: rest}
     }
@@ -176,6 +177,7 @@ export async function finishSession(params: {session: ChatSession; finished: boo
     const update: Pick<ChatSession, "finishedAt" | "finishedBy"> = {finishedAt: session.finishedAt ?? new Date(), finishedBy: author}
     // A finished conversation is handed back to the assistant
     await sessions.updateOne({_id: session._id}, {$set: update, $unset: {humanHandledAt: "", humanHandledBy: ""}})
+    logger.info("Session.finish", `Session ${session._id}`, `Finished by ${author.name} (${author.via})`)
     const {humanHandledAt, humanHandledBy, ...rest} = session
     const next: ChatSession = {...rest, ...update}
 

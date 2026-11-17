@@ -120,8 +120,8 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
         ]
     })
     const parsed = parseLearnedFaq(res.content)
-    const question = sanitizeFaqText(parsed?.question || "", session, project.supportEmail).slice(0, 1000)
-    const answer = sanitizeFaqText(parsed?.answer || "", session, project.supportEmail).slice(0, ANSWER_MAX_CHARS)
+    const question = faqTextToMarkdown(sanitizeFaqText(parsed?.question || "", session, project.supportEmail).slice(0, 1000))
+    const answer = faqTextToMarkdown(sanitizeFaqText(parsed?.answer || "", session, project.supportEmail).slice(0, ANSWER_MAX_CHARS))
     if (!question || !answer) return {skipped: parsed?.skip || "nothing reusable for other visitors"}
 
     const now = new Date()

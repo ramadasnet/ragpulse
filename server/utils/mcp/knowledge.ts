@@ -232,7 +232,7 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {faqs} = await useCollections()
                 const now = new Date()
-                const faq: Faq = {_id: newId(), projectId: project._id, question, answer, createdAt: now, updatedAt: now}
+                const faq: Faq = {_id: newId(), projectId: project._id, question: faqTextToMarkdown(question), answer: faqTextToMarkdown(answer), createdAt: now, updatedAt: now}
                 await faqs.insertOne(faq)
                 const {indexed, warning} = await tryIndexFaq(faq)
                 return mcpOk(indexed ? `FAQ entry added to ${project.title} (id: ${faq._id}).` : `FAQ entry added to ${project.title} (id: ${faq._id}). ${warning}`, {faq: faqView(faq), indexed, warning})
@@ -258,8 +258,8 @@ export function registerMcpKnowledgeTools(server: McpServer, ctx: McpContext) {
                 const project = await mcpProject(ctx, project_id, "sources:manage")
                 const {faqs} = await useCollections()
                 const patch: Partial<Faq> = {updatedAt: new Date()}
-                if (question !== undefined) patch.question = question
-                if (answer !== undefined) patch.answer = answer
+                if (question !== undefined) patch.question = faqTextToMarkdown(question)
+                if (answer !== undefined) patch.answer = faqTextToMarkdown(answer)
                 return withFaqLock(faq_id, async () => {
                     const faq = await faqs.findOneAndUpdate({_id: faq_id, projectId: project._id}, {$set: patch}, {returnDocument: "after"})
                     if (!faq) throw new McpToolError(`FAQ "${faq_id}" not found in project ${project.title}.`)

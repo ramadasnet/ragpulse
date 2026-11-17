@@ -76,6 +76,20 @@ describe("parseFaqJson", () => {
         expect(invalid).toBe(0)
     })
 
+    test("keeps comment markers inside single-quoted and template strings", () => {
+        const {items} = parseFaqJson("[{question: 'Q', answer: 'See https://x.dev/a /* kept */'}, {q: `Q2`, a: `//kept`}]")
+        expect(items).toEqual([
+            {question: "Q", answer: "See https://x.dev/a /* kept */"},
+            {question: "Q2", answer: "//kept"}
+        ])
+    })
+
+    test("ignores entries whose fields are not strings", () => {
+        const {items, invalid} = parseFaqJson(`[{"question": {"text": "Q"}, "answer": ["A"]}, {"question": "Q", "answer": "A"}]`)
+        expect(items).toEqual([{question: "Q", answer: "A"}])
+        expect(invalid).toBe(1)
+    })
+
     test("throws on invalid JSON", () => {
         expect(() => parseFaqJson("{broken")).toThrow()
     })

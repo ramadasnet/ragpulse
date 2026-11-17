@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
     const body = await readIngestBody(event, faqImportInputSchema)
     const {faqs} = await useCollections()
 
-    const existing = new Set((await faqs.find({projectId: project._id}, {projection: {question: 1}}).toArray()).map((f) => normalizeQuestion(f.question)))
+    // Stored questions are canonicalized like the incoming ones, so legacy HTML entries still count as duplicates
+    const existing = new Set((await faqs.find({projectId: project._id}, {projection: {question: 1}}).toArray()).map((f) => normalizeQuestion(faqTextToMarkdown(f.question))))
     const now = Date.now()
     const created: Faq[] = []
     for (const item of body.items) {

@@ -8,20 +8,20 @@ export interface FaqDraft {
     answer: string
 }
 
-/** Removes `//` and `/* … *\/` comments outside of strings, so JSON-with-comments parses. */
+/** Removes `//` and `/* … *\/` comments outside of strings (double-quoted, single-quoted and template), so JSON-with-comments parses. */
 export function stripJsonComments(input: string): string {
     let out = ""
-    let inString = false
+    let quote = ""
     for (let i = 0; i < input.length; i++) {
         const c = input[i]!
-        if (inString) {
+        if (quote) {
             out += c
             if (c === "\\") out += input[++i] ?? ""
-            else if (c === '"') inString = false
+            else if (c === quote || (c === "\n" && quote !== "`")) quote = ""
             continue
         }
-        if (c === '"') {
-            inString = true
+        if (c === '"' || c === "'" || c === "`") {
+            quote = c
             out += c
         } else if (c === "/" && input[i + 1] === "/") {
             while (i < input.length && input[i] !== "\n") i++
@@ -153,12 +153,12 @@ export function jsObjectToJson(input: string): string {
     return out
 }
 
-/** First non-null value of the given keys (case-insensitive) as a trimmed string. */
+/** First string value of the given keys (case-insensitive), trimmed. Objects, arrays and other types are not valid FAQ text. */
 function field(x: any, ...names: string[]): string {
     if (!x || typeof x !== "object") return ""
     for (const key of Object.keys(x)) {
         const v = x[key]
-        if (names.includes(key.toLowerCase()) && v != null) return String(v).trim()
+        if (names.includes(key.toLowerCase()) && typeof v === "string") return v.trim()
     }
     return ""
 }

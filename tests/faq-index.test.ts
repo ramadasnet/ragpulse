@@ -14,6 +14,12 @@ describe("faqTextToMarkdown", () => {
         expect(faqTextToMarkdown("Open <strong>Settings</strong>, then <code>Save</code>")).toBe("Open **Settings**, then `Save`")
     })
 
+    test("leaves tags inside code untouched and converts the rest", () => {
+        expect(faqTextToMarkdown("Use `<b>` for bold.")).toBe("Use `<b>` for bold.")
+        expect(faqTextToMarkdown("<p>Use <b>x</b> and `<i>y</i>`</p>")).toBe("Use **x** and `<i>y</i>`")
+        expect(faqTextToMarkdown("a <style>p{}</style> b <b>c</b>")).toBe("a  b **c**")
+    })
+
     test("decodes entities and drops comments", () => {
         expect(faqTextToMarkdown("Fish &amp; Chips <!-- note -->")).toBe("Fish & Chips")
     })

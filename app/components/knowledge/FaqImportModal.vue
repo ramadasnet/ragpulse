@@ -11,6 +11,7 @@ const text = ref("")
 
 watch(open, (isOpen) => {
     if (isOpen) text.value = ""
+    else cancelAi()
 })
 
 const parsed = computed<{items: FaqDraft[]; invalid: number; error?: string}>(() => {
@@ -47,29 +48,48 @@ const parsed = computed<{items: FaqDraft[]; invalid: number; error?: string}>(()
 const aiItems = ref<FaqDraft[]>([])
 const aiPending = ref(false)
 const aiError = ref("")
+const aiIgnored = ref(0)
+const AI_MAX_CHARS = 50_000
 let aiTimer: ReturnType<typeof setTimeout> | undefined
 let aiSeq = 0
 
 // Entries the local parser found, or the ones the AI extracted when it could not
 const items = computed<FaqDraft[]>(() => (parsed.value.items.length ? parsed.value.items : aiItems.value))
+const ignored = computed(() => (parsed.value.items.length ? parsed.value.invalid : aiIgnored.value))
+
+// Stops the queued request and ignores the one in flight
+function cancelAi() {
+    clearTimeout(aiTimer)
+    aiSeq++
+    aiPending.value = false
+}
+
+onBeforeUnmount(cancelAi)
 
 watch(text, () => {
     aiItems.value = []
+    aiIgnored.value = 0
     aiError.value = ""
-    aiPending.value = false
-    clearTimeout(aiTimer)
+    cancelAi()
     const raw = text.value.trim()
     if (!raw || parsed.value.items.length) return
-    aiTimer = setTimeout(() => parseWithAi(raw), 800)
+    if (raw.length > AI_MAX_CHARS) {
+        aiError.value = `Too long for AI detection (max ${AI_MAX_CHARS.toLocaleString("en-US")} characters)`
+        return
+    }
+    aiTimer = setTimeout(() => {
+        if (open.value) parseWithAi(raw)
+    }, 800)
 })
 
 async function parseWithAi(raw: string) {
     const seq = ++aiSeq
     aiPending.value = true
     try {
-        const res = await $fetch<{items: FaqDraft[]}>(`/api/projects/${props.projectId}/faqs/parse`, {method: "POST", body: {text: raw.slice(0, 50_000)}})
+        const res = await $fetch<{items: FaqDraft[]; ignored: number}>(`/api/projects/${props.projectId}/faqs/parse`, {method: "POST", body: {text: raw}})
         if (seq !== aiSeq || text.value.trim() !== raw) return
         aiItems.value = res.items
+        aiIgnored.value = res.ignored
         if (!res.items.length) aiError.value = "No question/answer pairs found"
     } catch (err) {
         if (seq !== aiSeq || text.value.trim() !== raw) return
@@ -108,9 +128,9 @@ How can I pay?;Card, PayPal or bank transfer.'
                 :error="items.length ? undefined : parsed.error"
                 hint="Lines use “question;answer” (or a tab). Write \n for line breaks inside an answer. JSON may contain comments and unquoted keys. Existing questions are skipped."
             />
-            <div v-if="items.length || parsed.invalid || aiPending || aiError" class="row wrap small">
+            <div v-if="items.length || ignored || aiPending || aiError" class="row wrap small">
                 <UiBadge v-if="items.length" tone="accent">{{ items.length }} entr{{ items.length === 1 ? "y" : "ies" }} detected{{ parsed.items.length ? "" : " with AI" }}</UiBadge>
-                <UiBadge v-if="parsed.invalid" tone="warning">{{ parsed.invalid }} ignored</UiBadge>
+                <UiBadge v-if="ignored" tone="warning">{{ ignored }} ignored</UiBadge>
                 <UiBadge v-if="items.length > 1000" tone="danger">only the first 1000 are imported</UiBadge>
                 <UiBadge v-if="aiPending" tone="info">Detecting with AI…</UiBadge>
                 <UiBadge v-else-if="aiError" tone="warning">{{ aiError }}</UiBadge>

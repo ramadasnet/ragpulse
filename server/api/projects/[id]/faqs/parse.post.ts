@@ -30,19 +30,24 @@ export default defineEventHandler(async (event) => {
         ]
     })
 
-    // Tolerates chatter and markdown fences around the JSON, and a single object instead of an array
-    const match = res.content.match(/\[[\s\S]*\]/) ?? res.content.match(/\{[\s\S]*\}/)
+    // The whole reply first (a single entry object may contain [brackets]); otherwise tolerates chatter and markdown fences around the JSON
     let drafts: FaqDraft[] = []
-    if (match) {
+    let ignored = 0
+    for (const candidate of [res.content, res.content.match(/\[[\s\S]*\]/)?.[0], res.content.match(/\{[\s\S]*\}/)?.[0]]) {
+        if (!candidate) continue
         try {
-            drafts = parseFaqJson(match[0]).items
+            const parsed = parseFaqJson(candidate)
+            drafts = parsed.items
+            ignored = parsed.invalid
+            break
         } catch {
-            // Unusable model reply: reported as an empty list
+            // Try the next candidate; an unusable model reply is reported as an empty list
         }
     }
     const items = drafts.flatMap((x) => {
         const r = faqInputSchema.safeParse(x)
         return r.success ? [r.data] : []
     })
-    return {items: items.slice(0, 1000)}
+    ignored += drafts.length - items.length
+    return {items: items.slice(0, 1000), ignored}
 })

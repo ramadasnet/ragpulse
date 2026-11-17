@@ -119,6 +119,9 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
     border: 1px solid var(--c-error-border);
     color: var(--c-error);
 }
+.msg-agent .bubble.error {
+    border-left: 3px solid var(--c-highlight);
+}
 .err {
     display: flex;
     gap: 8px;

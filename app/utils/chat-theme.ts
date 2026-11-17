@@ -77,7 +77,7 @@ const PALETTES = {
         "--c-dim": "#8a909c",
         "--c-error": "#991b1b",
         "--c-error-soft": "rgb(248 113 113 / 0.08)",
-        "--c-error-border": "rgb(248 113 113 / 0.3)",
+        "--c-error-border": "#dc2626",
         "--c-shadow": "0 1px 2px rgb(20 22 30 / 0.06)"
     }
 } as const

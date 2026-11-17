@@ -1,5 +1,5 @@
 import {parseDriveFolderId} from "#shared/utils/drive"
-import logger from "../../../../utils/logger"
+import logger, {urlForLog} from "../../../../utils/logger"
 
 export default defineEventHandler(async (event) => {
     const {user, project} = await requireProjectAccess(event, "sources:manage")
@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
     const {sources} = await useCollections()
     await sources.insertOne(source)
     syncEvents.emit("kick")
-    logger.info("Sources.create", `Source ${source._id} "${source.title}" (${source.type})`, source.url, `Project ${project._id}`, `By ${user.email}`)
+    logger.info("Sources.create", `Source ${source._id} "${source.title}" (${source.type})`, urlForLog(source.url), `Project ${project._id}`, `By ${user.email}`)
     setResponseStatus(event, 201)
     return serializeSource(source)
 })

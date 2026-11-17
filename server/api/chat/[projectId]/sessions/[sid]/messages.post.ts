@@ -73,7 +73,6 @@ export default defineEventHandler(async (event) => {
             return
         }
 
-        logger.debug("Chat.messages", `Session ${session._id}`, `Project ${project._id}`, `Visitor message ${human ? "(human handling)" : `#${session.userMessageCount + 1}`}`)
         const now = new Date()
         const userMessage: ChatMessage = {_id: newId(), projectId: project._id, sessionId: session._id, role: "user", content, createdAt: now}
         await messages.insertOne(userMessage)
@@ -82,6 +81,7 @@ export default defineEventHandler(async (event) => {
         if (!human) inc.userMessageCount = 1
         await sessions.updateOne({_id: session._id}, {$inc: inc, $set: {lastMessageAt: now, visitorSeenAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
         if (!human) session.userMessageCount++
+        logger.info("Chat.messages", `Session ${session._id}`, `Project ${project._id}`, `Visitor message ${human ? "(human handling)" : `#${session.userMessageCount}`}`)
         send("meta", {userMessageId: userMessage._id})
         if (human) {
             send("human", {})

@@ -51,7 +51,7 @@ export default defineEventHandler(async (event) => {
     if (!session.origin) delete session.origin
     const {sessions} = await useCollections()
     await sessions.insertOne(session)
-    logger.info("Chat.session", `Session ${session._id}`, `Project ${project._id}`, `Visitor "${session.visitorName}"${session.visitorEmail ? ` <${session.visitorEmail}>` : ""}${origin ? `, origin ${origin}` : ""}`)
+    logger.info("Chat.session", `Session ${session._id}`, `Project ${project._id}`, `Started${origin ? ` from ${origin}` : ""}`)
     setResponseHeader(event, "Cache-Control", "no-store")
     return {sessionId: session._id, token, session: publicChatSession(session)}
 })

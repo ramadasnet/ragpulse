@@ -47,6 +47,16 @@ logger.setOptions({
     unhandledRejections: true
 })
 
+/** URL without query string, fragment or credentials, safe to log. */
+export function urlForLog(url: string): string {
+    try {
+        const u = new URL(url)
+        return `${u.origin}${u.pathname}`
+    } catch {
+        return "invalid URL"
+    }
+}
+
 // Emit one JSON line per log entry for cloud log collectors.
 if (jsonLogs) {
     logger.setOptions({levelOnConsole: false})

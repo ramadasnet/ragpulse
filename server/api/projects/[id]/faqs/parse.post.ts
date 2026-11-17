@@ -16,7 +16,7 @@ Rules:
  * the `{question, answer}` items. Entries failing the regular FAQ limits are dropped.
  */
 export default defineEventHandler(async (event) => {
-    const {project} = await requireProjectAccess(event, "sources:manage")
+    const {user, project} = await requireProjectAccess(event, "sources:manage")
     const body = await readIngestBody(event, faqParseInputSchema)
     if (!(await hasAiProvider())) throw createError({statusCode: 503, statusMessage: "No AI provider configured (Global Settings → AI Provider)"})
 
@@ -50,6 +50,6 @@ export default defineEventHandler(async (event) => {
         return r.success ? [r.data] : []
     })
     ignored += drafts.length - items.length
-    logger.info("Faqs.parse", `Project ${project._id}`, `${items.length} entries extracted, ${ignored} ignored`)
+    logger.info("Faqs.parse", `Project ${project._id}`, `By ${user.email}`, `${items.length} entries extracted, ${ignored} ignored`)
     return {items: items.slice(0, 1000), ignored}
 })

@@ -50,6 +50,11 @@ export function mcpAuthorName(ctx: McpContext): string {
     return ctx.token?.name ? `${ctx.user.name} (${ctx.token.name})` : ctx.user.name
 }
 
+/** Identity of the caller for audit logs, e.g. `jane@example.com (Support bot)`. */
+export function mcpActor(ctx: McpContext): string {
+    return `${ctx.user.email}${ctx.token?.name ? ` (${ctx.token.name})` : ""}`
+}
+
 /** Error that is reported to the MCP client as an `isError` tool result. */
 export class McpToolError extends Error {}
 
@@ -77,7 +82,7 @@ export function mcpFail(message: string): CallToolResult {
 
 /** Runs a tool body and converts any thrown error into an `isError` result. Logs every call. */
 export async function mcpSafely(ctx: McpContext, name: string, fn: () => Promise<CallToolResult>): Promise<CallToolResult> {
-    const who = `${ctx.user.email}${ctx.token?.name ? ` (${ctx.token.name})` : ""}`
+    const who = mcpActor(ctx)
     try {
         const result = await fn()
         logger.info("MCP.tool", name, who, result.isError ? "error result" : "ok")

@@ -1,5 +1,4 @@
 import {z} from "zod"
-import logger from "../../../../../utils/logger"
 
 const schema = z.object({finished: z.boolean()})
 
@@ -11,6 +10,5 @@ export default defineEventHandler(async (event) => {
     const {sessions} = await useCollections()
     const session = await sessions.findOne({_id: sid, projectId: project._id}, {projection: SESSION_SAFE_PROJECTION})
     if (!session) throw createError({statusCode: 404, statusMessage: "Conversation not found"})
-    logger.info("Sessions.finish", `Session ${session._id}`, `Project ${project._id}`, `${finished ? "Finished" : "Reopened"} by ${user.name} (${user.email})`)
     return finishSession({session, finished, author: {userId: user._id, name: user.name, via: "admin"}})
 })

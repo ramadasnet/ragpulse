@@ -4,6 +4,7 @@ import logger from "../utils/logger"
 export default defineNitroPlugin((nitroApp) => {
     useCollections().catch((err) => logger.error("Database.connect", err))
     nitroApp.hooks.hook("close", async () => {
+        await waitForPendingSupportEmails()
         await closeDb()
     })
 })

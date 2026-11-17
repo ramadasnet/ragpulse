@@ -1,6 +1,7 @@
 import type {H3Event} from "h3"
 import type {RequestEvent} from "nuxt/server"
 import type {User} from "#shared/types"
+import logger from "./logger"
 
 /** nuxt-auth-utils types handlers with Nuxt's RequestEvent; at runtime (Nitro 2) it is an H3Event. */
 export function asH3Event(event: unknown): H3Event {
@@ -30,14 +31,18 @@ function adminEmails(): string[] {
 export async function loginWithProvider(requestEvent: H3Event | RequestEvent, profile: ProviderProfile) {
     const event = asH3Event(requestEvent)
     const email = profile.email?.trim().toLowerCase()
-    if (!email) return sendRedirect(event, "/login?error=no_email")
+    const rejected = (reason: string) => {
+        logger.warn("Auth.login", email || "unknown email", `Provider ${profile.provider}`, `Rejected: ${reason}`)
+        return sendRedirect(event, `/login?error=${reason}`)
+    }
+    if (!email) return rejected("no_email")
 
     const {users} = await useCollections()
     let user = await users.findOne({email})
     const now = new Date()
 
     if (!user) {
-        if (!adminEmails().includes(email)) return sendRedirect(event, "/login?error=not_invited")
+        if (!adminEmails().includes(email)) return rejected("not_invited")
         user = {
             _id: newId(),
             email,
@@ -50,12 +55,13 @@ export async function loginWithProvider(requestEvent: H3Event | RequestEvent, pr
             lastLoginAt: now
         } satisfies User
         await users.insertOne(user)
+        logger.info("Auth.login", email, `Provider ${profile.provider}`, "Created admin account")
     } else {
-        if (user.disabled) return sendRedirect(event, "/login?error=disabled")
+        if (user.disabled) return rejected("disabled")
         const update: Partial<User> = {lastLoginAt: now, avatar: profile.avatar || user.avatar}
         if (profile.provider !== "dev") {
             const linkedId = user.providers?.[profile.provider]
-            if (linkedId && linkedId !== profile.providerId) return sendRedirect(event, "/login?error=provider_mismatch")
+            if (linkedId && linkedId !== profile.providerId) return rejected("provider_mismatch")
             update.providers = {...user.providers, [profile.provider]: profile.providerId}
         }
         // Invited users get their real name on first login
@@ -64,6 +70,7 @@ export async function loginWithProvider(requestEvent: H3Event | RequestEvent, pr
         if (adminEmails().includes(email)) update.role = "admin"
         await users.updateOne({_id: user._id}, {$set: update})
         user = {...user, ...update}
+        logger.info("Auth.login", email, `Provider ${profile.provider}`, `Role ${user.role}`)
     }
 
     await setUserSession(event, {

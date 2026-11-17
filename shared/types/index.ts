@@ -288,6 +288,12 @@ export interface ApiToken {
     /** First characters of the token, for display */
     prefix: string
     tokenHash: string
+    /** Optional project allowlist; unset = all projects the user can access */
+    projectIds?: string[]
+    /** Optional permission ceiling; unset = all permissions the user has on each project */
+    permissions?: ProjectPermission[]
+    /** Optional expiration timestamp; expired tokens are rejected */
+    expiresAt?: Date
     lastUsedAt?: Date
     createdAt: Date
 }

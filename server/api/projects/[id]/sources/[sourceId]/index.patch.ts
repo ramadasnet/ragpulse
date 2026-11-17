@@ -1,8 +1,9 @@
 import type {Source} from "#shared/types"
 import {parseDriveFolderId} from "#shared/utils/drive"
+import logger from "../../../../../utils/logger"
 
 export default defineEventHandler(async (event) => {
-    const {project} = await requireProjectAccess(event, "sources:manage")
+    const {user, project} = await requireProjectAccess(event, "sources:manage")
     const sourceId = getRouterParam(event, "sourceId")
     const {sources} = await useCollections()
     const source = await sources.findOne({_id: sourceId, projectId: project._id})
@@ -45,5 +46,7 @@ export default defineEventHandler(async (event) => {
 
     await sources.updateOne({_id: source._id}, {$set: set})
     if (updated.status === "queued") syncEvents.emit("kick")
+    const changed = Object.keys(set).filter((k) => k !== "updatedAt" && k !== "status" && k !== "nextSyncAt")
+    logger.info("Sources.update", `Source ${source._id} "${updated.title}" (${source.type})`, `Project ${project._id}`, `By ${user.email}`, `Changed: ${changed.join(", ") || "none"}${updated.status === "queued" ? ", re-queued for sync" : ""}`)
     return serializeSource(updated)
 })

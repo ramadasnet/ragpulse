@@ -1,5 +1,6 @@
 import {z} from "zod"
 import type {ChatSession} from "#shared/types"
+import logger from "../../../../utils/logger"
 
 const schema = z.object({
     name: z.string().trim().max(80).optional(),
@@ -51,6 +52,7 @@ export default defineEventHandler(async (event) => {
     if (!session.origin) delete session.origin
     const {sessions} = await useCollections()
     await sessions.insertOne(session)
+    logger.info("Chat.session", `Session ${session._id}`, `Project ${project._id}`, `Started${origin ? ` from ${origin}` : ""}`)
     setResponseHeader(event, "Cache-Control", "no-store")
     return {sessionId: session._id, token, session: publicChatSession(session)}
 })

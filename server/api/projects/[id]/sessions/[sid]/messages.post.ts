@@ -1,5 +1,6 @@
 import {z} from "zod"
 import type {ChatMessage} from "#shared/types"
+import logger from "../../../../../utils/logger"
 
 const schema = z.object({content: z.string().trim().min(1, "Message cannot be empty").max(8000)})
 
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
     }
     await commitSessionMessage(message)
     await claimHumanHandling(session._id, author)
+    logger.info("Sessions.message", `Session ${session._id}`, `Project ${project._id}`, `Agent message by ${user.name} (${user.email})`)
     setResponseStatus(event, 201)
     return message
 })

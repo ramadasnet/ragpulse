@@ -306,6 +306,11 @@ export function htmlToMarkdown(html: string, pageUrl: string, opts: {detail?: In
     return {title: title.slice(0, 300), markdown, links}
 }
 
+/** Converts an HTML fragment (pasted rich text) to Markdown, without page-level processing. */
+export function htmlFragmentToMarkdown(html: string): string {
+    return tidyMarkdown(getTurndown("detailed").turndown(html))
+}
+
 /** Normalizes whitespace: trailing spaces, CRLF, 3+ blank lines. */
 export function tidyMarkdown(md: string): string {
     return md

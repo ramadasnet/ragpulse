@@ -4,6 +4,7 @@
 // by prompt instructions and by the deterministic scrubber below.
 
 import type {ChatMessage, ChatSession, Faq, Project} from "#shared/types"
+import {faqTextToMarkdown} from "./faq-index"
 import logger from "./logger"
 import type {ReplyAuthor} from "./questions"
 
@@ -56,6 +57,14 @@ export function sanitizeFaqText(text: string, session: {visitorName?: string; vi
         .replace(/\b\d[\d -]{9,}\d\b/g, "")
         .replace(/[ \t]{2,}/g, " ")
         .trim()
+}
+
+/**
+ * Prepares text for the FAQ: HTML is converted to Markdown first, so entity-encoded or tag-split personal data
+ * is visible to the scrubber, and the length limit applies to what is stored.
+ */
+export function cleanFaqText(text: string, session: {visitorName?: string; visitorEmail?: string}, keepEmail: string | undefined, maxChars: number): string {
+    return sanitizeFaqText(faqTextToMarkdown(text), session, keepEmail).slice(0, maxChars)
 }
 
 /** Parses the model's JSON reply: `{question, answer}` to learn, `{skip: reason}` to skip. */
@@ -120,8 +129,8 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
         ]
     })
     const parsed = parseLearnedFaq(res.content)
-    const question = sanitizeFaqText(parsed?.question || "", session, project.supportEmail).slice(0, 1000)
-    const answer = sanitizeFaqText(parsed?.answer || "", session, project.supportEmail).slice(0, ANSWER_MAX_CHARS)
+    const question = cleanFaqText(parsed?.question || "", session, project.supportEmail, 1000)
+    const answer = cleanFaqText(parsed?.answer || "", session, project.supportEmail, ANSWER_MAX_CHARS)
     if (!question || !answer) return {skipped: parsed?.skip || "nothing reusable for other visitors"}
 
     const now = new Date()
@@ -160,6 +169,7 @@ export async function finishSession(params: {session: ChatSession; finished: boo
     const {session, finished, author} = params
     if (!finished) {
         await sessions.updateOne({_id: session._id}, {$unset: {finishedAt: "", finishedBy: ""}})
+        logger.info("Session.finish", `Session ${session._id}`, `Reopened by ${author.name} (${author.via})`)
         const {finishedAt, finishedBy, ...rest} = session
         return {session: rest}
     }
@@ -167,6 +177,7 @@ export async function finishSession(params: {session: ChatSession; finished: boo
     const update: Pick<ChatSession, "finishedAt" | "finishedBy"> = {finishedAt: session.finishedAt ?? new Date(), finishedBy: author}
     // A finished conversation is handed back to the assistant
     await sessions.updateOne({_id: session._id}, {$set: update, $unset: {humanHandledAt: "", humanHandledBy: ""}})
+    logger.info("Session.finish", `Session ${session._id}`, `Finished by ${author.name} (${author.via})`)
     const {humanHandledAt, humanHandledBy, ...rest} = session
     const next: ChatSession = {...rest, ...update}
 

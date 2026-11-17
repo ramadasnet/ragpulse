@@ -1,5 +1,6 @@
 import {z} from "zod"
 import type {User} from "#shared/types"
+import logger from "../../utils/logger"
 
 const schema = z.object({
     name: z.string().trim().min(1, "Name cannot be empty").max(120).optional(),
@@ -35,5 +36,6 @@ export default defineEventHandler(async (event) => {
 
     const updated = await users.findOneAndUpdate({_id: target._id}, {$set: update}, {returnDocument: "after"})
     if (!updated) throw createError({statusCode: 404, statusMessage: "User not found"})
+    logger.info("Users.update", `User ${target._id} ${target.email}`, `By ${admin.email}`, `Changed: ${Object.keys(update).join(", ") || "none"}${update.disabled !== undefined ? ` (disabled: ${update.disabled})` : ""}`)
     return serializeUser(updated)
 })

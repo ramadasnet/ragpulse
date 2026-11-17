@@ -1,7 +1,7 @@
 import type {H3Event} from "h3"
 import {createHash, randomBytes} from "node:crypto"
 import type {ApiToken, Project, ProjectPermission, User} from "#shared/types"
-import {PROJECT_PERMISSIONS} from "#shared/types"
+import {PROJECT_PERMISSIONS} from "../../shared/types"
 
 export function sha256(value: string): string {
     return createHash("sha256").update(value).digest("hex")
@@ -74,7 +74,23 @@ export async function requireProjectAccess(event: H3Event, permission?: ProjectP
     return {user, project}
 }
 
-/** Authenticates an MCP / API bearer token (`rp_...`). Returns the owning user or null. */
+/** Minimum interval between `lastUsedAt` writes on stateless API token requests. */
+const TOKEN_TOUCH_MS = 60_000
+
+/** Applies a token's optional project and permission restrictions to its owner's current access. */
+export function restrictUserByToken(user: User, token: Pick<ApiToken, "projectIds" | "permissions">, allProjectIds?: string[]): User {
+    if (token.projectIds === undefined && token.permissions === undefined) return user
+    const baseIds = user.role === "admin" ? (token.projectIds ?? allProjectIds ?? []) : user.projects.map((p) => p.projectId)
+    const allowedIds = token.projectIds ? baseIds.filter((id) => token.projectIds!.includes(id)) : baseIds
+    const projects = [...new Set(allowedIds)].map((projectId) => {
+        const current = projectPermissions(user, projectId)
+        const permissions = token.permissions ? current.filter((p) => token.permissions!.includes(p)) : current
+        return {projectId, permissions}
+    })
+    return {...user, role: "assistant", projects}
+}
+
+/** Authenticates an MCP / API bearer token (`rp_...`). Returns the effective user or null. */
 export async function authenticateApiToken(token: string): Promise<User | null> {
     return (await authenticateApiTokenRecord(token))?.user ?? null
 }
@@ -82,13 +98,17 @@ export async function authenticateApiToken(token: string): Promise<User | null> 
 /** Like `authenticateApiToken`, but also returns the token record (without exposing it to clients). */
 export async function authenticateApiTokenRecord(token: string): Promise<{user: User; token: ApiToken} | null> {
     if (!token?.startsWith("rp_")) return null
-    const {apiTokens, users} = await useCollections()
+    const {apiTokens, users, projects} = await useCollections()
     const record = await apiTokens.findOne({tokenHash: sha256(token)})
     if (!record) return null
+    if (record.expiresAt && new Date(record.expiresAt).getTime() <= Date.now()) return null
     const user = await users.findOne({_id: record.userId})
     if (!user || user.disabled) return null
-    apiTokens.updateOne({_id: record._id}, {$set: {lastUsedAt: new Date()}}).catch(() => {})
-    return {user, token: record}
+    if (!record.lastUsedAt || Date.now() - new Date(record.lastUsedAt).getTime() >= TOKEN_TOUCH_MS) {
+        apiTokens.updateOne({_id: record._id}, {$set: {lastUsedAt: new Date()}}).catch(() => {})
+    }
+    const allIds = user.role === "admin" && record.projectIds === undefined && record.permissions !== undefined ? (await projects.find({}, {projection: {_id: 1}}).toArray()).map((p) => p._id) : undefined
+    return {user: restrictUserByToken(user, record, allIds), token: record}
 }
 
 /** Generates a new API token. The plain token is only returned here, we store its hash. */

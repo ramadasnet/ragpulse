@@ -129,6 +129,8 @@ export async function replyToQuestion(params: {
     addToFaq?: boolean
     notifyVisitor?: boolean
     postToChat?: boolean
+    /** Rejects replying when the question is no longer open (prevents duplicate answers from automated agents) */
+    onlyOpen?: boolean
 }): Promise<{question: Question; message?: ChatMessage; faq?: Faq; email: AnswerEmailStatus}> {
     const {questions, sessions, messages, projects, faqs} = await useCollections()
     const answer = params.answer.trim()
@@ -137,33 +139,60 @@ export async function replyToQuestion(params: {
     const question = await questions.findOne({_id: params.questionId})
     if (!question) throw createError({statusCode: 404, statusMessage: "Question not found"})
     if (question.status === "dismissed") throw createError({statusCode: 409, statusMessage: "Question was dismissed"})
+    if (params.onlyOpen && question.status !== "open") {
+        const by = question.answeredBy?.name ? ` by ${question.answeredBy.name}` : ""
+        throw createError({statusCode: 409, statusMessage: `Question was already answered${by}`})
+    }
 
     const project = await projects.findOne({_id: question.projectId})
     if (!project) throw createError({statusCode: 404, statusMessage: "Project not found"})
 
     const now = new Date()
+    const update: Partial<Question> = {status: "answered", answer, answeredBy: params.author, answeredAt: now, updatedAt: now}
+    // Claim the open->answered transition atomically so concurrent replies never double-decrement `unansweredCount`.
+    // The answer is stored with the claim, so a question is never left "answered" without its answer.
+    const claimed = question.status === "open" ? (await questions.updateOne({_id: question._id, status: "open"}, {$set: update})).modifiedCount > 0 : false
+    if (params.onlyOpen && !claimed) throw createError({statusCode: 409, statusMessage: "Question was already answered or dismissed"})
+
     const session = await sessions.findOne({_id: question.sessionId}, {projection: {visitorSeenAt: 1, learnedFaqId: 1, endedAt: 1, endReason: 1, lastMessageAt: 1}})
     const ended = !!session && (await sessionEnded(session))
     let message: ChatMessage | undefined
-    // An ended conversation gets no new messages: the answer is only recorded (and emailed)
-    if (params.postToChat !== false && !ended) {
-        message = {
-            _id: newId(),
-            projectId: question.projectId,
-            sessionId: question.sessionId,
-            role: "agent",
-            content: answer,
-            author: params.author,
-            questionId: question._id,
-            createdAt: now
+    let counted = false
+    // Puts a claimed question back in the open queue (and undoes the chat message) when a required write fails, so the reply can be retried
+    const rollbackClaim = async () => {
+        if (!claimed) return
+        await questions.updateOne({_id: question._id, status: "answered", answeredAt: now}, {$set: {status: "open", updatedAt: new Date()}, $unset: {answer: "", answeredBy: "", answeredAt: ""}})
+        if (message) {
+            await messages.deleteOne({_id: message._id})
+            await sessions.updateOne({_id: question.sessionId}, {$inc: {messageCount: -1}})
         }
-        await messages.insertOne(message)
-        await sessions.updateOne({_id: question.sessionId}, {$inc: {messageCount: 1, unansweredCount: question.status === "open" ? -1 : 0}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
-    } else if (question.status === "open") {
-        await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: -1}})
+        if (counted) await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: 1}})
     }
-
-    const update: Partial<Question> = {status: "answered", answer, answeredBy: params.author, answeredAt: now, updatedAt: now}
+    try {
+        // An ended conversation gets no new messages: the answer is only recorded (and emailed)
+        if (params.postToChat !== false && !ended) {
+            message = {
+                _id: newId(),
+                projectId: question.projectId,
+                sessionId: question.sessionId,
+                role: "agent",
+                content: answer,
+                author: params.author,
+                questionId: question._id,
+                createdAt: now
+            }
+            await messages.insertOne(message)
+            await sessions.updateOne({_id: question.sessionId}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
+        }
+        if (claimed) {
+            // No `> 0` guard: the counter can be briefly 0 while a concurrent createQuestion has inserted the question but not incremented yet
+            await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: -1}})
+            counted = true
+        }
+    } catch (err) {
+        await rollbackClaim().catch((rollbackErr) => logger.error("Questions.reply", `Could not roll back claim of ${question._id}`, rollbackErr))
+        throw err
+    }
 
     const $unset: Record<string, ""> = {visitorEmailDueAt: ""}
     let email: AnswerEmailStatus = "none"
@@ -184,24 +213,27 @@ export async function replyToQuestion(params: {
     }
 
     let faq: Faq | undefined
-    if (params.addToFaq !== false && !question.faqId) {
+    // When sanitizing removes everything the answer was only personal data, so no FAQ entry is created
+    const faqAnswer = params.addToFaq !== false && !question.faqId ? sanitizeFaqText(answer, question, project.supportEmail).slice(0, 8000) : ""
+    if (faqAnswer) {
         // The conversation was finished after the question was asked: its learned FAQ already covers it, so it becomes this question's entry
         const learned = session?.learnedFaqId ? await faqs.findOne({_id: session.learnedFaqId, projectId: project._id}) : null
         if (learned && new Date(learned.updatedAt) >= new Date(question.createdAt)) {
-            faq = {...learned, answer, updatedAt: now}
-            await faqs.updateOne({_id: learned._id}, {$set: {answer, updatedAt: now}})
+            faq = {...learned, answer: faqAnswer, updatedAt: now}
+            await faqs.updateOne({_id: learned._id}, {$set: {answer: faqAnswer, updatedAt: now}})
             await sessions.updateOne({_id: question.sessionId}, {$unset: {learnedFaqId: ""}})
         } else {
-            // The visitor's wording may hold personal data, the answer is written by the team
+            // Scrub personal data from both the visitor's question and conversational greetings in the reply
             const faqQuestion = sanitizeFaqText(question.question, question, project.supportEmail).slice(0, 1000) || "Visitor question"
-            faq = {_id: newId(), projectId: project._id, question: faqQuestion, answer, sessionId: question.sessionId, createdAt: now, updatedAt: now}
+            faq = {_id: newId(), projectId: project._id, question: faqQuestion, answer: faqAnswer, sessionId: question.sessionId, createdAt: now, updatedAt: now}
             await faqs.insertOne(faq)
         }
         update.faqId = faq._id
         await indexFaq(faq).catch((err) => logger.error("Questions.reply", `FAQ indexing failed for ${faq!._id}`, err))
     }
 
-    await questions.updateOne({_id: question._id}, Object.keys($unset).length ? {$set: update, $unset} : {$set: update})
+    // Conditional so a concurrent dismiss or reopen is never overwritten
+    await questions.updateOne({_id: question._id, status: "answered"}, Object.keys($unset).length ? {$set: update, $unset} : {$set: update})
     await releaseHumanHandling(question.sessionId)
 
     const {visitorEmailDueAt, ...rest} = question
@@ -238,15 +270,17 @@ export async function sendDueAnswerEmails(limit = 50): Promise<{sent: number; sk
 
 export async function dismissQuestion(questionId: string): Promise<Question> {
     const {questions, sessions} = await useCollections()
-    const question = await questions.findOne({_id: questionId})
-    if (!question) throw createError({statusCode: 404, statusMessage: "Question not found"})
-    if (question.status === "open") {
-        await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: -1}})
-    }
     const update = {status: "dismissed" as const, updatedAt: new Date()}
-    await questions.updateOne({_id: questionId}, {$set: update})
-    await releaseHumanHandling(question.sessionId)
-    return {...question, ...update}
+    // Transition atomically from whatever the status is now, so a concurrent answer or reopen is never mishandled
+    const before = await questions.findOneAndUpdate({_id: questionId, status: {$in: ["open", "answered"]}}, {$set: update}, {returnDocument: "before"})
+    if (!before) {
+        const existing = await questions.findOne({_id: questionId})
+        if (!existing) throw createError({statusCode: 404, statusMessage: "Question not found"})
+        return existing
+    }
+    if (before.status === "open") await sessions.updateOne({_id: before.sessionId}, {$inc: {unansweredCount: -1}})
+    await releaseHumanHandling(before.sessionId)
+    return {...before, ...update}
 }
 
 /** Re-opens a dismissed question. */
@@ -255,9 +289,9 @@ export async function reopenQuestion(questionId: string): Promise<Question> {
     const question = await questions.findOne({_id: questionId})
     if (!question) throw createError({statusCode: 404, statusMessage: "Question not found"})
     if (question.status !== "dismissed") return question
-    await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: 1}})
     const update = {status: "open" as const, updatedAt: new Date()}
-    await questions.updateOne({_id: questionId}, {$set: update})
+    const claimed = (await questions.updateOne({_id: questionId, status: "dismissed"}, {$set: update})).modifiedCount > 0
+    if (claimed) await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: 1}})
     return {...question, ...update}
 }
 

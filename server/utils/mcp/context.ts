@@ -1,6 +1,43 @@
+import type {AuthInfo} from "@modelcontextprotocol/sdk/server/auth/types.js"
+import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js"
+import {WebStandardStreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
 import type {CallToolResult} from "@modelcontextprotocol/sdk/types.js"
+import type {H3Event} from "h3"
 import type {ApiToken, ProjectPermission, User} from "#shared/types"
 import logger from "../logger"
+
+// Stateless MCP endpoints never use cookies, so cross-origin MCP clients may call them directly.
+export const MCP_HTTP_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, GET, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID",
+    "Access-Control-Expose-Headers": "Mcp-Session-Id, Mcp-Protocol-Version, WWW-Authenticate, Retry-After",
+    "Access-Control-Max-Age": "86400",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff"
+}
+
+/** Formats a JSON-RPC 2.0 HTTP error response for stateless MCP routes. */
+export function mcpHttpError(event: H3Event, status: number, code: number, message: string, headers: Record<string, string> = {}) {
+    setResponseStatus(event, status)
+    setResponseHeaders(event, {"Content-Type": "application/json", ...headers})
+    return {jsonrpc: "2.0", error: {code, message}, id: null}
+}
+
+/** Serves one stateless Streamable HTTP MCP request in JSON response mode. */
+export async function serveMcpHttp(event: H3Event, server: McpServer, authInfo?: AuthInfo) {
+    const transport = new WebStandardStreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true})
+    try {
+        await server.connect(transport)
+        return await transport.handleRequest(toWebRequest(event), authInfo ? {authInfo} : undefined)
+    } catch (err: any) {
+        logger.error("MCP.request", err)
+        return mcpHttpError(event, 500, -32603, "Internal server error")
+    } finally {
+        await transport.close().catch(() => {})
+        await server.close().catch(() => {})
+    }
+}
 
 /** Identity an MCP request acts as: the token owner (with their permissions). */
 export interface McpContext {
@@ -16,7 +53,7 @@ export function mcpAuthorName(ctx: McpContext): string {
 /** Error that is reported to the MCP client as an `isError` tool result. */
 export class McpToolError extends Error {}
 
-/** JSON-safe copy (Dates → ISO strings, undefined dropped). */
+/** JSON-safe copy (Dates -> ISO strings, undefined dropped). */
 export function mcpJson<T>(value: T): any {
     return JSON.parse(JSON.stringify(value))
 }
@@ -50,7 +87,7 @@ export async function mcpSafely(fn: () => Promise<CallToolResult>): Promise<Call
     }
 }
 
-/** Throws (→ isError result) unless the user may access the project, optionally with a permission. */
+/** Throws (-> isError result) unless the user may access the project, optionally with a permission. */
 export async function mcpProject(ctx: McpContext, projectId: string, permission?: ProjectPermission) {
     if (!canAccessProject(ctx.user, projectId)) throw new McpToolError(`Project "${projectId}" not found or you have no access to it.`)
     if (permission && !hasProjectPermission(ctx.user, projectId, permission)) {

@@ -115,9 +115,9 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
     margin: 0;
 }
 .bubble.error {
-    background: transparent;
-    border-style: dashed;
-    color: var(--c-muted);
+    background: var(--c-error-soft);
+    border: 1px solid var(--c-error-border);
+    color: var(--c-error);
 }
 .err {
     display: flex;
@@ -128,7 +128,7 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 }
 .err svg {
     margin-top: 3px;
-    color: #f87171;
+    flex-shrink: 0;
 }
 
 .agent-label {

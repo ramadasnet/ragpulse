@@ -62,6 +62,9 @@ const PALETTES = {
         "--c-text": "#eceff5",
         "--c-muted": "#9ba3b4",
         "--c-dim": "#6c7486",
+        "--c-error": "#fca5a5",
+        "--c-error-soft": "rgb(248 113 113 / 0.1)",
+        "--c-error-border": "rgb(248 113 113 / 0.3)",
         "--c-shadow": "0 1px 2px rgb(0 0 0 / 0.4)"
     },
     light: {
@@ -72,6 +75,9 @@ const PALETTES = {
         "--c-text": "#15171c",
         "--c-muted": "#5d6372",
         "--c-dim": "#8a909c",
+        "--c-error": "#991b1b",
+        "--c-error-soft": "rgb(248 113 113 / 0.08)",
+        "--c-error-border": "rgb(248 113 113 / 0.3)",
         "--c-shadow": "0 1px 2px rgb(20 22 30 / 0.06)"
     }
 } as const

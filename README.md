@@ -232,9 +232,10 @@ Projects without a preset use **Balanced**. Code summaries and vision results ar
 
 ### Conversations & escalation
 
-Visitors tell the chat how they want to be called, then ask away. Answers are generated from the retrieved knowledge only. When the
+Visitors just start chatting, no sign-up. Answers are generated from the retrieved knowledge only. When the
 model can't answer confidently, the visitor asks to talk to a human (in any language), or a visitor hits the rate limit, the
-question becomes an **escalated question**: it's emailed to the project's support email and shows up in the admin inbox and over MCP. Projects can also get the
+question becomes an **escalated question**: the visitor is asked for their name and email so the team can get back to them,
+the question is emailed to the project's support email and shows up in the admin inbox and over MCP. Projects can also get the
 event pushed to an HTTP endpoint: **Settings → Escalation webhook** POSTs the escalation as JSON, with an editable `{{placeholder}}` body template (project, chat URL, visitor,
 question and up to 500 conversation messages) and optional headers. Replies (from the admin UI or an agent via MCP) are posted
 into the visitor's chat and added to the project FAQ (once per question, with a link from the answered question to view or

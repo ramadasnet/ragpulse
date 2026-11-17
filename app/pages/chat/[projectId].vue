@@ -25,7 +25,7 @@ interface PublicSession {
 interface Stored {
     sessionId: string
     token: string
-    name: string
+    name?: string
     email?: string
 }
 
@@ -65,15 +65,13 @@ useHead({
 })
 
 // ---------- State ----------
-const phase = ref<"loading" | "intro" | "chat">("loading")
+const phase = ref<"loading" | "chat">("loading")
 const session = ref<PublicSession | null>(null)
 const stored = ref<Stored | null>(null)
 const messages = ref<ChatUiMessage[]>([])
 const draft = ref("")
 const streaming = ref(false)
 const banner = ref("")
-const introPending = ref(false)
-const introError = ref("")
 const limit = ref<{message: string; hasSupport: boolean; question?: string; sent?: boolean} | null>(null)
 const limitPending = ref(false)
 const limitError = ref("")
@@ -152,8 +150,8 @@ watch(
 // ---------- Session ----------
 function applyServer(list: ChatUiMessage[], s: PublicSession) {
     session.value = s
-    if (stored.value && s.visitorEmail && stored.value.email !== s.visitorEmail) {
-        stored.value = {...stored.value, email: s.visitorEmail}
+    if (stored.value && (s.visitorEmail || s.visitorName) && (stored.value.email !== s.visitorEmail || stored.value.name !== s.visitorName)) {
+        stored.value = {...stored.value, name: s.visitorName || stored.value.name, email: s.visitorEmail || stored.value.email}
         writeStored(stored.value)
     }
     if (!streaming.value && list.map((m) => m._id).join() !== messages.value.map((m) => m._id).join()) {
@@ -163,7 +161,7 @@ function applyServer(list: ChatUiMessage[], s: PublicSession) {
         limit.value = {message: "You've reached the message limit for this conversation. Send your question to our team and we'll get back to you.", hasSupport: !!config.value?.hasSupport}
     }
     const lastEscalated = [...messages.value].reverse().find((m) => m.escalated)
-    if (lastEscalated && !s.visitorEmail && escalation.value?.messageId !== lastEscalated._id) {
+    if (lastEscalated && (!s.visitorEmail || !s.visitorName) && escalation.value?.messageId !== lastEscalated._id) {
         escalation.value = {messageId: lastEscalated._id}
     }
 }
@@ -178,7 +176,7 @@ function chatVisible() {
 let lastPoll = 0
 async function loadSession(silent = false) {
     const st = stored.value
-    if (!st || streaming.value) return
+    if (!st?.token || streaming.value) return
     lastPoll = Date.now()
     try {
         const res = await $fetch<{session: PublicSession; messages: ChatUiMessage[]}>(`${api}/sessions/${st.sessionId}`, {
@@ -208,24 +206,21 @@ function parentOrigin(): string {
     return ""
 }
 
-async function startSession(payload: {name: string; email?: string}) {
-    introPending.value = true
-    introError.value = ""
+// The session is created lazily on the visitor's first message, keeping details already shared on escalation
+async function ensureSession(): Promise<Stored | null> {
+    if (stored.value?.token) return stored.value
     try {
         const res = await $fetch<{sessionId: string; token: string; session: PublicSession}>(`${api}/sessions`, {
             method: "POST",
-            body: {name: payload.name, email: payload.email || "", parentOrigin: parentOrigin() || undefined}
+            body: {name: stored.value?.name || "", email: stored.value?.email || "", parentOrigin: parentOrigin() || undefined}
         })
-        stored.value = {sessionId: res.sessionId, token: res.token, name: payload.name, email: payload.email}
+        stored.value = {sessionId: res.sessionId, token: res.token, name: stored.value?.name, email: stored.value?.email}
         writeStored(stored.value)
         session.value = res.session
-        messages.value = []
-        phase.value = "chat"
-        nextTick(() => composer.value?.focus())
+        return stored.value
     } catch (err) {
-        introError.value = errorText(err)
-    } finally {
-        introPending.value = false
+        showBanner(errorText(err))
+        return null
     }
 }
 
@@ -238,7 +233,7 @@ function resetConversation() {
     limit.value = null
     escalation.value = null
     draft.value = ""
-    phase.value = "intro"
+    phase.value = "chat"
 }
 
 function newConversation() {
@@ -282,8 +277,14 @@ function removeMessage(id: string) {
 
 async function send(content: string) {
     if (preview) return previewSend(content)
-    const st = stored.value
-    if (!st?.token || streaming.value || showLimit.value) return
+    if (streaming.value || showLimit.value) return
+    // Busy while the session is created, so a second submit can't start another one
+    streaming.value = true
+    const st = await ensureSession()
+    if (!st?.token) {
+        streaming.value = false
+        return
+    }
     draft.value = ""
     banner.value = ""
     const userId = `local-u${++localId}`
@@ -297,7 +298,6 @@ async function send(content: string) {
     let handedOff = false
     // No typing indicator while a human handles the conversation
     if (!humanHandling.value) showBot()
-    streaming.value = true
     scrollToBottom(true)
     stick.value = true
 
@@ -313,7 +313,8 @@ async function send(content: string) {
             removeMessage(botId)
             if (res.status === 401) {
                 resetConversation()
-                introError.value = "Your conversation expired. Please start a new one."
+                draft.value = content
+                showBanner("Your conversation expired. Please try again.")
                 return
             }
             draft.value = content
@@ -333,7 +334,7 @@ async function send(content: string) {
             } else if (name === "escalated") {
                 showBot()
                 Object.assign(bot, data.message, {streaming: false})
-                escalation.value = data.needsEmail ? {messageId: data.message._id} : null
+                escalation.value = data.needsDetails ? {messageId: data.message._id} : null
             } else if (name === "human") {
                 handedOff = true
                 removeMessage(botId)
@@ -363,7 +364,7 @@ async function send(content: string) {
     }
 }
 
-async function sendEmail(email: string) {
+async function sendDetails(payload: {name: string; email: string}) {
     const st = stored.value
     if (!st?.token || !escalation.value) return
     emailPending.value = true
@@ -372,12 +373,12 @@ async function sendEmail(email: string) {
         const res = await $fetch<{session: PublicSession}>(`${api}/sessions/${st.sessionId}/escalate`, {
             method: "POST",
             headers: {"x-session-token": st.token},
-            body: {email}
+            body: payload
         })
         session.value = res.session
-        stored.value = {...st, email}
+        stored.value = {...st, name: payload.name, email: payload.email}
         writeStored(stored.value)
-        escalation.value = {...escalation.value, doneEmail: email}
+        escalation.value = {...escalation.value, doneEmail: payload.email}
     } catch (err) {
         emailError.value = errorText(err)
     } finally {
@@ -385,7 +386,7 @@ async function sendEmail(email: string) {
     }
 }
 
-async function sendToTeam(payload: {email: string; question: string}) {
+async function sendToTeam(payload: {name: string; email: string; question: string}) {
     const st = stored.value
     if (!st?.token || !limit.value) return
     limitPending.value = true
@@ -398,7 +399,7 @@ async function sendToTeam(payload: {email: string; question: string}) {
         })
         session.value = res.session
         if (res.message) messages.value.push(res.message)
-        stored.value = {...st, email: payload.email}
+        stored.value = {...st, name: payload.name, email: payload.email}
         writeStored(stored.value)
         limit.value = {...limit.value, sent: true}
     } catch (err) {
@@ -432,7 +433,7 @@ function onMessage(e: MessageEvent) {
 // The widget was closed: clears the server-side presence flag so pending team answers get emailed
 function reportClosed() {
     const st = stored.value
-    if (!st) return
+    if (!st?.token) return
     $fetch(`${api}/sessions/${st.sessionId}`, {headers: {"x-session-token": st.token}, query: {visible: 0}}).catch(() => {})
 }
 
@@ -485,7 +486,11 @@ onMounted(() => {
     if (embed) window.addEventListener("message", onEmbedMessage)
     stored.value = readStored()
     if (stored.value) loadSession()
-    else phase.value = "intro"
+    else {
+        phase.value = "chat"
+        // Avoid popping the keyboard on mobile
+        if (window.matchMedia("(min-width: 640px)").matches) nextTick(() => composer.value?.focus())
+    }
     pollTimer = setInterval(() => {
         if (document.visibilityState === "visible" && phase.value === "chat") loadSession(true)
     }, POLL_MS)
@@ -533,18 +538,19 @@ onBeforeUnmount(() => {
                 <template v-for="(m, i) in messages" :key="m._id">
                     <ChatBubble :message="m" :bot-initial="botInitial" :bot-icon="botIcon" :grouped="i > 0 ? messages[i - 1]!.role === m.role && m.role !== 'user' : m.role === 'assistant'">
                         <ChatEmailCard
-                            v-if="escalation && escalation.messageId === m._id && !preview && (escalation.doneEmail || !session?.visitorEmail)"
+                            v-if="escalation && escalation.messageId === m._id && !preview && (escalation.doneEmail || !session?.visitorEmail || !session?.visitorName)"
                             :pending="emailPending"
                             :error="emailError"
                             :done-email="escalation.doneEmail"
                             :has-support="config?.hasSupport"
-                            @submit="sendEmail"
+                            :initial-name="session?.visitorName || stored?.name"
+                            :initial-email="session?.visitorEmail || stored?.email"
+                            @submit="sendDetails"
                         />
                     </ChatBubble>
                 </template>
 
                 <div v-if="phase === 'loading'" class="rp-loading" aria-label="Loading conversation"><span /><span /></div>
-                <ChatIntro v-else-if="phase === 'intro'" class="rp-in" :pending="introPending" :error="introError" :initial-name="stored?.name" :initial-email="stored?.email" @submit="startSession" />
                 <ChatLimitCard
                     v-if="limit && showLimit && phase === 'chat'"
                     class="rp-in"
@@ -552,6 +558,7 @@ onBeforeUnmount(() => {
                     :sent="limit.sent"
                     :pending="limitPending"
                     :error="limitError"
+                    :initial-name="session?.visitorName || stored?.name"
                     :initial-email="session?.visitorEmail || stored?.email"
                     :initial-question="limit.question"
                     @submit="sendToTeam"
@@ -588,17 +595,6 @@ onBeforeUnmount(() => {
     padding: 12px;
     border-radius: 14px;
     gap: 8px;
-}
-.rp .c-card.intro {
-    position: relative;
-    overflow: hidden;
-}
-.rp .c-card.intro::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto;
-    height: 3px;
-    background: linear-gradient(90deg, var(--c-accent), var(--c-accent2), var(--c-highlight));
 }
 .rp .c-card-title {
     font-weight: 650;

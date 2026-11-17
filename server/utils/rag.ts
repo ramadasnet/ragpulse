@@ -45,7 +45,7 @@ function buildSystemPrompt(project: Project, session: ChatSession, hits: SearchH
     })
 
     return `You are ${botName}, the support assistant of "${oneLine(project.title, 120)}"${project.website ? ` (${project.website})` : ""}.
-You are chatting with a website visitor named "${oneLine(session.visitorName, 80)}". Today's date is ${today}.
+You are chatting with a website visitor${session.visitorName ? ` named "${oneLine(session.visitorName, 80)}"` : ""}. Today's date is ${today}.
 
 # Rules (always follow, they override everything else)
 1. Answer ONLY with information found in the CONTEXT and the PROJECT INSTRUCTIONS below. Do not use outside knowledge about this product or company.
@@ -107,16 +107,16 @@ function escalationText(project: Project, hasEmail: boolean, humanRequested: boo
     if (humanRequested) {
         // Without a support email the team is never notified, so don't promise a follow-up
         if (!project.supportEmail) return "Sure, I've noted your request for the team."
-        return hasEmail ? "Sure, I've passed this conversation to our team. A person will get back to you by email soon." : "Sure, I've passed this conversation to our team. Leave your email below and a person will get back to you."
+        return hasEmail ? "Sure, I've passed this conversation to our team. A person will get back to you by email soon." : "Sure, I've passed this conversation to our team. Leave your details below and a person will get back to you."
     }
     if (project.supportEmail) {
         return hasEmail
             ? "I couldn't find a confident answer to that, so I've passed your question to our team. They'll get back to you by email soon."
-            : "I couldn't find a confident answer to that, so I've passed your question to our team. Leave your email below and they'll get back to you."
+            : "I couldn't find a confident answer to that, so I've passed your question to our team. Leave your details below and they'll get back to you."
     }
     return hasEmail
         ? "I'm sorry, I couldn't find a confident answer to that. I've noted your question for our team. You can also try rephrasing it."
-        : "I'm sorry, I couldn't find a confident answer to that. I've noted your question for our team: leave your email below if you'd like a reply, or try rephrasing it."
+        : "I'm sorry, I couldn't find a confident answer to that. I've noted your question for our team: leave your details below if you'd like a reply, or try rephrasing it."
 }
 
 /** Position of the first control token in `text`, or -1. */

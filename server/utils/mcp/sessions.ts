@@ -103,7 +103,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                 const last = list[list.length - 1]
                 const nextBefore = list.length === limit && last ? `${new Date(last.lastMessageAt).toISOString()}|${last._id}` : undefined
                 const summary = items.length
-                    ? `${items.length} session(s) in ${project.title}:\n${items.map((s) => `- ${s.visitorName} (id: ${s.id}) - ${s.messageCount} msg, ${s.unansweredCount} unanswered, last ${new Date(s.lastMessageAt).toISOString()}`).join("\n")}`
+                    ? `${items.length} session(s) in ${project.title}:\n${items.map((s) => `- ${s.visitorName || "Visitor"} (id: ${s.id}) - ${s.messageCount} msg, ${s.unansweredCount} unanswered, last ${new Date(s.lastMessageAt).toISOString()}`).join("\n")}`
                     : `No matching sessions in ${project.title}.`
                 return mcpOk(summary, {sessions: items, ...(nextBefore ? {nextBefore} : {})})
             })
@@ -137,7 +137,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                 }
                 const countNote = truncated ? `${session.messageCount} message(s) (showing latest ${items.length})` : `${session.messageCount} message(s)`
                 const flags = [view.endedAt ? `ended (${view.endReason})` : "", view.humanHandledBy ? `human handling by ${view.humanHandledBy}` : ""].filter(Boolean)
-                const header = `Session ${session._id} with ${session.visitorName}${session.visitorEmail ? ` <${session.visitorEmail}>` : ""} - ${countNote}, ${session.unansweredCount} unanswered${flags.length ? `, ${flags.join(", ")}` : ""}.`
+                const header = `Session ${session._id} with ${session.visitorName || "a visitor"}${session.visitorEmail ? ` <${session.visitorEmail}>` : ""} - ${countNote}, ${session.unansweredCount} unanswered${flags.length ? `, ${flags.join(", ")}` : ""}.`
                 const questionLines = related.length ? `\n\nQuestions:\n${related.map((q) => `- [${q.status}] (id: ${q._id}, ${q.reason}) ${q.question}`).join("\n")}` : ""
                 const transcript = items.map((m) => `[${m.role}${m.author ? `: ${m.author.name}` : ""}] ${m.content}`).join("\n")
                 // Transcript and questions are already rendered as readable text; avoid duplicating them as JSON inside `content`
@@ -174,7 +174,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                 }
                 await commitSessionMessage(message)
                 if (claim_handling) await claimHumanHandling(session._id, author)
-                return mcpOk(`Message posted to session ${session._id} (${session.visitorName}).`, {message: mcpMessageView(message)})
+                return mcpOk(`Message posted to session ${session._id} (${session.visitorName || "visitor"}).`, {message: mcpMessageView(message)})
             })
     )
 

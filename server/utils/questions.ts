@@ -62,10 +62,10 @@ export async function createQuestion(params: {project: Project; session: ChatSes
         const task: Promise<unknown> = sendMail({
             to: project.supportEmail,
             replyTo: visitorEmail,
-            subject: `[${project.title}] New question from ${session.visitorName}`,
-            text: `${reasonLabel}.\n\nVisitor: ${session.visitorName}${visitorEmail ? ` <${visitorEmail}>` : ""}\n\nQuestion:\n${question.question}\n\nReply in RAGPulse: ${link}`,
+            subject: `[${project.title}] New question from ${session.visitorName || "a visitor"}`,
+            text: `${reasonLabel}.\n\nVisitor: ${session.visitorName || "(anonymous)"}${visitorEmail ? ` <${visitorEmail}>` : ""}\n\nQuestion:\n${question.question}\n\nReply in RAGPulse: ${link}`,
             html: `<p>${escapeHtml(reasonLabel)}.</p>
-<p><strong>Visitor:</strong> ${escapeHtml(session.visitorName)}${visitorEmail ? ` &lt;${escapeHtml(visitorEmail)}&gt;` : ""}</p>
+<p><strong>Visitor:</strong> ${escapeHtml(session.visitorName || "(anonymous)")}${visitorEmail ? ` &lt;${escapeHtml(visitorEmail)}&gt;` : ""}</p>
 <blockquote style="border-left:3px solid #7c5cff;margin:0;padding:8px 12px;white-space:pre-wrap">${escapeHtml(question.question)}</blockquote>
 <p><a href="${escapeHtml(link)}">Reply in RAGPulse</a></p>`
         })
@@ -129,8 +129,8 @@ async function sendAnswerEmail(question: Question, project: Project): Promise<bo
         to: question.visitorEmail,
         replyTo: project.supportEmail,
         subject: `Re: your question to ${project.title}`,
-        text: `Hi ${question.visitorName},\n\nYou asked:\n> ${question.question}\n\n${answer}\n\n— ${project.title}${project.website ? `\n${project.website}` : ""}`,
-        html: `<p>Hi ${escapeHtml(question.visitorName)},</p>
+        text: `Hi ${question.visitorName || "there"},\n\nYou asked:\n> ${question.question}\n\n${answer}\n\n— ${project.title}${project.website ? `\n${project.website}` : ""}`,
+        html: `<p>Hi ${escapeHtml(question.visitorName || "there")},</p>
 <p>You asked:</p>
 <blockquote style="border-left:3px solid #ccc;margin:0;padding:8px 12px;color:#555;white-space:pre-wrap">${escapeHtml(question.question)}</blockquote>
 <p style="white-space:pre-wrap">${escapeHtml(answer)}</p>

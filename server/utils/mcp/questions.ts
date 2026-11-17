@@ -123,7 +123,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
                 })
 
                 const countLabel = total > items.length ? `${items.length} of ${total}` : `${items.length}`
-                const summary = `${countLabel} ${status === "all" ? "" : `${status} `}question(s):\n${items.map((q) => `- [${q.projectTitle}] ${q.visitorName}: "${q.question.slice(0, 140)}" (id: ${q.id}, ${q.reason}${q.humanHandledBy ? `, human handling by ${q.humanHandledBy}` : ""}${q.visitorHasEmail ? ", visitor has email" : ""})`).join("\n")}`
+                const summary = `${countLabel} ${status === "all" ? "" : `${status} `}question(s):\n${items.map((q) => `- [${q.projectTitle}] ${q.visitorName || "Visitor"}: "${q.question.slice(0, 140)}" (id: ${q.id}, ${q.reason}${q.humanHandledBy ? `, human handling by ${q.humanHandledBy}` : ""}${q.visitorHasEmail ? ", visitor has email" : ""})`).join("\n")}`
                 return mcpOk(summary, {total, questions: items})
             })
     )

@@ -54,6 +54,7 @@ export async function createQuestion(params: {project: Project; session: ChatSes
     }
     await questions.insertOne(question)
     await sessions.updateOne({_id: session._id}, {$inc: {unansweredCount: 1}})
+    logger.info("Questions.create", `Question ${question._id}`, `Project ${project._id} "${project.title}"`, `Reason ${params.reason}`, `Session ${session._id}`)
 
     if (project.supportEmail) {
         const link = publicUrl("admin", `/admin/projects/${project._id}/questions?q=${question._id}`)
@@ -257,6 +258,7 @@ export async function replyToQuestion(params: {
     // Conditional so a concurrent dismiss or reopen is never overwritten
     await questions.updateOne({_id: question._id, status: "answered"}, Object.keys($unset).length ? {$set: update, $unset} : {$set: update})
     await releaseHumanHandling(question.sessionId)
+    logger.info("Questions.reply", `Question ${question._id}`, `Project ${project._id}`, `By ${params.author.name} (${params.author.via})`, `Email: ${email}${faq ? `, FAQ ${faq._id}` : ""}`)
 
     const {visitorEmailDueAt, ...rest} = question
     return {question: {...rest, ...update}, message, faq, email}
@@ -290,7 +292,7 @@ export async function sendDueAnswerEmails(limit = 50): Promise<{sent: number; sk
     return result
 }
 
-export async function dismissQuestion(questionId: string): Promise<Question> {
+export async function dismissQuestion(questionId: string, actor: string): Promise<Question> {
     const {questions, sessions} = await useCollections()
     const update = {status: "dismissed" as const, updatedAt: new Date()}
     // Transition atomically from whatever the status is now, so a concurrent answer or reopen is never mishandled
@@ -302,18 +304,22 @@ export async function dismissQuestion(questionId: string): Promise<Question> {
     }
     if (before.status === "open") await sessions.updateOne({_id: before.sessionId}, {$inc: {unansweredCount: -1}})
     await releaseHumanHandling(before.sessionId)
+    logger.info("Questions.dismiss", `Question ${questionId}`, `Was ${before.status}`, `By ${actor}`)
     return {...before, ...update}
 }
 
 /** Re-opens a dismissed question. */
-export async function reopenQuestion(questionId: string): Promise<Question> {
+export async function reopenQuestion(questionId: string, actor: string): Promise<Question> {
     const {questions, sessions} = await useCollections()
     const question = await questions.findOne({_id: questionId})
     if (!question) throw createError({statusCode: 404, statusMessage: "Question not found"})
     if (question.status !== "dismissed") return question
     const update = {status: "open" as const, updatedAt: new Date()}
     const claimed = (await questions.updateOne({_id: questionId, status: "dismissed"}, {$set: update})).modifiedCount > 0
-    if (claimed) await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: 1}})
+    if (claimed) {
+        await sessions.updateOne({_id: question.sessionId}, {$inc: {unansweredCount: 1}})
+        logger.info("Questions.reopen", `Question ${questionId}`, `By ${actor}`)
+    }
     return {...question, ...update}
 }
 

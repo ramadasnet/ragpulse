@@ -1,7 +1,7 @@
 import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js"
 import {z} from "zod"
 import type {ChatMessage, Question} from "#shared/types"
-import {type McpContext, McpToolError, mcpAuthorName, mcpOk, mcpProject, mcpProjectIdsWith, mcpSafely} from "./context"
+import {type McpContext, McpToolError, mcpActor, mcpAuthorName, mcpOk, mcpProject, mcpProjectIdsWith, mcpSafely} from "./context"
 import {effectiveSessionEnd, mcpMessageView} from "./sessions"
 
 const CONTEXT_MESSAGES = 8
@@ -30,7 +30,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id, status, limit}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "list_unanswered_questions", async () => {
                 const {questions, projects, sessions} = await useCollections()
                 const filter: Record<string, any> = {}
                 if (project_id) {
@@ -145,7 +145,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false, openWorldHint: true}
         },
         ({question_id, answer, add_to_faq, notify_visitor, post_to_chat, allow_followup}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "reply_to_question", async () => {
                 await questionFor(ctx, question_id)
                 const result = await replyToQuestion({
                     questionId: question_id,
@@ -191,9 +191,9 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: true}
         },
         ({question_id, dismissed}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "dismiss_question", async () => {
                 await questionFor(ctx, question_id)
-                const question = dismissed ? await dismissQuestion(question_id) : await reopenQuestion(question_id)
+                const question = dismissed ? await dismissQuestion(question_id, mcpActor(ctx)) : await reopenQuestion(question_id, mcpActor(ctx))
                 return mcpOk(`Question ${question._id} ${question.status}.`, {questionId: question._id, status: question.status})
             })
     )

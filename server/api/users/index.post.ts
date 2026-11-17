@@ -1,5 +1,6 @@
 import {z} from "zod"
 import type {User} from "#shared/types"
+import logger from "../../utils/logger"
 
 const schema = z.object({
     email: z.string().trim().toLowerCase().pipe(z.email("Enter a valid email address")),
@@ -34,9 +35,10 @@ export default defineEventHandler(async (event) => {
 
     const {public: pub} = useRuntimeConfig()
     const appName = String(pub.appName || "RAGPulse")
+    let inviteSent = false
     if (isMailConfigured()) {
         const link = publicUrl("admin", "/login")
-        await sendMail({
+        inviteSent = await sendMail({
             to: user.email,
             subject: `You've been invited to ${appName}`,
             text: `Hi ${user.name},\n\n${admin.name} invited you to ${appName} as ${user.role === "admin" ? "an admin" : "an assistant"}.\n\nSign in with your Google or Microsoft account using this email address (${user.email}):\n${link}\n`,
@@ -47,6 +49,7 @@ export default defineEventHandler(async (event) => {
         })
     }
 
+    logger.info("Users.create", `User ${user._id} ${user.email} (${user.role})`, `Invited by ${admin.email}${inviteSent ? ", invite email sent" : ""}`)
     setResponseStatus(event, 201)
     return serializeUser(user)
 })

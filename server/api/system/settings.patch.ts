@@ -77,6 +77,8 @@ export default defineEventHandler(async (event) => {
 
     if (Object.keys(patch).length || unset.length) {
         const saved = await saveAppSettings(patch, admin._id, unset)
+        const changed = [...Object.keys(patch), ...unset.map((k) => `-${k}`)]
+        logger.info("Settings.patch", `By ${admin.email}`, `Changed: ${changed.join(", ")}`)
         if (providerChanged) {
             logger.info("Settings.patch", `AI provider changed to ${saved.customAiProvider ? "custom" : "OpenRouter"} by ${admin.email}`)
         }

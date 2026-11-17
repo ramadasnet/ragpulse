@@ -1,10 +1,11 @@
 import type {Faq} from "#shared/types"
+import logger from "../../../../utils/logger"
 
 const normalizeQuestion = (q: string) => q.toLowerCase().replace(/\s+/g, " ").trim()
 
 /** Bulk import: skips questions that already exist, indexes the new entries (4 at a time). */
 export default defineEventHandler(async (event) => {
-    const {project} = await requireProjectAccess(event, "sources:manage")
+    const {user, project} = await requireProjectAccess(event, "sources:manage")
     const body = await readIngestBody(event, faqImportInputSchema)
     const {faqs} = await useCollections()
 
@@ -42,5 +43,6 @@ export default defineEventHandler(async (event) => {
         })
     )
 
+    logger.info("Faqs.import", `Project ${project._id}`, `By ${user.email}`, `${created.length} imported, ${body.items.length - created.length} skipped${indexErrors ? `, ${indexErrors} index error(s)` : ""}`)
     return {imported: created.length, skipped: body.items.length - created.length, indexErrors, ...(firstError ? {indexError: firstError} : {})}
 })

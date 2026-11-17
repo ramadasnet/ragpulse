@@ -1,3 +1,5 @@
+import logger from "../../../utils/logger"
+
 export default defineEventHandler(async (event) => {
     const {user, project} = await requireProjectAccess(event, "settings:edit")
     const patch = await readZodBody(event, projectUpdateSchema)
@@ -13,5 +15,7 @@ export default defineEventHandler(async (event) => {
     if (patch.ingestDetail !== undefined && patch.ingestDetail !== projectIngestDetail(project)) {
         await requestSync(project._id)
     }
+    const changed = [...Object.keys($set).filter((k) => k !== "updatedAt"), ...Object.keys($unset).map((k) => `-${k}`)]
+    if (changed.length) logger.info("Projects.update", `Project ${project._id} "${updated.title}"`, `By ${user.email}`, `Changed: ${changed.join(", ")}`)
     return {...updated, permissions: projectPermissions(user, project._id)}
 })

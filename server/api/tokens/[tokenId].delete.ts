@@ -1,3 +1,5 @@
+import logger from "../../utils/logger"
+
 export default defineEventHandler(async (event) => {
     const user = await requireUser(event)
     const tokenId = getRouterParam(event, "tokenId")
@@ -6,5 +8,6 @@ export default defineEventHandler(async (event) => {
     const filter = user.role === "admin" ? {_id: tokenId} : {_id: tokenId, userId: user._id}
     const res = await apiTokens.deleteOne(filter)
     if (!res.deletedCount) throw createError({statusCode: 404, statusMessage: "Token not found"})
+    logger.info("Tokens.delete", `Token ${tokenId} revoked`, `By ${user.email}`)
     return {ok: true}
 })

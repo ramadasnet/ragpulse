@@ -57,7 +57,10 @@ export default defineEventHandler(async (event) => {
         const human = !!current?.humanHandledAt
 
         if (!human && (session.limitReached || (project.rateLimit > 0 && session.userMessageCount >= project.rateLimit))) {
-            if (!session.limitReached) await sessions.updateOne({_id: session._id}, {$set: {limitReached: true}})
+            if (!session.limitReached) {
+                await sessions.updateOne({_id: session._id}, {$set: {limitReached: true}})
+                logger.info("Chat.limit", `Session ${session._id}`, `Project ${project._id}`, `Message limit reached (${project.rateLimit})`)
+            }
             send("limit", {
                 message: "You've reached the message limit for this conversation. Send your question to our team and we'll get back to you.",
                 hasSupport: !!project.supportEmail
@@ -78,6 +81,7 @@ export default defineEventHandler(async (event) => {
         if (!human) inc.userMessageCount = 1
         await sessions.updateOne({_id: session._id}, {$inc: inc, $set: {lastMessageAt: now, visitorSeenAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
         if (!human) session.userMessageCount++
+        logger.info("Chat.messages", `Session ${session._id}`, `Project ${project._id}`, `Visitor message ${human ? "(human handling)" : `#${session.userMessageCount}`}`)
         send("meta", {userMessageId: userMessage._id})
         if (human) {
             send("human", {})

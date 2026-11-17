@@ -1,5 +1,6 @@
 import {DEFAULT_REFRESH_HOURS, MANUAL_REFRESH, REFRESH_MAX_HOURS, REFRESH_MIN_HOURS} from "../../shared/types"
 import {EventEmitter} from "node:events"
+import logger from "./logger"
 
 /** Emits `kick` whenever a sync is requested, so the scheduler can run immediately. */
 export const syncEvents = new EventEmitter()
@@ -14,7 +15,10 @@ export async function requestSync(projectId: string, sourceId?: string): Promise
     const filter: Record<string, any> = {projectId, status: {$ne: "syncing"}}
     if (sourceId) filter._id = sourceId
     const res = await sources.updateMany(filter, {$set: {status: "queued", nextSyncAt: new Date(0), updatedAt: new Date()}})
-    if (res.modifiedCount) syncEvents.emit("kick")
+    if (res.modifiedCount) {
+        syncEvents.emit("kick")
+        logger.info("Sync.queue", `Project ${projectId}${sourceId ? `, source ${sourceId}` : ""}`, `Queued ${res.modifiedCount} source(s)`)
+    }
     return res.modifiedCount
 }
 

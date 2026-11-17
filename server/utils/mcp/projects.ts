@@ -14,7 +14,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         () =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "list_projects", async () => {
                 const {projects, questions} = await useCollections()
                 const ids = accessibleProjectIds(ctx.user)
                 const list = await projects
@@ -46,7 +46,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "get_project", async () => {
                 const project = await mcpProject(ctx, project_id)
                 const canManageSources = hasProjectPermission(ctx.user, project._id, "sources:manage")
                 const {sources, faqs, questions} = await useCollections()
@@ -112,7 +112,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
             annotations: {readOnlyHint: true}
         },
         ({project_id, days}) =>
-            mcpSafely(async () => {
+            mcpSafely(ctx, "get_project_stats", async () => {
                 const project = await mcpProject(ctx, project_id, "analytics:read")
                 const {sessions, messages, questions} = await useCollections()
                 const to = new Date()

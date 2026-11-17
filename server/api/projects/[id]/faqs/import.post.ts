@@ -8,16 +8,20 @@ export default defineEventHandler(async (event) => {
     const body = await readIngestBody(event, faqImportInputSchema)
     const {faqs} = await useCollections()
 
-    const existing = new Set((await faqs.find({projectId: project._id}, {projection: {question: 1}}).toArray()).map((f) => normalizeQuestion(f.question)))
+    // Stored questions are canonicalized like the incoming ones, so legacy HTML entries still count as duplicates
+    const existing = new Set((await faqs.find({projectId: project._id}, {projection: {question: 1}}).toArray()).map((f) => normalizeQuestion(faqTextToMarkdown(f.question))))
     const now = Date.now()
     const created: Faq[] = []
     for (const item of body.items) {
-        const key = normalizeQuestion(item.question)
+        // Pasted HTML becomes Markdown before it is stored
+        const question = faqTextToMarkdown(item.question)
+        const answer = faqTextToMarkdown(item.answer)
+        const key = normalizeQuestion(question)
         if (existing.has(key)) continue
         existing.add(key)
         // Distinct timestamps keep the pasted order in "newest first" listings
         const at = new Date(now + created.length)
-        created.push({_id: newId(), projectId: project._id, question: item.question, answer: item.answer, createdAt: at, updatedAt: at})
+        created.push({_id: newId(), projectId: project._id, question, answer, createdAt: at, updatedAt: at})
     }
     if (created.length) await faqs.insertMany(created)
 

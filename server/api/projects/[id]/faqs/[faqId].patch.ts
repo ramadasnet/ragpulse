@@ -3,6 +3,9 @@ export default defineEventHandler(async (event) => {
     const faqId = getRouterParam(event, "faqId")
     const body = await readIngestBody(event, faqPatchInputSchema)
     const {faqs} = await useCollections()
+    // Pasted HTML becomes Markdown before it is stored
+    if (body.question) body.question = faqTextToMarkdown(body.question)
+    if (body.answer) body.answer = faqTextToMarkdown(body.answer)
     const faq = await faqs.findOneAndUpdate({_id: faqId, projectId: project._id}, {$set: {...body, updatedAt: new Date()}}, {returnDocument: "after"})
     if (!faq) throw createError({statusCode: 404, statusMessage: "FAQ not found"})
     try {

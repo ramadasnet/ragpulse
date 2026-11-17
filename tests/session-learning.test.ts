@@ -1,5 +1,5 @@
 import {describe, expect, test} from "bun:test"
-import {learnableMessages, parseLearnedFaq, sanitizeFaqText} from "../server/utils/session-learning"
+import {cleanFaqText, learnableMessages, parseLearnedFaq, sanitizeFaqText} from "../server/utils/session-learning"
 
 const session = {visitorName: "Jane Doe", visitorEmail: "jane@example.com"}
 
@@ -68,5 +68,12 @@ describe("learnableMessages", () => {
     test("drops messages up to the last answered question, already in the FAQ", () => {
         expect(learnableMessages(list, at(10))).toEqual([{createdAt: at(15)}])
         expect(learnableMessages(list, at(20).toISOString())).toEqual([])
+    })
+})
+
+describe("cleanFaqText", () => {
+    test("scrubs personal data that HTML entities hid, then applies the limit to the converted text", () => {
+        expect(cleanFaqText("Contact john&#64;example.com now", {}, undefined, 100)).toBe("Contact now")
+        expect(cleanFaqText("<p>" + "*".repeat(20) + "</p>", {}, undefined, 10).length).toBe(10)
     })
 })

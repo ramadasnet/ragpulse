@@ -236,7 +236,7 @@ export async function replyToQuestion(params: {
 
     let faq: Faq | undefined
     // When sanitizing removes everything the answer was only personal data, so no FAQ entry is created
-    const faqAnswer = params.addToFaq !== false && !question.faqId ? sanitizeFaqText(answer, question, project.supportEmail).slice(0, 8000) : ""
+    const faqAnswer = params.addToFaq !== false && !question.faqId ? cleanFaqText(answer, question, project.supportEmail, 8000) : ""
     if (faqAnswer) {
         // The conversation was finished after the question was asked: its learned FAQ already covers it, so it becomes this question's entry
         const learned = session?.learnedFaqId ? await faqs.findOne({_id: session.learnedFaqId, projectId: project._id}) : null
@@ -246,7 +246,7 @@ export async function replyToQuestion(params: {
             await sessions.updateOne({_id: question.sessionId}, {$unset: {learnedFaqId: ""}})
         } else {
             // Scrub personal data from both the visitor's question and conversational greetings in the reply
-            const faqQuestion = sanitizeFaqText(question.question, question, project.supportEmail).slice(0, 1000) || "Visitor question"
+            const faqQuestion = cleanFaqText(question.question, question, project.supportEmail, 1000) || "Visitor question"
             faq = {_id: newId(), projectId: project._id, question: faqQuestion, answer: faqAnswer, sessionId: question.sessionId, createdAt: now, updatedAt: now}
             await faqs.insertOne(faq)
         }

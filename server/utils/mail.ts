@@ -82,9 +82,16 @@ export function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]!)
 }
 
-/** Absolute URL for a path on the admin or chat instance (NUXT_PUBLIC_ADMIN_URL / NUXT_PUBLIC_CHAT_URL). */
+/**
+ * Absolute URL for a path on the admin or chat instance (NUXT_PUBLIC_ADMIN_URL / NUXT_PUBLIC_CHAT_URL).
+ * One server without an app split (RAGPULSE_APP unset) serves both apps, so either configured URL works there.
+ * Without any configured URL the link stays relative, which breaks it in emails, so a warning is logged.
+ */
 export function publicUrl(app: "admin" | "chat", path: string): string {
-    const {adminUrl, chatUrl} = useRuntimeConfig().public
-    const base = String((app === "admin" ? adminUrl : chatUrl) || "").replace(/\/$/, "")
+    const config = useRuntimeConfig()
+    const {adminUrl, chatUrl} = config.public
+    const other = config.appTarget ? "" : app === "admin" ? chatUrl : adminUrl
+    const base = String((app === "admin" ? adminUrl : chatUrl) || other || "").replace(/\/+$/, "")
+    if (!base) logger.warn("Mail.url", `NUXT_PUBLIC_${app.toUpperCase()}_URL is not set, the link to ${path} is relative`)
     return `${base}${path}`
 }

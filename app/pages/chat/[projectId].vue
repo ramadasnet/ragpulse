@@ -354,6 +354,7 @@ async function send(content: string) {
                 // A 401 also means the conversation ended: keep it visible (read-only) instead of clearing it
                 if (await showEndedSession(st)) {
                     draft.value = content
+                    showBanner("This conversation has ended, so your message was not sent.")
                     return
                 }
                 resetConversation()

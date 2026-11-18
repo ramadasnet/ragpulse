@@ -1,8 +1,8 @@
 import {afterEach, describe, expect, test} from "bun:test"
-import {createQuestion, escalateDuringTakeover} from "../server/utils/questions"
-import {ESCALATE_TOKEN, toLlmHistory} from "../server/utils/rag"
+import {createQuestion, extractEscalatedQuestion} from "../server/utils/questions"
+import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
 
-const names = ["useCollections", "newId", "publicUrl", "escapeHtml", "sendMail", "sendEscalationWebhook", "hasAiProvider", "chatCompletion"] as const
+const names = ["useCollections", "newId", "publicUrl", "escapeHtml", "sendMail", "sendEscalationWebhook", "hasAiProvider", "searchKnowledge", "getAppSettings", "streamChatCompletion", "extractEscalatedQuestion"] as const
 const original = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]))
 
 afterEach(() => {
@@ -80,24 +80,28 @@ test.each([false, "reject", "unconfigured"])("escalation remains available when 
     expect(calls).toBe(outcome === "unconfigured" ? 0 : 1)
 })
 
-/** In-memory questions/messages/sessions collections, enough for the escalation paths. */
+/** In-memory questions, messages and sessions collections, enough for the escalation paths. */
 function fakeDb(messages: any[] = []) {
     const questions: any[] = []
-    const cursor = (rows: any[]) => ({sort: () => ({limit: () => ({toArray: async () => rows})})})
     return {
         questions,
+        messages,
         collections: async () => ({
             questions: {
                 findOne: async (filter: any) => questions.find((q) => q.messageId === filter.messageId && q.status === filter.status) ?? null,
-                find: (filter: any) => cursor(questions.filter((q) => q.sessionId === filter.sessionId && q.status === filter.status)),
                 insertOne: async (doc: any) => {
                     questions.push(doc)
                 },
                 updateOne: async () => {}
             },
-            // Newest first, like the real query
-            messages: {find: () => cursor([...messages].reverse())},
-            sessions: {updateOne: async () => {}, findOne: async () => ({_id: "session", visitorName: "Visitor", visitorEmail: "visitor@example.test"})}
+            messages: {
+                // Newest first, like the real query
+                find: () => ({sort: () => ({limit: () => ({toArray: async () => [...messages].reverse()})})}),
+                insertOne: async (doc: any) => {
+                    messages.push(doc)
+                }
+            },
+            sessions: {updateOne: async () => {}}
         })
     }
 }
@@ -106,7 +110,7 @@ function mockEscalation(db: ReturnType<typeof fakeDb>, extra: Record<string, unk
     let id = 0
     Object.assign(globalThis, {
         useCollections: db.collections,
-        newId: () => `q${++id}`,
+        newId: () => `id${++id}`,
         publicUrl: () => "https://example.test/question",
         escapeHtml: (value: string) => value,
         sendMail: async () => false,
@@ -115,7 +119,7 @@ function mockEscalation(db: ReturnType<typeof fakeDb>, extra: Record<string, unk
     })
 }
 
-const project = {_id: "project", title: "Test", supportEmail: ""} as any
+const project = {_id: "project", title: "Test", supportEmail: "support@example.test", model: "test"} as any
 const session = {_id: "session", visitorName: "Visitor"} as any
 
 test("a second escalation while the first question is still open gets its own question in the same conversation", async () => {
@@ -128,53 +132,6 @@ test("a second escalation while the first question is still open gets its own qu
         ["session", "m1", "open"],
         ["session", "m2", "open"]
     ])
-})
-
-describe("escalateDuringTakeover", () => {
-    const at = (s: number) => new Date(Date.UTC(2026, 10, 18, 18, 0, s))
-    const history = [
-        {_id: "m1", role: "user", content: "What is the max database size?", createdAt: at(1)},
-        {_id: "a1", role: "assistant", content: "I've flagged your question for our team.", escalated: true, createdAt: at(2)},
-        {_id: "h1", role: "agent", content: "Let me check, 1 sec...", createdAt: at(3)},
-        {_id: "m2", role: "user", content: "Can I run this on GCP free of charge?", createdAt: at(4)}
-    ]
-    const latest = history[3] as any
-
-    test("records a new question asked while a human handles the chat", async () => {
-        const db = fakeDb(history)
-        db.questions.push({_id: "q0", sessionId: "session", messageId: "m1", question: "What is the max database size?", status: "open"})
-        let prompt = ""
-        mockEscalation(db, {
-            hasAiProvider: async () => true,
-            chatCompletion: async (opts: any) => {
-                prompt = opts.messages[1].content
-                return {content: "Can I run this on GCP free of charge?"}
-            }
-        })
-        const question = await escalateDuringTakeover(project, session, latest)
-        expect(prompt).toContain("- What is the max database size?")
-        expect(prompt).toContain("Visitor: Can I run this on GCP free of charge?")
-        expect(question).toMatchObject({sessionId: "session", messageId: "m2", reason: "during_takeover", status: "open", question: "Can I run this on GCP free of charge?", visitorEmail: "visitor@example.test"})
-        expect(db.questions).toHaveLength(2)
-    })
-
-    test("ignores small talk and follow-ups of an open question", async () => {
-        const db = fakeDb(history)
-        mockEscalation(db, {hasAiProvider: async () => true, chatCompletion: async () => ({content: "NONE"})})
-        expect(await escalateDuringTakeover(project, session, latest)).toBeNull()
-        expect(db.questions).toHaveLength(0)
-    })
-
-    test("never throws when the AI call fails", async () => {
-        const db = fakeDb(history)
-        mockEscalation(db, {
-            hasAiProvider: async () => true,
-            chatCompletion: async () => {
-                throw new Error("timeout")
-            }
-        })
-        expect(await escalateDuringTakeover(project, session, latest)).toBeNull()
-    })
 })
 
 test("earlier escalations reach the model as the escalation token, not as the apology the visitor saw", () => {
@@ -192,25 +149,32 @@ test("earlier escalations reach the model as the escalation token, not as the ap
     ])
 })
 
-test("takeover checks of one session run one at a time, so a repeated question is not recorded twice", async () => {
+test("a new question after the conversation was given back to the agent is escalated as its own question", async () => {
     const at = (s: number) => new Date(Date.UTC(2026, 10, 18, 18, 0, s))
-    const history = [
-        {_id: "m1", role: "user", content: "Can I get an invoice in EUR?", createdAt: at(1)},
-        {_id: "m2", role: "user", content: "An invoice in EUR, is that possible?", createdAt: at(2)}
-    ]
-    const db = fakeDb(history)
-    const prompts: string[] = []
+    // Igor's test: first question escalated, a human replied and gave the chat back without answering the question
+    const db = fakeDb([
+        {_id: "m1", sessionId: "session", role: "user", content: "What's the maximum database size?", createdAt: at(1)},
+        {_id: "a1", sessionId: "session", role: "assistant", content: "I couldn't find a confident answer to that, so I've flagged your question for our team.", escalated: true, createdAt: at(2)},
+        {_id: "h1", sessionId: "session", role: "agent", content: "For small projects, 512MB max.", createdAt: at(3)}
+    ])
+    db.questions.push({_id: "q1", sessionId: "session", messageId: "m1", status: "open", question: "What's the maximum database size?"})
+    let llmMessages: any[] = []
     mockEscalation(db, {
-        hasAiProvider: async () => true,
-        chatCompletion: async (opts: any) => {
-            prompts.push(opts.messages[1].content)
-            await Bun.sleep(10)
-            return {content: prompts.length === 1 ? "Can I get an invoice in EUR?" : "NONE"}
+        searchKnowledge: async () => [],
+        getAppSettings: async () => ({globalInstructions: ""}),
+        hasAiProvider: async () => false,
+        createQuestion,
+        extractEscalatedQuestion,
+        streamChatCompletion: async function* (opts: any) {
+            llmMessages = opts.messages
+            yield {type: "delta", text: ESCALATE_TOKEN}
         }
     })
-    const [first, second] = await Promise.all([escalateDuringTakeover(project, session, history[0] as any), escalateDuringTakeover(project, session, history[1] as any)])
-    expect(first?.question).toBe("Can I get an invoice in EUR?")
-    expect(second).toBeNull()
-    expect(prompts[1]).toContain("- Can I get an invoice in EUR?")
-    expect(db.questions).toHaveLength(1)
+    const userMessage = {_id: "m2", sessionId: "session", role: "user", content: "Can I run it on AWS for free?", createdAt: at(4)} as any
+    db.messages.push(userMessage)
+    const events: any[] = []
+    for await (const ev of generateAnswer({project, session: {...session, userMessageCount: 2}, userMessage})) events.push(ev)
+    expect(llmMessages.slice(1).map((m) => m.content)).toEqual(["What's the maximum database size?", ESCALATE_TOKEN, "(Support team) For small projects, 512MB max.", "Can I run it on AWS for free?"])
+    expect(events.at(-1)).toMatchObject({type: "escalated", question: {sessionId: "session", messageId: "m2", status: "open", question: "Can I run it on AWS for free?"}})
+    expect(db.questions.map((q) => q.messageId)).toEqual(["m1", "m2"])
 })

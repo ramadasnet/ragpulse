@@ -58,12 +58,7 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 
     if (project.supportEmail) {
         const link = publicUrl("admin", `/admin/projects/${project._id}/questions?q=${question._id}`)
-        const reasonLabel = {
-            low_confidence: "The assistant could not answer confidently",
-            rate_limit: "The visitor reached the message limit",
-            user_request: "The visitor asked to contact support",
-            during_takeover: "The visitor asked a new question while a team member handled the chat"
-        }[params.reason]
+        const reasonLabel = {low_confidence: "The assistant could not answer confidently", rate_limit: "The visitor reached the message limit", user_request: "The visitor asked to contact support"}[params.reason]
         const task: Promise<unknown> = sendMail({
             to: project.supportEmail,
             replyTo: visitorEmail,
@@ -343,23 +338,6 @@ Rules:
 - When the visitor's latest message only asks to talk to a human and no question was asked before, reply with: Wants to talk to a human.
 - Reply with the question text only: no quotes, no explanation.`
 
-/** Chat transcript for the AI helpers, one "Speaker: text" paragraph per message. */
-function transcriptText(list: ChatMessage[]): string {
-    return list
-        .filter((m) => m.content.trim())
-        .map((m) => `${m.role === "user" ? "Visitor" : m.role === "agent" ? "Support agent" : "AI assistant"}: ${m.content.trim()}`)
-        .join("\n\n")
-}
-
-/** Model reply reduced to the question text: trimmed, without wrapping quotes, capped like stored questions. */
-function cleanQuestionText(content: string): string {
-    return content
-        .trim()
-        .replace(/^["'“”]+|["'“”]+$/g, "")
-        .trim()
-        .slice(0, 4000)
-}
-
 /**
  * The question stored for an escalation: the triggering message may just be a handoff request
  * ("human please"), so the real question is extracted from the recent transcript with the AI.
@@ -368,8 +346,12 @@ function cleanQuestionText(content: string): string {
 export async function extractEscalatedQuestion(project: Project, history: ChatMessage[], userMessage: ChatMessage, humanRequested: boolean): Promise<string> {
     const prior = history.filter((m) => m.role === "user" && m._id !== userMessage._id && m.content.trim())
     const fallback = (humanRequested && prior.length ? prior[prior.length - 1]!.content : userMessage.content).trim().slice(0, 4000)
-    // Keep the tail: the latest visitor message is what triggered the escalation
-    const transcript = transcriptText(history).slice(-24_000)
+    const transcript = history
+        .filter((m) => m.content.trim())
+        .map((m) => `${m.role === "user" ? "Visitor" : m.role === "agent" ? "Support agent" : "AI assistant"}: ${m.content.trim()}`)
+        .join("\n\n")
+        // Keep the tail: the latest visitor message is what triggered the escalation
+        .slice(-24_000)
     try {
         if (!(await hasAiProvider())) return fallback
         const res = await chatCompletion({
@@ -382,77 +364,15 @@ export async function extractEscalatedQuestion(project: Project, history: ChatMe
                 {role: "user", content: transcript}
             ]
         })
-        return cleanQuestionText(res.content) || fallback
+        const text = res.content
+            .trim()
+            .replace(/^["'“”]+|["'“”]+$/g, "")
+            .trim()
+            .slice(0, 4000)
+        return text || fallback
     } catch (err) {
         logger.warn("Questions.extract", `Question extraction failed for session ${userMessage.sessionId}`, err)
         return fallback
-    }
-}
-
-const TAKEOVER_QUESTION_PROMPT = `A person from the support team has taken over a chat with a visitor, so the AI assistant is silent. You decide whether the visitor's latest message adds a new question for the support team.
-
-Rules:
-- Reply with exactly NONE when the latest visitor message is small talk, thanks, an acknowledgement, an answer to the support agent, or a follow-up or clarification of one of the OPEN QUESTIONS.
-- Otherwise write the new question as one short, self-contained question in the visitor's language, using the visitor's own words where possible.
-- Reply with NONE or the question text only: no quotes, no explanation.`
-
-/** Messages of the transcript that decides whether a visitor message asked during a takeover is a new question. */
-const TAKEOVER_HISTORY_MESSAGES = 20
-
-/** Takeover checks still running per session: the next one waits, so it sees the question the previous one recorded. */
-const takeoverChecks = new Map<string, Promise<unknown>>()
-
-/**
- * While a human handles the chat the assistant stays silent, so a new question would never be escalated:
- * the AI checks whether the visitor's latest message asks something new (not small talk or a follow-up of an
- * open question) and records it as its own question of the same conversation. Checks of one session run one at
- * a time. Never throws.
- */
-export function escalateDuringTakeover(project: Project, session: ChatSession, userMessage: ChatMessage): Promise<Question | null> {
-    const run = (takeoverChecks.get(session._id) ?? Promise.resolve()).then(() => checkTakeoverMessage(project, session, userMessage))
-    takeoverChecks.set(session._id, run)
-    return run.finally(() => {
-        if (takeoverChecks.get(session._id) === run) takeoverChecks.delete(session._id)
-    })
-}
-
-async function checkTakeoverMessage(project: Project, session: ChatSession, userMessage: ChatMessage): Promise<Question | null> {
-    try {
-        if (!(await hasAiProvider())) return null
-        const {messages, questions, sessions} = await useCollections()
-        const [recent, open] = await Promise.all([
-            messages
-                .find({sessionId: session._id, createdAt: {$lte: userMessage.createdAt}})
-                .sort({createdAt: -1})
-                .limit(TAKEOVER_HISTORY_MESSAGES)
-                .toArray(),
-            questions
-                .find({sessionId: session._id, status: "open"}, {projection: {question: 1}})
-                .sort({createdAt: 1})
-                .limit(20)
-                .toArray()
-        ])
-        const history = recent.reverse().filter((m) => !m.emailFallback)
-        if (!history.some((m) => m._id === userMessage._id)) history.push(userMessage)
-        const openList = open.map((q) => `- ${q.question}`).join("\n") || "(none)"
-        const res = await chatCompletion({
-            model: project.model,
-            temperature: 0,
-            maxTokens: 200,
-            signal: AbortSignal.timeout(30_000),
-            messages: [
-                {role: "system", content: TAKEOVER_QUESTION_PROMPT},
-                {role: "user", content: `OPEN QUESTIONS:\n${openList}\n\nCHAT:\n${transcriptText(history).slice(-12_000)}`}
-            ]
-        })
-        const text = cleanQuestionText(res.content)
-        if (!text || /^none\b/i.test(text)) return null
-        // The visitor may have shared their contact details while the AI call ran: the question gets the current ones
-        const contact = await sessions.findOne({_id: session._id}, {projection: {visitorName: 1, visitorEmail: 1}})
-        return await createQuestion({project, session: {...session, ...contact}, question: text, reason: "during_takeover", messageId: userMessage._id})
-    } catch (err) {
-        logger.warn("Questions.takeover", `New question check failed for session ${session._id}`, err)
-        return null
     }
 }
 

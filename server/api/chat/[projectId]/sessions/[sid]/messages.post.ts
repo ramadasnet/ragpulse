@@ -85,8 +85,6 @@ export default defineEventHandler(async (event) => {
         send("meta", {userMessageId: userMessage._id})
         if (human) {
             send("human", {})
-            // The assistant stays silent, but a new question still becomes its own escalated question (after the response, never delaying it)
-            void escalateDuringTakeover(project, session, userMessage)
             return
         }
 

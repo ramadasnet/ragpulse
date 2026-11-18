@@ -176,8 +176,7 @@ function onKeydown(e: KeyboardEvent) {
 const reasonInfo: Record<string, {label: string; tone: "warning" | "danger" | "info"}> = {
     low_confidence: {label: "Low confidence", tone: "warning"},
     rate_limit: {label: "Limit reached", tone: "danger"},
-    user_request: {label: "Asked for human", tone: "info"},
-    during_takeover: {label: "During takeover", tone: "info"}
+    user_request: {label: "Asked for human", tone: "info"}
 }
 const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} as const
 </script>

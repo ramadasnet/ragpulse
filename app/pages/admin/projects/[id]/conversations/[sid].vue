@@ -81,7 +81,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} as const
-const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", rate_limit: "Limit reached", user_request: "Asked for human", during_takeover: "During takeover"}
+const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", rate_limit: "Limit reached", user_request: "Asked for human"}
 
 function time(value: string | Date) {
     return new Date(value).toLocaleString("en", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})

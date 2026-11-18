@@ -58,7 +58,7 @@ const topMax = computed(() => Math.max(1, ...(data.value?.topSources.map((s) => 
 const NuxtLink = resolveComponent("NuxtLink")
 const canReply = computed(() => can(projectId.value, "questions:reply"))
 
-const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", rate_limit: "Limit reached", user_request: "Asked for human", during_takeover: "During takeover"}
+const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", rate_limit: "Limit reached", user_request: "Asked for human"}
 </script>
 
 <template>

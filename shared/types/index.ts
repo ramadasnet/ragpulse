@@ -255,8 +255,7 @@ export interface ChatMessage {
 }
 
 export type QuestionStatus = "open" | "answered" | "dismissed"
-/** `during_takeover`: a new question asked while a team member handled the chat (the assistant was silent) */
-export type QuestionReason = "low_confidence" | "rate_limit" | "user_request" | "during_takeover"
+export type QuestionReason = "low_confidence" | "rate_limit" | "user_request"
 
 export interface Question {
     _id: string

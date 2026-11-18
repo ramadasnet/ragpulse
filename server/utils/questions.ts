@@ -417,7 +417,12 @@ export async function maybePostEmailFallback(project: Project, session: ChatSess
         await sessions.updateOne({_id: session._id, emailFallbackAt: now}, session.emailFallbackAt ? {$set: {emailFallbackAt: session.emailFallbackAt}} : {$unset: {emailFallbackAt: ""}}).catch(() => {})
         throw err
     }
-    await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
+    // Commit point: roll the notice back when a human took over or the chat ended since the claim
+    const committed = await sessions.updateOne({_id: session._id, humanHandledAt: {$exists: false}, endedAt: {$exists: false}}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
+    if (!committed.matchedCount) {
+        await messages.deleteOne({_id: message._id})
+        return false
+    }
     logger.info("Questions.wait", `Email fallback posted for session ${session._id}`, `Project ${project._id}`)
     return true
 }

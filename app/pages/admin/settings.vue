@@ -469,7 +469,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         :max="HUMAN_TAKEOVER_MAX_WAIT_MINUTES"
                         label="Human takeover wait (minutes)"
                         :error="errors.humanTakeoverWaitMinutes"
-                        hint="When a question is escalated, the chat asks for the visitor's name and email right away and waits this long for a team member to take over. If nobody does, the assistant says the team will get back by email. 0 = say it right away."
+                        hint="When a question is escalated, the chat asks for the visitor's name and email right away and waits this long for a team member to take over. If nobody does, the assistant says the team will get back by email (projects without a support email only ask for the visitor's details). 0 = say it right away."
                     />
                     <UiInput
                         v-model.number="form.answerEmailDelayMinutes"

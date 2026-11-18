@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertTriangle, ArrowLeft, Bot, CircleCheck, FileText, Headset, LogOut, Send, Undo2, UserRound} from "lucide-vue-next"
+import {AlertTriangle, ArrowLeft, Bot, CircleCheck, FileText, Headset, LogOut, Send, UserRound} from "lucide-vue-next"
 import type {ChatMessage, ChatSession, Question} from "#shared/types"
 
 interface Detail {
@@ -26,25 +26,15 @@ useHead({title: () => `${data.value?.session.visitorName || "Conversation"} · R
 
 const reply = ref("")
 const {run, pending} = useAction()
-const {run: runFinish, pending: finishPending} = useAction()
-const toast = useToast()
+const {run: runGiveBack, pending: giveBackPending} = useAction()
 const thread = ref<HTMLElement>()
 
-interface FinishResult {
-    session: Detail["session"]
-    learned?: {faq?: {question: string}; skipped?: string}
-}
-
-async function toggleFinished() {
-    const current = data.value
-    if (!current) return
-    const finished = !current.session.finishedAt
-    const res = await runFinish(() => $fetch<FinishResult>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished}}), finished ? "Conversation finished" : "Conversation reopened")
-    if (!res || !data.value) return
-    // Reload instead of trusting the response: a reply sent meanwhile may have reopened the session
-    await refresh()
-    if (res.learned?.faq) toast.success(`Learned FAQ: “${res.learned.faq.question}”`)
-    else if (finished && res.learned?.skipped) toast.success(`No FAQ learned: ${res.learned.skipped}`)
+/** Ends the human takeover: the assistant answers the visitor again. A FAQ is learned from the human replies in the background. */
+async function giveBack() {
+    if (!data.value) return
+    const res = await runGiveBack(() => $fetch<{session: Detail["session"]}>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished: true}}), "Given back to the agent: the assistant answers the visitor again")
+    // Reload instead of trusting the response: a reply sent meanwhile may have taken the conversation over again
+    if (res) await refresh()
 }
 
 async function send() {
@@ -70,7 +60,7 @@ const POLL_MS = 10_000
 let poll: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
     poll = setInterval(async () => {
-        if (document.visibilityState !== "visible" || !data.value || status.value === "pending" || pending.value || finishPending.value) return
+        if (document.visibilityState !== "visible" || !data.value || status.value === "pending" || pending.value || giveBackPending.value) return
         const current = data.value
         const fresh = await $fetch<Detail>(`/api/projects/${projectId.value}/sessions/${sid.value}`).catch(() => null)
         // A refresh or local action during the fetch has newer data: the stale poll result is discarded
@@ -91,7 +81,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} as const
-const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", rate_limit: "Limit reached", user_request: "Asked for human"}
+const reasonLabel: Record<string, string> = {low_confidence: "Low confidence", rate_limit: "Limit reached", user_request: "Asked for human", during_takeover: "During takeover"}
 
 function time(value: string | Date) {
     return new Date(value).toLocaleString("en", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"})
@@ -138,10 +128,9 @@ function dayLabel(i: number): string | null {
                     <UiBadge v-if="data.session.unansweredCount" tone="warning">{{ data.session.unansweredCount }} unanswered</UiBadge>
                     <UiBadge v-if="data.session.humanHandledAt" tone="info"><UserRound :size="12" /> Human handling</UiBadge>
                     <UiBadge v-if="data.session.endedAt" tone="neutral" :title="endedText"><LogOut :size="12" /> Ended</UiBadge>
-                    <UiBadge v-if="data.session.finishedAt" tone="success"><CircleCheck :size="12" /> Finished</UiBadge>
-                    <UiButton v-if="canReply" size="sm" variant="secondary" :loading="finishPending" :title="data.session.finishedAt ? 'Reopen this conversation' : 'Flag as finished and learn a FAQ from human replies'" @click="toggleFinished">
-                        <template v-if="data.session.finishedAt"><Undo2 :size="14" /> Reopen</template>
-                        <template v-else><CircleCheck :size="14" /> Mark finished</template>
+                    <UiBadge v-if="data.session.finishedAt" tone="success" :title="`Given back to the agent ${timeAgo(data.session.finishedAt)}`"><CircleCheck :size="12" /> With agent</UiBadge>
+                    <UiButton v-else-if="canReply && !data.session.endedAt" size="sm" :loading="giveBackPending" title="End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies" @click="giveBack">
+                        <Bot :size="14" /> Give back to agent
                     </UiButton>
                 </header>
 
@@ -174,7 +163,7 @@ function dayLabel(i: number): string | null {
                 <p v-if="data.session.humanHandledAt" class="handoff small">
                     <UserRound :size="14" />
                     <span
-                        >Handled by {{ data.session.humanHandledBy?.name || "a human" }}: the assistant won't reply until the question is answered.
+                        >Handled by {{ data.session.humanHandledBy?.name || "a human" }}: the assistant won't reply until the question is answered or you give the chat back to the agent.
                         <NuxtLink v-if="openQuestion && canReply" :to="`/admin/projects/${projectId}/questions?q=${openQuestion._id}`" class="link">Set the answer</NuxtLink></span
                     >
                 </p>
@@ -223,7 +212,7 @@ function dayLabel(i: number): string | null {
                             <dd>{{ formatDate(data.session.endedAt, true) }} {{ data.session.endReason === "inactive" ? "(inactive)" : "by the visitor" }}</dd></template
                         >
                         <template v-if="data.session.finishedAt"
-                            ><dt>Finished</dt>
+                            ><dt>Given back</dt>
                             <dd>
                                 {{ formatDate(data.session.finishedAt, true) }}<template v-if="data.session.finishedBy"> by {{ data.session.finishedBy.name }}</template>
                             </dd></template

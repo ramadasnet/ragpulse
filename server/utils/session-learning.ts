@@ -160,11 +160,12 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
 }
 
 /**
- * Flags a conversation as finished, or reopens it (`finished: false`). Finishing triggers
- * learning via `learnFaqFromSession`; its failures never block the flag itself.
+ * Flags a conversation as finished, or reopens it (`finished: false`). Finishing gives the chat back to the
+ * assistant (ends a human takeover) and triggers learning via `learnFaqFromSession`; its failures never block
+ * the flag itself. With `learnInBackground` the AI call does not delay the response and `learned` is not returned.
  * New messages posted into a finished session reopen it automatically ($unset in the writers).
  */
-export async function finishSession(params: {session: ChatSession; finished: boolean; author: ReplyAuthor}): Promise<{session: ChatSession; learned?: SessionLearnResult}> {
+export async function finishSession(params: {session: ChatSession; finished: boolean; author: ReplyAuthor; learnInBackground?: boolean}): Promise<{session: ChatSession; learned?: SessionLearnResult}> {
     const {sessions, projects} = await useCollections()
     const {session, finished, author} = params
     if (!finished) {
@@ -174,23 +175,24 @@ export async function finishSession(params: {session: ChatSession; finished: boo
         return {session: rest}
     }
 
-    const update: Pick<ChatSession, "finishedAt" | "finishedBy"> = {finishedAt: session.finishedAt ?? new Date(), finishedBy: author}
-    // A finished conversation is handed back to the assistant
+    const now = new Date()
+    const update: Pick<ChatSession, "finishedAt" | "finishedBy" | "emailFallbackAt"> = {finishedAt: session.finishedAt ?? now, finishedBy: author}
+    // A team member took over: the questions open now must not get the "nobody picked up the chat" notice afterwards
+    if (session.humanHandledAt) update.emailFallbackAt = now
+    // A finished conversation is handed back to the assistant; its open questions stay open in the inbox until answered
     await sessions.updateOne({_id: session._id}, {$set: update, $unset: {humanHandledAt: "", humanHandledBy: ""}})
-    logger.info("Session.finish", `Session ${session._id}`, `Finished by ${author.name} (${author.via})`)
+    logger.info("Session.finish", `Session ${session._id}`, `Finished by ${author.name} (${author.via})`, session.humanHandledAt ? "Takeover ended" : "")
     const {humanHandledAt, humanHandledBy, ...rest} = session
     const next: ChatSession = {...rest, ...update}
 
-    let learned: SessionLearnResult | undefined
     const project = await projects.findOne({_id: session.projectId})
-    if (project && (await hasAiProvider())) {
-        learned = await learnFaqFromSession(project, next).catch((err: any) => {
-            logger.error("Session.learn", `Learning from session ${session._id} failed`, err)
-            return {skipped: "summarization failed"}
-        })
-        if (learned?.faq) next.learnedFaqId = learned.faq._id
-    } else {
-        learned = {skipped: project ? "no AI provider configured" : "project not found"}
-    }
+    if (!project || !(await hasAiProvider())) return {session: next, learned: {skipped: project ? "no AI provider configured" : "project not found"}}
+    const learning = learnFaqFromSession(project, next).catch((err: any): SessionLearnResult => {
+        logger.error("Session.learn", `Learning from session ${session._id} failed`, err)
+        return {skipped: "summarization failed"}
+    })
+    if (params.learnInBackground) return {session: next}
+    const learned = await learning
+    if (learned.faq) next.learnedFaqId = learned.faq._id
     return {session: next, learned}
 }

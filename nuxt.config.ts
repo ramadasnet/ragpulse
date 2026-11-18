@@ -73,6 +73,8 @@ export default defineNuxtConfig({
     },
 
     runtimeConfig: {
+        // Build target (RAGPULSE_APP): empty when one server serves both the admin and the chat
+        appTarget: target,
         mongodbUri: "mongodb://127.0.0.1:27017/ragpulse?directConnection=true",
         openrouterApiKey: "",
         openrouterBaseUrl: "https://openrouter.ai/api/v1",

@@ -1,7 +1,8 @@
-import {afterEach, expect, test} from "bun:test"
-import {createQuestion} from "../server/utils/questions"
+import {afterEach, describe, expect, test} from "bun:test"
+import {createQuestion, extractEscalatedQuestion} from "../server/utils/questions"
+import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
 
-const names = ["useCollections", "newId", "publicUrl", "escapeHtml", "sendMail", "sendEscalationWebhook"] as const
+const names = ["useCollections", "newId", "publicUrl", "escapeHtml", "sendMail", "sendEscalationWebhook", "hasAiProvider", "searchKnowledge", "getAppSettings", "streamChatCompletion", "extractEscalatedQuestion"] as const
 const original = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]))
 
 afterEach(() => {
@@ -77,4 +78,103 @@ test.each([false, "reject", "unconfigured"])("escalation remains available when 
     expect(question.supportNotifiedAt).toBeUndefined()
     expect(updates).toEqual([])
     expect(calls).toBe(outcome === "unconfigured" ? 0 : 1)
+})
+
+/** In-memory questions, messages and sessions collections, enough for the escalation paths. */
+function fakeDb(messages: any[] = []) {
+    const questions: any[] = []
+    return {
+        questions,
+        messages,
+        collections: async () => ({
+            questions: {
+                findOne: async (filter: any) => questions.find((q) => q.messageId === filter.messageId && q.status === filter.status) ?? null,
+                insertOne: async (doc: any) => {
+                    questions.push(doc)
+                },
+                updateOne: async () => {}
+            },
+            messages: {
+                // Newest first, like the real query
+                find: () => ({sort: () => ({limit: () => ({toArray: async () => [...messages].reverse()})})}),
+                insertOne: async (doc: any) => {
+                    messages.push(doc)
+                }
+            },
+            sessions: {updateOne: async () => {}}
+        })
+    }
+}
+
+function mockEscalation(db: ReturnType<typeof fakeDb>, extra: Record<string, unknown> = {}) {
+    let id = 0
+    Object.assign(globalThis, {
+        useCollections: db.collections,
+        newId: () => `id${++id}`,
+        publicUrl: () => "https://example.test/question",
+        escapeHtml: (value: string) => value,
+        sendMail: async () => false,
+        sendEscalationWebhook: async () => {},
+        ...extra
+    })
+}
+
+const project = {_id: "project", title: "Test", supportEmail: "support@example.test", model: "test"} as any
+const session = {_id: "session", visitorName: "Visitor"} as any
+
+test("a second escalation while the first question is still open gets its own question in the same conversation", async () => {
+    const db = fakeDb()
+    mockEscalation(db)
+    const first = await createQuestion({project, session, question: "What is the max database size?", reason: "low_confidence", messageId: "m1"})
+    const second = await createQuestion({project, session, question: "Can I run it on AWS for free?", reason: "low_confidence", messageId: "m2"})
+    expect(second._id).not.toBe(first._id)
+    expect(db.questions.map((q) => [q.sessionId, q.messageId, q.status])).toEqual([
+        ["session", "m1", "open"],
+        ["session", "m2", "open"]
+    ])
+})
+
+test("earlier escalations reach the model as the escalation token, not as the apology the visitor saw", () => {
+    const at = new Date()
+    const history = toLlmHistory([
+        {_id: "m1", role: "user", content: "Max database size?", createdAt: at},
+        {_id: "a1", role: "assistant", content: "I couldn't find a confident answer to that, so I've flagged your question.", escalated: true, createdAt: at},
+        {_id: "f1", role: "assistant", content: "Our team hasn't picked up the chat yet.", emailFallback: true, createdAt: at},
+        {_id: "h1", role: "agent", content: "512MB max.", createdAt: at}
+    ] as any)
+    expect(history).toEqual([
+        {role: "user", content: "Max database size?"},
+        {role: "assistant", content: ESCALATE_TOKEN},
+        {role: "assistant", content: "(Support team) 512MB max."}
+    ])
+})
+
+test("a new question after the conversation was given back to the agent is escalated as its own question", async () => {
+    const at = (s: number) => new Date(Date.UTC(2026, 10, 18, 18, 0, s))
+    // Igor's test: first question escalated, a human replied and gave the chat back without answering the question
+    const db = fakeDb([
+        {_id: "m1", sessionId: "session", role: "user", content: "What's the maximum database size?", createdAt: at(1)},
+        {_id: "a1", sessionId: "session", role: "assistant", content: "I couldn't find a confident answer to that, so I've flagged your question for our team.", escalated: true, createdAt: at(2)},
+        {_id: "h1", sessionId: "session", role: "agent", content: "For small projects, 512MB max.", createdAt: at(3)}
+    ])
+    db.questions.push({_id: "q1", sessionId: "session", messageId: "m1", status: "open", question: "What's the maximum database size?"})
+    let llmMessages: any[] = []
+    mockEscalation(db, {
+        searchKnowledge: async () => [],
+        getAppSettings: async () => ({globalInstructions: ""}),
+        hasAiProvider: async () => false,
+        createQuestion,
+        extractEscalatedQuestion,
+        streamChatCompletion: async function* (opts: any) {
+            llmMessages = opts.messages
+            yield {type: "delta", text: ESCALATE_TOKEN}
+        }
+    })
+    const userMessage = {_id: "m2", sessionId: "session", role: "user", content: "Can I run it on AWS for free?", createdAt: at(4)} as any
+    db.messages.push(userMessage)
+    const events: any[] = []
+    for await (const ev of generateAnswer({project, session: {...session, userMessageCount: 2}, userMessage})) events.push(ev)
+    expect(llmMessages.slice(1).map((m) => m.content)).toEqual(["What's the maximum database size?", ESCALATE_TOKEN, "(Support team) For small projects, 512MB max.", "Can I run it on AWS for free?"])
+    expect(events.at(-1)).toMatchObject({type: "escalated", question: {sessionId: "session", messageId: "m2", status: "open", question: "Can I run it on AWS for free?"}})
+    expect(db.questions.map((q) => q.messageId)).toEqual(["m1", "m2"])
 })

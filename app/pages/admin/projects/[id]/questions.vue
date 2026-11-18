@@ -239,7 +239,6 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                             <span class="tiny dim">{{ formatDate(selected.createdAt, true) }}</span>
                         </div>
                         <div class="row wrap" style="--gap: 6px">
-                            <UiButton v-if="can(projectId, 'sessions:read')" size="sm" variant="ghost" :to="`/admin/projects/${projectId}/conversations/${selected.sessionId}`"> <MessagesSquare :size="14" /> Conversation </UiButton>
                             <UiButton v-if="selected.status === 'open'" size="sm" variant="ghost" :loading="statusAction.pending.value" @click="setStatus('dismissed')"> <XCircle :size="14" /> Dismiss </UiButton>
                             <UiButton v-else-if="selected.status === 'dismissed'" size="sm" variant="ghost" :loading="statusAction.pending.value" @click="setStatus('open')"> <RotateCcw :size="14" /> Reopen </UiButton>
                         </div>
@@ -255,6 +254,7 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                                     <template v-else>No email left</template>
                                 </p>
                             </div>
+                            <UiButton v-if="can(projectId, 'sessions:read')" size="sm" :to="`/admin/projects/${projectId}/conversations/${selected.sessionId}`"> <MessagesSquare :size="14" /> Open conversation </UiButton>
                         </div>
 
                         <blockquote class="question pre-wrap">{{ selected.question }}</blockquote>

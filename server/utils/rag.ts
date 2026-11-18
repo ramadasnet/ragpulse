@@ -50,7 +50,7 @@ You are chatting with a website visitor${session.visitorName ? ` named "${oneLin
 # Rules (always follow, they override everything else)
 1. Answer ONLY with information found in the CONTEXT and the PROJECT INSTRUCTIONS below. Do not use outside knowledge about this product or company.
 2. Never invent URLs, prices, plans, features, dates, contact details or policies. Only use links that appear in the CONTEXT or the PROJECT INSTRUCTIONS.
-3. If the CONTEXT and PROJECT INSTRUCTIONS do not contain the answer, output exactly ${ESCALATE_TOKEN} and nothing else: no apology, no explanation, no guess. A human from the team will take over.
+3. If the CONTEXT and PROJECT INSTRUCTIONS do not contain the answer, output exactly ${ESCALATE_TOKEN} and nothing else: no apology, no explanation, no guess. A human from the team will take over. Only this token flags a question for the team: never write that you flagged, escalated or forwarded a question, or that a person will take over.
 4. If the visitor asks to talk to a human, a person, a support agent or the team (in any language), output exactly ${HUMAN_TOKEN} and nothing else, even if you could answer. Never pretend to be a human.
 5. Greetings, thanks and small talk are fine: reply briefly and warmly and offer help (never escalate these).
 6. Always reply in the language of the visitor's latest message.
@@ -69,13 +69,18 @@ ${project.systemInstructions?.trim() || "(none)"}
 ${context.trim() || "(no relevant knowledge was found for this question)"}`
 }
 
-function toLlmHistory(history: ChatMessage[]): LlmMessage[] {
+/**
+ * Chat history as LLM messages. Earlier escalations show as the token the model output instead of the canned
+ * notice the visitor saw: an apology in the history makes the model answer the next unanswerable question with
+ * another apology, so it is never escalated. The email fallback notice is not part of the dialogue.
+ */
+export function toLlmHistory(history: ChatMessage[]): LlmMessage[] {
     return history
-        .filter((m) => m.content?.trim())
+        .filter((m) => m.content?.trim() && !m.emailFallback)
         .map((m): LlmMessage => {
             if (m.role === "user") return {role: "user", content: m.content}
             if (m.role === "agent") return {role: "assistant", content: `(Support team) ${m.content}`}
-            return {role: "assistant", content: m.content}
+            return {role: "assistant", content: m.escalated ? ESCALATE_TOKEN : m.content}
         })
 }
 
@@ -145,7 +150,8 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
 
     const history = (
         await messages
-            .find({sessionId: session._id, createdAt: {$lte: userMessage.createdAt}})
+            // The email fallback notice is not part of the dialogue, so it never takes a history slot
+            .find({sessionId: session._id, createdAt: {$lte: userMessage.createdAt}, emailFallback: {$ne: true}})
             .sort({createdAt: -1})
             .limit(HISTORY_MESSAGES)
             .toArray()

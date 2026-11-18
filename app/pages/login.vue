@@ -4,7 +4,12 @@ useHead({title: "Sign in · RAGPulse"})
 
 const route = useRoute()
 const {loggedIn} = useUserSession()
-if (loggedIn.value) await navigateTo("/admin")
+// Admin page to open after signing in, kept in a short-lived cookie across the OAuth round trip (read by the login handler)
+const redirect = String(route.query.redirect || "")
+const target = isAdminPath(redirect) ? redirect : "/admin"
+if (loggedIn.value) await navigateTo(target)
+// A failed sign-in comes back with only `error`: the pending target is kept for the retry
+if (!route.query.error) useCookie(LOGIN_REDIRECT_COOKIE, {path: "/", maxAge: 600, sameSite: "lax"}).value = target === "/admin" ? null : target
 
 const errors: Record<string, string> = {
     not_invited: "This account has not been invited. Ask an admin to add your email.",

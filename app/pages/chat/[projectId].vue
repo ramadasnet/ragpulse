@@ -541,10 +541,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="rp-id">
                 <p class="rp-name">{{ botName }}</p>
-                <p class="rp-sub">
-                    <span class="rp-pulse" aria-hidden="true" /><span class="rp-trunc">{{ title }}</span
-                    ><span class="rp-sep">·</span>{{ humanHandling ? "human" : "agent" }}
-                </p>
+                <p class="rp-sub"><span class="rp-pulse" aria-hidden="true" />{{ humanHandling ? "human" : "agent" }}</p>
             </div>
             <button v-if="phase === 'chat' && !preview" class="rp-icon" type="button" title="New conversation" aria-label="New conversation" :disabled="streaming" @click="askNewConversation">
                 <RotateCcw :size="17" />
@@ -852,15 +849,6 @@ onBeforeUnmount(() => {
     font-size: 12.5px;
     color: var(--c-muted);
     min-width: 0;
-}
-.rp-trunc {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-}
-.rp-sep {
-    color: var(--c-dim);
 }
 .rp-pulse {
     width: 7px;

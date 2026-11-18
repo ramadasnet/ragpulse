@@ -133,7 +133,9 @@ function logCompletion(opts: ChatCompletionOptions, startedAt: number, outcome: 
     const took = `${Date.now() - startedAt} ms`
     if ("error" in outcome) {
         const err = outcome.error as any
-        logger.warn(action, ...context, `Model ${opts.model}`, `Failed after ${took}`, String(err?.statusMessage || err?.message || err).slice(0, 300))
+        // Only the status code or error type: a provider's error text can echo the prompt
+        const reason = typeof err?.statusCode === "number" ? `Status ${err.statusCode}` : String(err?.name || "Error")
+        logger.warn(action, ...context, `Model ${opts.model}`, `Failed after ${took}`, reason)
         return
     }
     const u = outcome.usage

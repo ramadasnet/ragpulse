@@ -57,15 +57,22 @@ async function loadList() {
     }
 }
 
-/** Refreshes the counts and whether each listed visitor is in the chat, without reloading (or reordering) the list. */
+/**
+ * Refreshes the counts, whether each listed visitor is in the chat and adds new escalations on top. Questions that left
+ * the tab stay listed (like after a reply), so the one being read is never closed under the admin.
+ */
+let pollRequest = 0
 async function poll() {
     if (document.visibilityState !== "visible" || loading.value) return
     const id = requestId
+    const current = ++pollRequest
     const fresh = await $fetch<InboxQuestion[]>(base.value, {query: {status: tab.value}}).catch(() => null)
     await loadCounts()
-    if (!fresh || id !== requestId) return
+    if (!fresh || id !== requestId || current !== pollRequest) return
+    const known = new Set(items.value.map((q) => q._id))
     const inChat = new Map(fresh.map((q) => [q._id, q.visitorInChat]))
-    items.value = items.value.map((q) => (inChat.has(q._id) && inChat.get(q._id) !== q.visitorInChat ? {...q, visitorInChat: inChat.get(q._id)} : q))
+    const updated = items.value.map((q) => (inChat.has(q._id) && inChat.get(q._id) !== q.visitorInChat ? {...q, visitorInChat: inChat.get(q._id)} : q))
+    items.value = [...fresh.filter((q) => !known.has(q._id)), ...updated]
 }
 
 const POLL_MS = 15_000

@@ -193,9 +193,12 @@ async function loadSession(silent = false) {
             headers: {"x-session-token": st.token},
             query: chatVisible() ? {visible: 1} : undefined
         })
+        // Ignore a response for a conversation that was reset while the request was pending
+        if (stored.value?.token !== st.token) return
         applyServer(res.messages, res.session)
         phase.value = "chat"
     } catch (err: any) {
+        if (stored.value?.token !== st.token) return
         const status = err?.statusCode || err?.response?.status
         if (status === 401 || status === 404) {
             resetConversation()
@@ -231,6 +234,20 @@ async function ensureSession(): Promise<Stored | null> {
     } catch (err) {
         showBanner(errorText(err))
         return null
+    }
+}
+
+/** Reloads the session after a 401 and shows it when it has ended; false when the credentials are no longer valid. */
+async function showEndedSession(st: Stored): Promise<boolean> {
+    try {
+        const res = await $fetch<{session: PublicSession; messages: ChatUiMessage[]}>(`${api}/sessions/${st.sessionId}`, {headers: {"x-session-token": st.token}})
+        if (stored.value?.token !== st.token) return true
+        if (!res.session.endedAt) return false
+        applyServer(res.messages, res.session)
+        messages.value = res.messages
+        return true
+    } catch {
+        return false
     }
 }
 
@@ -334,6 +351,11 @@ async function send(content: string) {
             removeMessage(userId)
             removeMessage(botId)
             if (res.status === 401) {
+                // A 401 also means the conversation ended: keep it visible (read-only) instead of clearing it
+                if (await showEndedSession(st)) {
+                    draft.value = content
+                    return
+                }
                 resetConversation()
                 draft.value = content
                 showBanner("Your conversation expired. Please try again.")

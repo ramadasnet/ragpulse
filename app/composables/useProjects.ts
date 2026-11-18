@@ -20,7 +20,19 @@ export function useProjects() {
         if (!loaded.value) await refresh().catch(() => {})
     }
 
-    return {projects, loaded, refresh, ensure}
+    /** Sets the open question count of a project (the sidebar badge) without reloading every project summary. */
+    function setOpenQuestions(projectId: string, open: number) {
+        const project = projects.value.find((p) => p._id === projectId)
+        if (project) project.stats.openQuestions = open
+    }
+
+    /** Reloads the open question count of a project. */
+    async function refreshOpenQuestions(projectId: string) {
+        const counts = await $fetch<{open: number}>(`/api/projects/${projectId}/questions/counts`)
+        setOpenQuestions(projectId, counts.open)
+    }
+
+    return {projects, loaded, refresh, ensure, setOpenQuestions, refreshOpenQuestions}
 }
 
 /** Current project id from the route (`/admin/projects/:id/...`). */

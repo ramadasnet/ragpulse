@@ -3,7 +3,7 @@ import {BarChart3, BookOpen, ChevronsUpDown, Code2, Database, FolderKanban, LogO
 import type {ProjectPermission} from "#shared/types"
 
 const {me, isAdmin, can} = useMe()
-const {projects, ensure} = useProjects()
+const {projects, ensure, refreshOpenQuestions} = useProjects()
 const projectId = useProjectId()
 const route = useRoute()
 const {clear} = useUserSession()
@@ -39,6 +39,24 @@ const projectNav = computed(() => {
 function isActive(to: string, exact?: boolean) {
     return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`)
 }
+
+// Keeps the Escalated badge in sync with questions escalated (or answered elsewhere) after the projects were loaded
+const OPEN_QUESTIONS_POLL_MS = 30_000
+let openQuestionsPoll: ReturnType<typeof setInterval> | undefined
+function syncOpenQuestions() {
+    const id = projectId.value
+    if (!id || !can(id, "questions:reply") || document.visibilityState !== "visible") return
+    refreshOpenQuestions(id).catch(() => {})
+}
+watch(projectId, syncOpenQuestions)
+onMounted(() => {
+    openQuestionsPoll = setInterval(syncOpenQuestions, OPEN_QUESTIONS_POLL_MS)
+    document.addEventListener("visibilitychange", syncOpenQuestions)
+})
+onBeforeUnmount(() => {
+    clearInterval(openQuestionsPoll)
+    document.removeEventListener("visibilitychange", syncOpenQuestions)
+})
 
 async function logout() {
     await $fetch("/auth/logout", {method: "POST"})

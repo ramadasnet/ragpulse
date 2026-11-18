@@ -4,13 +4,15 @@ import type {AnswerEmailStatus, ChatMessage, Faq, Question, QuestionStatus} from
 
 type Tab = QuestionStatus | "all"
 type Counts = Record<Tab, number>
+/** A question of the inbox list, flagged while its visitor has the chat open */
+type InboxQuestion = Question & {visitorInChat?: boolean}
 
 const route = useRoute()
 const router = useRouter()
 const projectId = useProjectId()
 const allowed = await guardProjectPage(projectId.value!, "questions:reply")
 const {can} = useMe()
-const {refresh: refreshProjects} = useProjects()
+const {refresh: refreshProjects, setOpenQuestions} = useProjects()
 const toast = useToast()
 useHead({title: "Escalated questions · RAGPulse"})
 
@@ -21,7 +23,7 @@ const tabs: Array<{id: Tab; label: string}> = [
     {id: "all", label: "All"}
 ]
 const tab = ref<Tab>("open")
-const items = ref<Question[]>([])
+const items = ref<InboxQuestion[]>([])
 const counts = ref<Counts | null>(null)
 const loading = ref(true)
 const selectedId = ref<string | undefined>(typeof route.query.q === "string" ? route.query.q : undefined)
@@ -33,13 +35,14 @@ const base = computed(() => `/api/projects/${projectId.value}/questions`)
 
 async function loadCounts() {
     counts.value = await $fetch<Counts>(`${base.value}/counts`).catch(() => counts.value)
+    if (counts.value) setOpenQuestions(projectId.value!, counts.value.open)
 }
 
 async function loadList() {
     const id = ++requestId
     loading.value = true
     try {
-        const list = await $fetch<Question[]>(base.value, {query: {status: tab.value}})
+        const list = await $fetch<InboxQuestion[]>(base.value, {query: {status: tab.value}})
         if (id !== requestId) return
         items.value = list
         if (deepLinkPending && selectedId.value && !list.some((q) => q._id === selectedId.value) && tab.value !== "all") {
@@ -54,13 +57,28 @@ async function loadList() {
     }
 }
 
+/** Refreshes the counts and whether each listed visitor is in the chat, without reloading (or reordering) the list. */
+async function poll() {
+    if (document.visibilityState !== "visible" || loading.value) return
+    const id = requestId
+    const fresh = await $fetch<InboxQuestion[]>(base.value, {query: {status: tab.value}}).catch(() => null)
+    await loadCounts()
+    if (!fresh || id !== requestId) return
+    const inChat = new Map(fresh.map((q) => [q._id, q.visitorInChat]))
+    items.value = items.value.map((q) => (inChat.has(q._id) && inChat.get(q._id) !== q.visitorInChat ? {...q, visitorInChat: inChat.get(q._id)} : q))
+}
+
+const POLL_MS = 15_000
+let pollTimer: ReturnType<typeof setInterval> | undefined
 watch(tab, loadList)
 if (allowed) {
     onMounted(() => {
         loadList()
         loadCounts()
+        pollTimer = setInterval(poll, POLL_MS)
     })
 }
+onBeforeUnmount(() => clearInterval(pollTimer))
 
 function select(id?: string) {
     selectedId.value = id
@@ -117,7 +135,7 @@ const composerHint = computed(() => {
     const q = selected.value
     if (!q) return undefined
     const parts: string[] = []
-    if (setMode.value) parts.push(`Summarized from ${chatReplies.value} ${chatReplies.value === 1 ? "reply" : "replies"} in the conversation, posted to the chat (if the conversation is still open) and saved as the answer.`)
+    if (setMode.value) parts.push(`${chatReplies.value === 1 ? "Taken from your reply" : `Composed from ${chatReplies.value} replies`} in the conversation, posted to the chat (if the conversation is still open) and saved as the answer.`)
     else parts.push("Posted in the visitor's chat if the conversation is still open.")
     if (!q.faqId && q.status === "open") parts.push("Added to the FAQ.")
     if (q.visitorEmail) parts.push(`Emailed to ${q.visitorEmail} only if they don't see it in the chat.`)
@@ -128,7 +146,7 @@ const {run, pending} = useAction()
 const statusAction = useAction()
 
 function replace(q: Question) {
-    items.value = items.value.map((i) => (i._id === q._id ? q : i))
+    items.value = items.value.map((i) => (i._id === q._id ? {...q, visitorInChat: i.visitorInChat} : i))
 }
 
 async function afterChange() {
@@ -254,7 +272,15 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                                     <template v-else>No email left</template>
                                 </p>
                             </div>
-                            <UiButton v-if="can(projectId, 'sessions:read')" size="sm" :to="`/admin/projects/${projectId}/conversations/${selected.sessionId}`"> <MessagesSquare :size="14" /> Open conversation </UiButton>
+                            <UiButton
+                                v-if="can(projectId, 'sessions:read')"
+                                size="sm"
+                                :variant="selected.visitorInChat ? 'primary' : 'secondary'"
+                                :title="selected.visitorInChat ? 'The visitor is in the chat right now' : undefined"
+                                :to="`/admin/projects/${projectId}/conversations/${selected.sessionId}`"
+                            >
+                                <MessagesSquare :size="14" /> Open conversation
+                            </UiButton>
                         </div>
 
                         <blockquote class="question pre-wrap">{{ selected.question }}</blockquote>

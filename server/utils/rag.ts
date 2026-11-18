@@ -69,13 +69,18 @@ ${project.systemInstructions?.trim() || "(none)"}
 ${context.trim() || "(no relevant knowledge was found for this question)"}`
 }
 
-function toLlmHistory(history: ChatMessage[]): LlmMessage[] {
+/**
+ * Chat history as LLM messages. Earlier escalations show as the token the model output instead of the canned
+ * notice the visitor saw: an apology in the history makes the model answer the next unanswerable question with
+ * another apology, so it is never escalated. The email fallback notice is not part of the dialogue.
+ */
+export function toLlmHistory(history: ChatMessage[]): LlmMessage[] {
     return history
-        .filter((m) => m.content?.trim())
+        .filter((m) => m.content?.trim() && !m.emailFallback)
         .map((m): LlmMessage => {
             if (m.role === "user") return {role: "user", content: m.content}
             if (m.role === "agent") return {role: "assistant", content: `(Support team) ${m.content}`}
-            return {role: "assistant", content: m.content}
+            return {role: "assistant", content: m.escalated ? ESCALATE_TOKEN : m.content}
         })
 }
 

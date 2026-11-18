@@ -216,7 +216,7 @@ export interface ChatSession {
     /** Set when a human replied to an escalated question from the admin panel: the assistant stays silent until no question is open */
     humanHandledAt?: Date
     humanHandledBy?: {userId?: string; name: string}
-    /** The "team didn't take over, answer comes by email" notice was posted into this chat at this time */
+    /** The "team didn't take over, answer comes by email" notice was posted into this chat at this time, or a takeover ended: older open questions get no notice */
     emailFallbackAt?: Date
     /** Last time the visitor had the chat open and visible */
     visitorSeenAt?: Date
@@ -255,7 +255,8 @@ export interface ChatMessage {
 }
 
 export type QuestionStatus = "open" | "answered" | "dismissed"
-export type QuestionReason = "low_confidence" | "rate_limit" | "user_request"
+/** `during_takeover`: a new question asked while a team member handled the chat (the assistant was silent) */
+export type QuestionReason = "low_confidence" | "rate_limit" | "user_request" | "during_takeover"
 
 export interface Question {
     _id: string

@@ -176,7 +176,8 @@ function onKeydown(e: KeyboardEvent) {
 const reasonInfo: Record<string, {label: string; tone: "warning" | "danger" | "info"}> = {
     low_confidence: {label: "Low confidence", tone: "warning"},
     rate_limit: {label: "Limit reached", tone: "danger"},
-    user_request: {label: "Asked for human", tone: "info"}
+    user_request: {label: "Asked for human", tone: "info"},
+    during_takeover: {label: "During takeover", tone: "info"}
 }
 const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} as const
 </script>
@@ -239,7 +240,6 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                             <span class="tiny dim">{{ formatDate(selected.createdAt, true) }}</span>
                         </div>
                         <div class="row wrap" style="--gap: 6px">
-                            <UiButton v-if="can(projectId, 'sessions:read')" size="sm" variant="ghost" :to="`/admin/projects/${projectId}/conversations/${selected.sessionId}`"> <MessagesSquare :size="14" /> Conversation </UiButton>
                             <UiButton v-if="selected.status === 'open'" size="sm" variant="ghost" :loading="statusAction.pending.value" @click="setStatus('dismissed')"> <XCircle :size="14" /> Dismiss </UiButton>
                             <UiButton v-else-if="selected.status === 'dismissed'" size="sm" variant="ghost" :loading="statusAction.pending.value" @click="setStatus('open')"> <RotateCcw :size="14" /> Reopen </UiButton>
                         </div>
@@ -255,6 +255,7 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                                     <template v-else>No email left</template>
                                 </p>
                             </div>
+                            <UiButton v-if="can(projectId, 'sessions:read')" size="sm" :to="`/admin/projects/${projectId}/conversations/${selected.sessionId}`"> <MessagesSquare :size="14" /> Open conversation </UiButton>
                         </div>
 
                         <blockquote class="question pre-wrap">{{ selected.question }}</blockquote>

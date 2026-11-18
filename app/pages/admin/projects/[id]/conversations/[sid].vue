@@ -89,8 +89,8 @@ async function saveAnswersAndGiveBack() {
     const todo = drafts.value.filter((d) => !d.saved && d.answer.trim())
     const saved = await runAnswers(async () => {
         for (const draft of todo) {
-            // The visitor already read these replies in the chat: the answer is recorded (FAQ, email when away) without posting it again
-            await $fetch(`/api/projects/${projectId.value}/questions/${draft.question._id}/reply`, {method: "POST", body: {answer: draft.answer.trim(), postToChat: false}})
+            // An answer drafted from team replies was already read in the chat, so it is only recorded (FAQ, email when away); one written here is posted
+            await $fetch(`/api/projects/${projectId.value}/questions/${draft.question._id}/reply`, {method: "POST", body: {answer: draft.answer.trim(), postToChat: !draft.replies}})
             draft.saved = true
         }
         return true
@@ -111,7 +111,7 @@ async function giveBackOnly() {
 /** Where the pre-filled answer comes from. */
 function draftHint(d: AnswerDraft): string {
     const keepOpen = drafts.value.length > 1 ? " Leave it empty to keep this question open." : ""
-    if (!d.replies) return `No reply to this question in the chat yet: write the answer here.${keepOpen}`
+    if (!d.replies) return `No reply to this question in the chat yet: the answer you write here is posted in the visitor's chat.${keepOpen}`
     if (d.replies === 1) return `Your reply from the chat. Edit it before saving if needed.${keepOpen}`
     return `Composed from your ${d.replies} replies in the chat. Review it before saving.${keepOpen}`
 }

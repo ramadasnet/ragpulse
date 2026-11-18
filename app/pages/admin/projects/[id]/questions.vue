@@ -107,7 +107,7 @@ const setMode = computed(() => chatReplies.value > 0 && selected.value?.status =
 let draftRequest = 0
 
 watch(
-    () => [selected.value?._id, selected.value?.status],
+    [() => selected.value?._id, () => selected.value?.status],
     async () => {
         answer.value = ""
         chatReplies.value = 0

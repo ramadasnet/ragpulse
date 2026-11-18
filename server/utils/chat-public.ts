@@ -68,8 +68,8 @@ function safeEqualHex(a: string, b: string): boolean {
     return ba.length === bb.length && ba.length > 0 && timingSafeEqual(ba, bb)
 }
 
-/** Loads the chat session from the `sid` router param and verifies the `x-session-token` header. Ended sessions are rejected. */
-export async function requireChatSession(event: H3Event, project: Project): Promise<ChatSession> {
+/** Loads the chat session from the `sid` router param and verifies the `x-session-token` header. Ended sessions are rejected unless `allowEnded`. */
+export async function requireChatSession(event: H3Event, project: Project, opts: {allowEnded?: boolean} = {}): Promise<ChatSession> {
     const sid = getRouterParam(event, "sid") || ""
     const token = getRequestHeader(event, "x-session-token") || ""
     if (!ID_RE.test(sid) || !token || token.length > 200) throw createError({statusCode: 401, statusMessage: "Invalid session"})
@@ -78,7 +78,7 @@ export async function requireChatSession(event: H3Event, project: Project): Prom
     if (!session || !safeEqualHex(sha256(token), session.tokenHash)) {
         throw createError({statusCode: 401, statusMessage: "Invalid session"})
     }
-    if (await sessionEnded(session)) throw createError({statusCode: 401, statusMessage: "This conversation has ended"})
+    if ((await sessionEnded(session)) && !opts.allowEnded) throw createError({statusCode: 401, statusMessage: "This conversation has ended"})
     return session
 }
 
@@ -163,6 +163,9 @@ export function publicChatSession(session: ChatSession) {
         limitReached: session.limitReached,
         /** A human from the team is replying: the assistant does not answer (header shows "human" instead of "agent") */
         humanHandling: !!session.humanHandledAt,
+        /** The conversation ended (by the visitor, or `inactive` after a period without messages): it is read-only */
+        endedAt: session.endedAt,
+        endReason: session.endReason,
         createdAt: session.createdAt
     }
 }

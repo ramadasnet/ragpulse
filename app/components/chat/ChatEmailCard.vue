@@ -19,11 +19,11 @@ function submit() {
         <p v-if="doneEmail" class="c-done" role="status">
             <Check :size="15" />
             <span
-                >Thanks! We'll reply to <strong>{{ doneEmail }}</strong>.</span
+                >Thanks! Our team can reach you at <strong>{{ doneEmail }}</strong>.</span
             >
         </p>
         <form v-else class="c-form" @submit.prevent="submit">
-            <p class="c-card-text"><Mail :size="14" /> Get the answer by email</p>
+            <p class="c-card-text"><Mail :size="14" /> Leave your name and email for our team</p>
             <input v-model="name" class="c-input" required maxlength="80" autocomplete="name" placeholder="Your name" aria-label="Your name" />
             <div class="c-row">
                 <input v-model="email" class="c-input" type="email" required maxlength="200" autocomplete="email" placeholder="you@example.com" aria-label="Your email" />

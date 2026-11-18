@@ -1,7 +1,7 @@
 import type {ChatTheme} from "#shared/types"
 import {DEFAULT_THEME} from "#shared/types"
 
-// Chat widget theming helpers (used by the public chat page and the appearance editor).
+// Chat widget theming and message helpers (used by the public chat page and the appearance editor).
 
 function parseHex(hex: string): [number, number, number] | null {
     let h = String(hex || "")
@@ -111,4 +111,13 @@ export interface ChatUiMessage {
     streaming?: boolean
     /** Error shown instead of an answer */
     error?: string
+}
+
+/**
+ * Message the visitor details form shows under: the latest escalation, or the later "answer comes by email" notice,
+ * while the visitor's name or email is still missing. The form shows on escalation, before any email notice.
+ */
+export function detailsFormMessageId(messages: ChatUiMessage[], details: {visitorName?: string; visitorEmail?: string}): string | undefined {
+    if (details.visitorName && details.visitorEmail) return undefined
+    return [...messages].reverse().find((m) => m.escalated || m.emailFallback)?._id
 }

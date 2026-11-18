@@ -167,12 +167,13 @@ function applyServer(list: ChatUiMessage[], s: PublicSession) {
     if (s.limitReached && !limit.value) {
         limit.value = {message: "You've reached the message limit for this conversation. Send your question to our team and we'll get back to you.", hasSupport: !!config.value?.hasSupport}
     }
-    // The email-details card only appears under the "answer comes by email" fallback message,
-    // i.e. after the human-takeover wait expired
-    const lastFallback = [...messages.value].reverse().find((m) => m.emailFallback)
-    if (lastFallback && (!s.visitorEmail || !s.visitorName) && escalation.value?.messageId !== lastFallback._id) {
-        escalation.value = {messageId: lastFallback._id}
-    }
+    attachDetailsForm()
+}
+
+/** Shows the details form under the latest escalation (or the later email notice) while the name or email is missing. */
+function attachDetailsForm() {
+    const messageId = detailsFormMessageId(messages.value, session.value ?? {})
+    if (messageId && escalation.value?.messageId !== messageId) escalation.value = {messageId}
 }
 
 // The embed widget keeps its iframe loaded while closed and reports open / closed (ragpulse:visibility)
@@ -379,6 +380,7 @@ async function send(content: string) {
             } else if (name === "escalated") {
                 showBot()
                 Object.assign(bot, data.message, {streaming: false})
+                attachDetailsForm()
             } else if (name === "human") {
                 handedOff = true
                 removeMessage(botId)

@@ -1,7 +1,8 @@
 // Scheduler: periodically syncs sources that are due, and immediately when a sync is requested.
 // Re-embeds stored chunks after an embedding model change.
 // Also closes chat sessions without messages for the configured number of days, deletes chat sessions older than the configured retention period, old escalated questions and old sync history,
-// and sends the delayed answer emails of visitors who did not see the answer in the chat.
+// sends the delayed answer emails of visitors who did not see the answer in the chat,
+// and posts the "answer comes by email" notice into escalated chats nobody took over in time.
 // MongoDB locks make sure only one instance runs each job at a time.
 import logger from "../utils/logger"
 
@@ -11,6 +12,7 @@ const HISTORY_LOCK_NAME = "sync-history-retention"
 const QUESTION_LOCK_NAME = "question-retention"
 const AUTO_CLOSE_LOCK_NAME = "chat-auto-close"
 const EMAIL_LOCK_NAME = "answer-emails"
+const FALLBACK_LOCK_NAME = "email-fallbacks"
 const EMAIL_INTERVAL_MS = 30_000
 const RETENTION_INTERVAL_MS = 3600 * 1000
 const LOCK_TTL_SECONDS = 120
@@ -100,6 +102,16 @@ export default defineNitroPlugin((nitroApp) => {
         }
     }
 
+    async function postEmailFallbacks() {
+        if (closed) return
+        try {
+            const posted = await withLock(() => postDueEmailFallbacks(), FALLBACK_LOCK_NAME)
+            if (posted) logger.info("Scheduler.emails", `Posted ${posted} email fallback notice(s) into chats nobody took over`)
+        } catch (err: any) {
+            logger.error("Scheduler.emails", "Email fallback notices failed", err)
+        }
+    }
+
     async function runRetention() {
         await closeInactiveSessions()
         await purgeChatSessions()
@@ -167,7 +179,10 @@ export default defineNitroPlugin((nitroApp) => {
 
     const interval = setInterval(tick, tickMs)
     const retentionInterval = setInterval(runRetention, RETENTION_INTERVAL_MS)
-    const emailInterval = setInterval(sendAnswerEmails, EMAIL_INTERVAL_MS)
+    const emailInterval = setInterval(() => {
+        sendAnswerEmails()
+        postEmailFallbacks()
+    }, EMAIL_INTERVAL_MS)
     syncEvents.on("kick", kick)
 
     nitroApp.hooks.hook("close", () => {

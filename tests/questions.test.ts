@@ -97,7 +97,7 @@ function fakeDb(messages: any[] = []) {
             },
             // Newest first, like the real query
             messages: {find: () => cursor([...messages].reverse())},
-            sessions: {updateOne: async () => {}}
+            sessions: {updateOne: async () => {}, findOne: async () => ({_id: "session", visitorName: "Visitor", visitorEmail: "visitor@example.test"})}
         })
     }
 }
@@ -154,7 +154,7 @@ describe("escalateDuringTakeover", () => {
         const question = await escalateDuringTakeover(project, session, latest)
         expect(prompt).toContain("- What is the max database size?")
         expect(prompt).toContain("Visitor: Can I run this on GCP free of charge?")
-        expect(question).toMatchObject({sessionId: "session", messageId: "m2", reason: "during_takeover", status: "open", question: "Can I run this on GCP free of charge?"})
+        expect(question).toMatchObject({sessionId: "session", messageId: "m2", reason: "during_takeover", status: "open", question: "Can I run this on GCP free of charge?", visitorEmail: "visitor@example.test"})
         expect(db.questions).toHaveLength(2)
     })
 
@@ -190,4 +190,27 @@ test("earlier escalations reach the model as the escalation token, not as the ap
         {role: "assistant", content: ESCALATE_TOKEN},
         {role: "assistant", content: "(Support team) 512MB max."}
     ])
+})
+
+test("takeover checks of one session run one at a time, so a repeated question is not recorded twice", async () => {
+    const at = (s: number) => new Date(Date.UTC(2026, 10, 18, 18, 0, s))
+    const history = [
+        {_id: "m1", role: "user", content: "Can I get an invoice in EUR?", createdAt: at(1)},
+        {_id: "m2", role: "user", content: "An invoice in EUR, is that possible?", createdAt: at(2)}
+    ]
+    const db = fakeDb(history)
+    const prompts: string[] = []
+    mockEscalation(db, {
+        hasAiProvider: async () => true,
+        chatCompletion: async (opts: any) => {
+            prompts.push(opts.messages[1].content)
+            await Bun.sleep(10)
+            return {content: prompts.length === 1 ? "Can I get an invoice in EUR?" : "NONE"}
+        }
+    })
+    const [first, second] = await Promise.all([escalateDuringTakeover(project, session, history[0] as any), escalateDuringTakeover(project, session, history[1] as any)])
+    expect(first?.question).toBe("Can I get an invoice in EUR?")
+    expect(second).toBeNull()
+    expect(prompts[1]).toContain("- Can I get an invoice in EUR?")
+    expect(db.questions).toHaveLength(1)
 })

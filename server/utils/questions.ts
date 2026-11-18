@@ -399,15 +399,27 @@ Rules:
 /** Messages of the transcript that decides whether a visitor message asked during a takeover is a new question. */
 const TAKEOVER_HISTORY_MESSAGES = 20
 
+/** Takeover checks still running per session: the next one waits, so it sees the question the previous one recorded. */
+const takeoverChecks = new Map<string, Promise<unknown>>()
+
 /**
  * While a human handles the chat the assistant stays silent, so a new question would never be escalated:
  * the AI checks whether the visitor's latest message asks something new (not small talk or a follow-up of an
- * open question) and records it as its own question of the same conversation. Never throws.
+ * open question) and records it as its own question of the same conversation. Checks of one session run one at
+ * a time. Never throws.
  */
-export async function escalateDuringTakeover(project: Project, session: ChatSession, userMessage: ChatMessage): Promise<Question | null> {
+export function escalateDuringTakeover(project: Project, session: ChatSession, userMessage: ChatMessage): Promise<Question | null> {
+    const run = (takeoverChecks.get(session._id) ?? Promise.resolve()).then(() => checkTakeoverMessage(project, session, userMessage))
+    takeoverChecks.set(session._id, run)
+    return run.finally(() => {
+        if (takeoverChecks.get(session._id) === run) takeoverChecks.delete(session._id)
+    })
+}
+
+async function checkTakeoverMessage(project: Project, session: ChatSession, userMessage: ChatMessage): Promise<Question | null> {
     try {
         if (!(await hasAiProvider())) return null
-        const {messages, questions} = await useCollections()
+        const {messages, questions, sessions} = await useCollections()
         const [recent, open] = await Promise.all([
             messages
                 .find({sessionId: session._id, createdAt: {$lte: userMessage.createdAt}})
@@ -435,7 +447,9 @@ export async function escalateDuringTakeover(project: Project, session: ChatSess
         })
         const text = cleanQuestionText(res.content)
         if (!text || /^none\b/i.test(text)) return null
-        return await createQuestion({project, session, question: text, reason: "during_takeover", messageId: userMessage._id})
+        // The visitor may have shared their contact details while the AI call ran: the question gets the current ones
+        const contact = await sessions.findOne({_id: session._id}, {projection: {visitorName: 1, visitorEmail: 1}})
+        return await createQuestion({project, session: {...session, ...contact}, question: text, reason: "during_takeover", messageId: userMessage._id})
     } catch (err) {
         logger.warn("Questions.takeover", `New question check failed for session ${session._id}`, err)
         return null

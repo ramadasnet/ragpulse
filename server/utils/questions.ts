@@ -382,32 +382,33 @@ export async function extractEscalatedQuestion(project: Project, history: ChatMe
     }
 }
 
-/** Fallback notice variants: nobody took over the escalated chat in time. */
+/** Fallback notice variants: nobody took over the escalated chat in time. The details form already showed on escalation. */
 function emailFallbackText(project: Project, hasEmail: boolean): string {
-    if (hasEmail) return "Our team hasn't picked up the chat yet, so the answer will come to your email instead."
-    if (project.supportEmail) return "Our team hasn't picked up the chat yet. Leave your name and email below and we'll reply by email."
+    if (hasEmail) return "Our team hasn't picked up the chat yet, so we'll get back to you by email soon."
+    if (project.supportEmail) return "Our team hasn't picked up the chat yet. Leave your name and email below and we'll get back to you by email soon."
     return "Our team hasn't picked up the chat yet. Leave your details below so the team can get back to you."
 }
 
 /**
  * When an escalated session has waited `humanTakeoverWaitMinutes` without a human taking over, posts a
  * notice telling the visitor the answer comes by email (once per escalation, `session.emailFallbackAt`).
+ * Returns whether the notice was posted.
  */
-export async function maybePostEmailFallback(project: Project, session: ChatSession): Promise<void> {
-    if (session.humanHandledAt || session.endedAt) return
+export async function maybePostEmailFallback(project: Project, session: ChatSession): Promise<boolean> {
+    if (session.humanHandledAt || session.endedAt) return false
     const {questions, sessions, messages} = await useCollections()
     // Only open questions opened after the last posted notice still need one
     const filter: Record<string, unknown> = {sessionId: session._id, status: "open"}
     if (session.emailFallbackAt) filter.createdAt = {$gt: session.emailFallbackAt}
     const oldest = await questions.findOne(filter, {sort: {createdAt: 1}, projection: {createdAt: 1}})
-    if (!oldest) return
+    if (!oldest) return false
     const waitMinutes = (await getAppSettings()).humanTakeoverWaitMinutes
-    if (new Date(oldest.createdAt).getTime() + waitMinutes * 60_000 > Date.now()) return
+    if (new Date(oldest.createdAt).getTime() + waitMinutes * 60_000 > Date.now()) return false
     const now = new Date()
     // Claim before posting so concurrent polls can't double-post; only an open question newer than the last notice counts
     // A human taking over or the visitor ending the chat since the session was loaded also cancels the notice
     const claimed = await sessions.updateOne({_id: session._id, humanHandledAt: {$exists: false}, endedAt: {$exists: false}, $or: [{emailFallbackAt: {$exists: false}}, {emailFallbackAt: {$lt: oldest.createdAt}}]}, {$set: {emailFallbackAt: now}})
-    if (!claimed.modifiedCount) return
+    if (!claimed.modifiedCount) return false
     const message: ChatMessage = {_id: newId(), projectId: project._id, sessionId: session._id, role: "assistant", content: emailFallbackText(project, !!session.visitorEmail), emailFallback: true, createdAt: now}
     try {
         await messages.insertOne(message)
@@ -418,6 +419,40 @@ export async function maybePostEmailFallback(project: Project, session: ChatSess
     }
     await sessions.updateOne({_id: session._id}, {$inc: {messageCount: 1}, $set: {lastMessageAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
     logger.info("Questions.wait", `Email fallback posted for session ${session._id}`, `Project ${project._id}`)
+    return true
+}
+
+/**
+ * Scheduler job: posts the email fallback notice into escalated chats nobody took over in time, so it also
+ * arrives when the visitor is idle or has the chat closed (polls only post it while the chat is open).
+ * Candidates: open sessions without a human, with an open question past the wait that is newer than the last notice.
+ */
+export async function postDueEmailFallbacks(limit = 50): Promise<number> {
+    const waitMinutes = (await getAppSettings()).humanTakeoverWaitMinutes
+    const {questions} = await useCollections()
+    const due = await questions
+        .aggregate<ChatSession>([
+            {$match: {status: "open", createdAt: {$lte: new Date(Date.now() - waitMinutes * 60_000)}}},
+            {$group: {_id: "$sessionId", latest: {$max: "$createdAt"}}},
+            {$lookup: {from: "sessions", localField: "_id", foreignField: "_id", as: "session"}},
+            {$unwind: "$session"},
+            {$match: {"session.humanHandledAt": {$exists: false}, "session.endedAt": {$exists: false}, $expr: {$lt: [{$ifNull: ["$session.emailFallbackAt", new Date(0)]}, "$latest"]}}},
+            {$limit: limit},
+            {$replaceRoot: {newRoot: "$session"}}
+        ])
+        .toArray()
+    let posted = 0
+    for (const session of due) {
+        try {
+            // Chats closed for inactivity are flagged lazily: never post into them
+            if (await sessionEnded(session)) continue
+            const project = await getChatProject(session.projectId)
+            if (project && (await maybePostEmailFallback(project, session))) posted++
+        } catch (err) {
+            logger.error("Questions.wait", `Email fallback failed for session ${session._id}`, err)
+        }
+    }
+    return posted
 }
 
 const DRAFT_PROMPT = `You write the final answer to a visitor's support question, based on a chat between the visitor and a support agent.

@@ -254,10 +254,10 @@ function newConversation() {
     resetConversation()
 }
 
-/** The header's refresh button: asks for confirmation before clearing a conversation that has messages. */
+/** The header's refresh button: asks for confirmation before clearing a conversation (also a saved one that failed to load). */
 function askNewConversation() {
     if (streaming.value) return
-    if (messages.value.length) confirmDialog.value?.showModal()
+    if (messages.value.length || stored.value?.token) confirmDialog.value?.showModal()
     else newConversation()
 }
 

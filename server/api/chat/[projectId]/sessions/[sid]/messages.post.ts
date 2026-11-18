@@ -11,8 +11,8 @@ const activeSessions = new Set<string>()
 
 /**
  * Sends a visitor message and streams the answer as Server-Sent Events:
- * `meta` {userMessageId} · `delta` {text} · `done` {message} · `escalated` {questionId, message, needsDetails}
- * · `limit` {message, hasSupport} · `human` {} (a team member handles the conversation, no assistant reply) · `error` {message}
+ * `meta` {userMessageId} · `delta` {text} · `done` {message} · `escalated` {questionId, message}
+ * · `limit` {message, hasSupport} · `human` (a team member handles the conversation, no assistant reply) · `error` {message}
  */
 export default defineEventHandler(async (event) => {
     const project = await requireChatProject(event)
@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
         const {messages, sessions} = await useCollections()
         // While a human handles the conversation the message limit (assistant budget) does not apply.
         // Re-read the flag: a team reply may have claimed the session after it was loaded above.
-        const current = await sessions.findOne({_id: session._id}, {projection: {humanHandledAt: 1}})
+        const current = await sessions.findOne({_id: session._id}, {projection: {humanHandledAt: 1, humanHandledBy: 1}})
         const human = !!current?.humanHandledAt
 
         if (!human && (session.limitReached || (project.rateLimit > 0 && session.userMessageCount >= project.rateLimit))) {
@@ -92,7 +92,7 @@ export default defineEventHandler(async (event) => {
             for await (const ev of generateAnswer({project, session, userMessage, startedAt})) {
                 if (ev.type === "delta") send("delta", {text: ev.text})
                 else if (ev.type === "done") send("done", {message: publicChatMessage(ev.message, project)})
-                else send("escalated", {questionId: ev.question._id, message: publicChatMessage(ev.message, project), needsDetails: !session.visitorEmail || !session.visitorName})
+                else send("escalated", {questionId: ev.question._id, message: publicChatMessage(ev.message, project)})
             }
         } catch (err: any) {
             logger.error("Chat.messages", `Answer failed for session ${session._id}`, err)

@@ -93,28 +93,29 @@ no server needed (Pages: build command `bun run build:landing`, output directory
 
 All settings are environment variables, see [`.env.example`](.env.example). Both apps take the same configuration. The important ones:
 
-| Variable                                                                             | Description                                                                                                                                   |
-| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NUXT_PUBLIC_ADMIN_URL`                                                              | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                                          |
-| `NUXT_PUBLIC_CHAT_URL`                                                               | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                                   |
-| `NUXT_APP_SECRET`                                                                    | 32+ chars secret for the admin session cookie and visitor IP hashing                                                                          |
-| `NUXT_ADMIN_EMAILS`                                                                  | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                                |
-| `NUXT_MONGODB_URI`                                                                   | MongoDB connection string                                                                                                                     |
-| `NUXT_OPENROUTER_API_KEY`                                                            | OpenRouter key, used for chat and embeddings. Change it on **Global Settings** instead (see below)                                            |
-| `NUXT_CUSTOM_AI_PROVIDER` / `NUXT_AI_PROVIDER_BASE_URL` / `NUXT_AI_PROVIDER_API_KEY` | Custom OpenAI-compatible endpoint used instead of OpenRouter. Change it on **Global Settings** instead (see below)                            |
-| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`                                 | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Global Settings** instead (see below)                 |
-| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`                                     | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)                            |
-| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`                         | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                                     |
-| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS`                       | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)                       |
-| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                                      | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                                |
-| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                                                    | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email                           |
-| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                                                  | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                                      |
-| `NUXT_CHAT_SESSION_RETENTION_DAYS`                                                   | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever)               |
-| `NUXT_SYNC_HISTORY_DAYS`                                                             | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Global Settings** instead (see below)                  |
-| `NUXT_ANSWER_EMAIL_DELAY_MINUTES`                                                    | Minutes before an answer is emailed to a visitor who isn't in the chat (default 10, max 1440). Change it on **Global Settings** instead       |
-| `RAGPULSE_LOG_LEVEL`                                                                 | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                                        |
-| `RAGPULSE_LOG_JSON`                                                                  | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                                       |
-| `RAGPULSE_ALLOW_PRIVATE_URLS`                                                        | Allow source, branding, AI-provider and webhook URLs at private/internal addresses (intranet installs, local inference). Keep unset otherwise |
+| Variable                                                                             | Description                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_ADMIN_URL`                                                              | Public URL of the admin app (OAuth redirects, MCP endpoint, links in support emails)                                                                                          |
+| `NUXT_PUBLIC_CHAT_URL`                                                               | Public URL of the chat app (embed snippets, chat links, appearance preview)                                                                                                   |
+| `NUXT_APP_SECRET`                                                                    | 32+ chars secret for the admin session cookie and visitor IP hashing                                                                                                          |
+| `NUXT_ADMIN_EMAILS`                                                                  | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                                                                |
+| `NUXT_MONGODB_URI`                                                                   | MongoDB connection string                                                                                                                                                     |
+| `NUXT_OPENROUTER_API_KEY`                                                            | OpenRouter key, used for chat and embeddings. Change it on **Global Settings** instead (see below)                                                                            |
+| `NUXT_CUSTOM_AI_PROVIDER` / `NUXT_AI_PROVIDER_BASE_URL` / `NUXT_AI_PROVIDER_API_KEY` | Custom OpenAI-compatible endpoint used instead of OpenRouter. Change it on **Global Settings** instead (see below)                                                            |
+| `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`                                 | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Global Settings** instead (see below)                                                 |
+| `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`                                     | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)                                                            |
+| `NUXT_CODE_SUMMARY_MODEL` / `NUXT_CODE_SUMMARY_MAX_PER_SYNC`                         | Default model for source code summaries (`openrouter/free`, empty disables), max new files per sync (500)                                                                     |
+| `NUXT_CRAWLER_USER_AGENT` / `NUXT_CRAWLER_REQUEST_INTERVAL_MS`                       | Default website crawler User-Agent (empty = `RAGPulseBot/1.0 (+chat URL)`) and delay between requests to one site (500)                                                       |
+| `NUXT_OAUTH_GOOGLE_*`, `NUXT_OAUTH_MICROSOFT_*`                                      | Social login. Redirect URIs: `/auth/google`, `/auth/microsoft`                                                                                                                |
+| `NUXT_GOOGLE_SERVICE_ACCOUNT_KEY`                                                    | Service account JSON key (single-line or base64) for Google Drive sources; folders are shared with its client_email                                                           |
+| `NUXT_SMTP_PASS` / `NUXT_SMTP_FROM`                                                  | Outgoing email for escalations, replies and invites: Cloudflare API token and sender address (see below)                                                                      |
+| `NUXT_CHAT_SESSION_RETENTION_DAYS`                                                   | Days without activity after which chat sessions, their messages and questions are deleted (default 180, `0` keeps them forever)                                               |
+| `NUXT_SYNC_HISTORY_DAYS`                                                             | Days sync runs are kept in each source's history (default 30, max 365). Change it on **Global Settings** instead (see below)                                                  |
+| `NUXT_ANSWER_EMAIL_DELAY_MINUTES`                                                    | Minutes before an answer is emailed to a visitor who isn't in the chat (default 10, max 1440). Change it on **Global Settings** instead                                       |
+| `NUXT_HUMAN_TAKEOVER_WAIT_MINUTES`                                                   | Minutes an escalated chat waits for a human to take over before telling the visitor the answer comes by email (default 5, max 1440). Change it on **Global Settings** instead |
+| `RAGPULSE_LOG_LEVEL`                                                                 | Minimum log level: `debug`, `info`, `warn` or `error` (default `info`)                                                                                                        |
+| `RAGPULSE_LOG_JSON`                                                                  | One JSON line per log entry for log collectors (default enabled in production, disabled in development)                                                                       |
+| `RAGPULSE_ALLOW_PRIVATE_URLS`                                                        | Allow source, branding, AI-provider and webhook URLs at private/internal addresses (intranet installs, local inference). Keep unset otherwise                                 |
 
 ### Global Settings page
 
@@ -136,7 +137,9 @@ Admins can change these workspace-wide settings on **Global Settings**; saved va
   chat), how many days each source's sync runs (files, total size and duration per run) are kept, and how many days escalated
   questions are kept (default 365, `0` = forever); older entries are deleted automatically. FAQ entries created from answered
   questions or learned from conversations are never deleted by this cleanup.
-- **Answer emails**: how many minutes to wait before emailing an answer to a visitor who isn't looking at the chat (default 10, `0` = right away).
+- **Escalation & emails**: how many minutes an escalated chat waits for a team member to take over before telling the
+  visitor the answer comes by email (default 5, `0` = right away), and how many minutes to wait before emailing an answer
+  to a visitor who isn't looking at the chat (default 10, `0` = right away).
 
 ### Email
 

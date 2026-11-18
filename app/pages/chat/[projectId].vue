@@ -160,9 +160,11 @@ function applyServer(list: ChatUiMessage[], s: PublicSession) {
     if (s.limitReached && !limit.value) {
         limit.value = {message: "You've reached the message limit for this conversation. Send your question to our team and we'll get back to you.", hasSupport: !!config.value?.hasSupport}
     }
-    const lastEscalated = [...messages.value].reverse().find((m) => m.escalated)
-    if (lastEscalated && (!s.visitorEmail || !s.visitorName) && escalation.value?.messageId !== lastEscalated._id) {
-        escalation.value = {messageId: lastEscalated._id}
+    // The email-details card only appears under the "answer comes by email" fallback message,
+    // i.e. after the human-takeover wait expired
+    const lastFallback = [...messages.value].reverse().find((m) => m.emailFallback)
+    if (lastFallback && (!s.visitorEmail || !s.visitorName) && escalation.value?.messageId !== lastFallback._id) {
+        escalation.value = {messageId: lastFallback._id}
     }
 }
 
@@ -334,7 +336,6 @@ async function send(content: string) {
             } else if (name === "escalated") {
                 showBot()
                 Object.assign(bot, data.message, {streaming: false})
-                escalation.value = data.needsDetails ? {messageId: data.message._id} : null
             } else if (name === "human") {
                 handedOff = true
                 removeMessage(botId)
@@ -521,7 +522,7 @@ onBeforeUnmount(() => {
                 <p class="rp-name">{{ botName }}</p>
                 <p class="rp-sub">
                     <span class="rp-pulse" aria-hidden="true" /><span class="rp-trunc">{{ title }}</span
-                    ><span class="rp-sep">·</span>{{ humanHandling ? "support team" : "online" }}
+                    ><span class="rp-sep">·</span>{{ humanHandling ? "human" : "agent" }}
                 </p>
             </div>
             <button v-if="phase === 'chat' && !preview" class="rp-icon" type="button" title="New conversation" aria-label="New conversation" :disabled="streaming" @click="newConversation">

@@ -104,6 +104,8 @@ export interface ChatUiMessage {
     content: string
     sources?: Array<{title: string; url?: string; kind: "docs" | "code"}>
     escalated?: boolean
+    /** Nobody took over the escalated chat in time: the "answer comes by email" notice */
+    emailFallback?: boolean
     createdAt?: string
     /** Assistant reply currently streaming */
     streaming?: boolean

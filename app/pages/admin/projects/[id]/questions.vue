@@ -82,7 +82,7 @@ watch(
 
 // ----- Composer -----
 const answer = ref("")
-/** Human replies posted in the chat after the question: the answer is drafted from them and only recorded */
+/** Human replies posted in the chat after the question: the answer is drafted from them and posted as the final reply */
 const chatReplies = ref(0)
 const drafting = ref(false)
 const setMode = computed(() => chatReplies.value > 0 && selected.value?.status === "open")
@@ -117,8 +117,8 @@ const composerHint = computed(() => {
     const q = selected.value
     if (!q) return undefined
     const parts: string[] = []
-    if (setMode.value) parts.push(`Summarized from ${chatReplies.value} ${chatReplies.value === 1 ? "reply" : "replies"} in the conversation, saved as the answer without posting it to the chat again.`)
-    else parts.push("Posted in the visitor's chat.")
+    if (setMode.value) parts.push(`Summarized from ${chatReplies.value} ${chatReplies.value === 1 ? "reply" : "replies"} in the conversation, posted to the chat (if the conversation is still open) and saved as the answer.`)
+    else parts.push("Posted in the visitor's chat if the conversation is still open.")
     if (!q.faqId && q.status === "open") parts.push("Added to the FAQ.")
     if (q.visitorEmail) parts.push(`Emailed to ${q.visitorEmail} only if they don't see it in the chat.`)
     return parts.join(" ")
@@ -139,18 +139,17 @@ async function sendReply() {
     const q = selected.value
     const text = answer.value.trim()
     if (!q || !text) return
-    const recordOnly = setMode.value
     const res = await run(() =>
         $fetch<{question: Question; message?: ChatMessage; faq?: Faq; email: AnswerEmailStatus}>(`${base.value}/${q._id}/reply`, {
             method: "POST",
-            body: {answer: text, postToChat: !recordOnly}
+            body: {answer: text, postToChat: true}
         })
     )
     if (!res) return
     replace(res.question)
     answer.value = ""
     chatReplies.value = 0
-    const parts = [recordOnly ? "Answer set" : res.message ? "Reply sent" : "Answer set, not posted: the conversation ended"]
+    const parts = [res.message ? "Reply sent" : "Answer set, not posted: the conversation ended"]
     if (res.faq) parts.push("added to FAQ")
     const emailText = {sent: "visitor emailed", scheduled: "visitor will be emailed unless they open the chat", seen: "visitor is in the chat, no email", failed: "email could not be sent", none: ""}[res.email]
     if (emailText) parts.push(emailText)

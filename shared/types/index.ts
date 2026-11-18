@@ -216,6 +216,8 @@ export interface ChatSession {
     /** Set when a human replied to an escalated question from the admin panel: the assistant stays silent until no question is open */
     humanHandledAt?: Date
     humanHandledBy?: {userId?: string; name: string}
+    /** The "team didn't take over, answer comes by email" notice was posted into this chat at this time */
+    emailFallbackAt?: Date
     /** Last time the visitor had the chat open and visible */
     visitorSeenAt?: Date
     createdAt: Date
@@ -241,6 +243,8 @@ export interface ChatMessage {
     sources?: MessageSourceRef[]
     /** True when the assistant could not answer confidently and the question was escalated */
     escalated?: boolean
+    /** Automated notice: nobody took over the escalated chat in time, the answer will come by email */
+    emailFallback?: boolean
     model?: string
     usage?: {promptTokens: number; completionTokens: number; cost?: number}
     latencyMs?: number
@@ -360,6 +364,8 @@ export interface AppSettings {
     questionRetentionDays: number
     /** System instructions applied to the chat of every project, with precedence over project instructions. Empty disables them. */
     globalInstructions: string
+    /** Minutes an escalated chat waits for a team member to take over before telling the visitor the answer comes by email. 0 = right away. */
+    humanTakeoverWaitMinutes: number
     /** Minutes to wait before emailing an answer to a visitor who is not in the chat (cancelled when they see it). 0 = right away. */
     answerEmailDelayMinutes: number
     /** Days without messages after which a chat session is closed (the visitor gets a new chat). 0 = never. */
@@ -429,6 +435,9 @@ export const REFRESH_PRESETS = [2, 4, 12, 24, 48, 72, 168, 336]
 export function isRefreshInterval(hours: number): boolean {
     return hours === MANUAL_REFRESH || (Number.isInteger(hours) && hours >= REFRESH_MIN_HOURS && hours <= REFRESH_MAX_HOURS)
 }
+
+export const DEFAULT_HUMAN_TAKEOVER_WAIT_MINUTES = 5
+export const HUMAN_TAKEOVER_MAX_WAIT_MINUTES = 1440
 
 export const DEFAULT_ANSWER_EMAIL_DELAY_MINUTES = 10
 export const ANSWER_EMAIL_MAX_DELAY_MINUTES = 1440

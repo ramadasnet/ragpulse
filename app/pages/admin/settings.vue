@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {AlertTriangle, Bot, Code2, Eraser, KeyRound, Mail, ShieldCheck, Sparkles} from "lucide-vue-next"
 import type {AppSettingsView, EmbeddingStatus} from "#shared/types"
-import {ANSWER_EMAIL_MAX_DELAY_MINUTES, CHAT_AUTO_CLOSE_MAX_DAYS, QUESTION_RETENTION_MAX_DAYS, SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {ANSWER_EMAIL_MAX_DELAY_MINUTES, CHAT_AUTO_CLOSE_MAX_DAYS, HUMAN_TAKEOVER_MAX_WAIT_MINUTES, QUESTION_RETENTION_MAX_DAYS, SYNC_HISTORY_MAX_DAYS} from "#shared/types"
 import {DEFAULT_GLOBAL_INSTRUCTIONS} from "#shared/utils/instructions"
 
 interface SettingsResponse {
@@ -48,6 +48,7 @@ interface Form {
     questionRetentionDays: number | string
     globalInstructions: string
     answerEmailDelayMinutes: number | string
+    humanTakeoverWaitMinutes: number | string
     chatAutoCloseDays: number | string
 }
 
@@ -69,6 +70,7 @@ function toForm(s: AppSettingsView): Form {
         questionRetentionDays: s.questionRetentionDays,
         globalInstructions: s.globalInstructions,
         answerEmailDelayMinutes: s.answerEmailDelayMinutes,
+        humanTakeoverWaitMinutes: s.humanTakeoverWaitMinutes,
         chatAutoCloseDays: s.chatAutoCloseDays
     }
 }
@@ -120,6 +122,8 @@ const errors = computed(() => {
     if (!Number.isInteger(questionDays) || questionDays < 0 || questionDays > QUESTION_RETENTION_MAX_DAYS) e.questionRetentionDays = `Between 0 and ${QUESTION_RETENTION_MAX_DAYS} days`
     const delay = Number(f.answerEmailDelayMinutes)
     if (!Number.isInteger(delay) || delay < 0 || delay > ANSWER_EMAIL_MAX_DELAY_MINUTES) e.answerEmailDelayMinutes = `Between 0 and ${ANSWER_EMAIL_MAX_DELAY_MINUTES} minutes`
+    const wait = Number(f.humanTakeoverWaitMinutes)
+    if (!Number.isInteger(wait) || wait < 0 || wait > HUMAN_TAKEOVER_MAX_WAIT_MINUTES) e.humanTakeoverWaitMinutes = `Between 0 and ${HUMAN_TAKEOVER_MAX_WAIT_MINUTES} minutes`
     const closeDays = Number(f.chatAutoCloseDays)
     if (!Number.isInteger(closeDays) || closeDays < 0 || closeDays > CHAT_AUTO_CLOSE_MAX_DAYS) e.chatAutoCloseDays = `Between 0 and ${CHAT_AUTO_CLOSE_MAX_DAYS} days`
     if (f.globalInstructions.trim().length > 20_000) e.globalInstructions = "At most 20000 characters"
@@ -194,6 +198,7 @@ async function save() {
                     questionRetentionDays: Number(f.questionRetentionDays),
                     globalInstructions: f.globalInstructions.trim(),
                     answerEmailDelayMinutes: Number(f.answerEmailDelayMinutes),
+                    humanTakeoverWaitMinutes: Number(f.humanTakeoverWaitMinutes),
                     chatAutoCloseDays: Number(f.chatAutoCloseDays)
                 }
             }),
@@ -453,10 +458,19 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                 <template #header>
                     <div class="row" style="--gap: 8px">
                         <Mail :size="16" class="dim" />
-                        <h2 class="card-title">Answer emails</h2>
+                        <h2 class="card-title">Escalation & emails</h2>
                     </div>
                 </template>
                 <div class="stack" style="--gap: 16px">
+                    <UiInput
+                        v-model.number="form.humanTakeoverWaitMinutes"
+                        type="number"
+                        :min="0"
+                        :max="HUMAN_TAKEOVER_MAX_WAIT_MINUTES"
+                        label="Human takeover wait (minutes)"
+                        :error="errors.humanTakeoverWaitMinutes"
+                        hint="When a question is escalated, the visitor waits this long for a team member to take over the chat. If nobody does, the chat says the answer will come by email and asks for the visitor's details. 0 = show the email fallback right away."
+                    />
                     <UiInput
                         v-model.number="form.answerEmailDelayMinutes"
                         type="number"

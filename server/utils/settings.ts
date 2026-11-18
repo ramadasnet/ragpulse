@@ -2,7 +2,17 @@
 // Both the admin and the chat instance read them; the cache keeps the chat instance in sync within CACHE_TTL_MS.
 import {z} from "zod"
 import type {AppSettings} from "#shared/types"
-import {ANSWER_EMAIL_MAX_DELAY_MINUTES, CHAT_AUTO_CLOSE_MAX_DAYS, DEFAULT_ANSWER_EMAIL_DELAY_MINUTES, DEFAULT_CHAT_AUTO_CLOSE_DAYS, DEFAULT_QUESTION_RETENTION_DAYS, QUESTION_RETENTION_MAX_DAYS, SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {
+    ANSWER_EMAIL_MAX_DELAY_MINUTES,
+    CHAT_AUTO_CLOSE_MAX_DAYS,
+    DEFAULT_ANSWER_EMAIL_DELAY_MINUTES,
+    DEFAULT_CHAT_AUTO_CLOSE_DAYS,
+    DEFAULT_HUMAN_TAKEOVER_WAIT_MINUTES,
+    DEFAULT_QUESTION_RETENTION_DAYS,
+    HUMAN_TAKEOVER_MAX_WAIT_MINUTES,
+    QUESTION_RETENTION_MAX_DAYS,
+    SYNC_HISTORY_MAX_DAYS
+} from "#shared/types"
 import {DEFAULT_GLOBAL_INSTRUCTIONS} from "#shared/utils/instructions"
 
 export const SETTINGS_ID = "app"
@@ -34,6 +44,7 @@ export function defaultAppSettings(): AppSettings {
         questionRetentionDays: DEFAULT_QUESTION_RETENTION_DAYS,
         globalInstructions: DEFAULT_GLOBAL_INSTRUCTIONS,
         answerEmailDelayMinutes: answerEmailDelayMinutes(config.answerEmailDelayMinutes),
+        humanTakeoverWaitMinutes: humanTakeoverWaitMinutes(config.humanTakeoverWaitMinutes),
         chatAutoCloseDays: DEFAULT_CHAT_AUTO_CLOSE_DAYS
     }
 }
@@ -42,6 +53,12 @@ export function defaultAppSettings(): AppSettings {
 function answerEmailDelayMinutes(value: unknown): number {
     const n = Math.round(Number(value ?? DEFAULT_ANSWER_EMAIL_DELAY_MINUTES))
     return Number.isFinite(n) ? Math.min(ANSWER_EMAIL_MAX_DELAY_MINUTES, Math.max(0, n)) : DEFAULT_ANSWER_EMAIL_DELAY_MINUTES
+}
+
+/** Human takeover wait from the environment, clamped to the allowed range. */
+function humanTakeoverWaitMinutes(value: unknown): number {
+    const n = Math.round(Number(value ?? DEFAULT_HUMAN_TAKEOVER_WAIT_MINUTES))
+    return Number.isFinite(n) ? Math.min(HUMAN_TAKEOVER_MAX_WAIT_MINUTES, Math.max(0, n)) : DEFAULT_HUMAN_TAKEOVER_WAIT_MINUTES
 }
 
 /** Default crawler User-Agent, used when the setting is empty. */
@@ -111,6 +128,7 @@ export const settingsPatchSchema = z
         questionRetentionDays: z.number().int().min(0).max(QUESTION_RETENTION_MAX_DAYS),
         globalInstructions: z.string().trim().max(20_000),
         answerEmailDelayMinutes: z.number().int().min(0).max(ANSWER_EMAIL_MAX_DELAY_MINUTES),
+        humanTakeoverWaitMinutes: z.number().int().min(0).max(HUMAN_TAKEOVER_MAX_WAIT_MINUTES),
         /** 0 = never */
         chatAutoCloseDays: z.number().int().min(0).max(CHAT_AUTO_CLOSE_MAX_DAYS)
     })

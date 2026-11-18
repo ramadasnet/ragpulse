@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {RotateCcw, X} from "lucide-vue-next"
+import {MessageSquarePlus, RotateCcw, X} from "lucide-vue-next"
 import type {ChatTheme} from "#shared/types"
 import {DEFAULT_THEME} from "#shared/types"
 
@@ -21,6 +21,9 @@ interface PublicSession {
     userMessageCount: number
     limitReached: boolean
     humanHandling?: boolean
+    /** The conversation ended: by the visitor, or `inactive` after a period without messages */
+    endedAt?: string
+    endReason?: "visitor" | "inactive"
 }
 interface Stored {
     sessionId: string
@@ -79,6 +82,7 @@ const escalation = ref<{messageId: string; doneEmail?: string} | null>(null)
 const emailPending = ref(false)
 const emailError = ref("")
 const composer = ref<{focus: () => void} | null>(null)
+const confirmDialog = ref<HTMLDialogElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
 let localId = 0
 let bannerTimer: ReturnType<typeof setTimeout> | undefined
@@ -92,6 +96,9 @@ const remaining = computed(() => {
 // A team member is replying: the assistant (and its message limit) is paused
 const humanHandling = computed(() => !!session.value?.humanHandling)
 const showLimit = computed(() => !!limit.value && !humanHandling.value)
+// Ended or closed for inactivity on the server: read-only, the visitor can only start a new conversation
+const ended = computed(() => !!session.value?.endedAt)
+const endedText = computed(() => (session.value?.endReason === "inactive" ? "This conversation was closed after a period without messages." : "This conversation has ended."))
 const composerHint = computed(() => {
     if (humanHandling.value) return "A team member is replying to you here"
     return remaining.value !== null && remaining.value <= 3 && !limit.value ? `${remaining.value} message${remaining.value === 1 ? "" : "s"} left in this conversation` : ""
@@ -143,7 +150,7 @@ function scrollToBottom(force = false) {
     })
 }
 watch(
-    () => [messages.value.length, messages.value[messages.value.length - 1]?.content, limit.value, escalation.value, phase.value],
+    () => [messages.value.length, messages.value[messages.value.length - 1]?.content, limit.value, escalation.value, phase.value, ended.value],
     () => scrollToBottom()
 )
 
@@ -178,7 +185,8 @@ function chatVisible() {
 let lastPoll = 0
 async function loadSession(silent = false) {
     const st = stored.value
-    if (!st?.token || streaming.value) return
+    // An ended conversation can't change anymore: no need to poll it
+    if (!st?.token || streaming.value || ended.value) return
     lastPoll = Date.now()
     try {
         const res = await $fetch<{session: PublicSession; messages: ChatUiMessage[]}>(`${api}/sessions/${st.sessionId}`, {
@@ -242,8 +250,20 @@ function newConversation() {
     if (streaming.value) return
     // Ends the current conversation on the server so the team can't post into it anymore
     const st = stored.value
-    if (st?.sessionId && st.token) $fetch(`${api}/sessions/${st.sessionId}/end`, {method: "POST", headers: {"x-session-token": st.token}}).catch(() => {})
+    if (st?.sessionId && st.token && !ended.value) $fetch(`${api}/sessions/${st.sessionId}/end`, {method: "POST", headers: {"x-session-token": st.token}}).catch(() => {})
     resetConversation()
+}
+
+/** The header's refresh button: asks for confirmation before clearing a conversation that has messages. */
+function askNewConversation() {
+    if (streaming.value) return
+    if (messages.value.length) confirmDialog.value?.showModal()
+    else newConversation()
+}
+
+function confirmNewConversation() {
+    confirmDialog.value?.close()
+    newConversation()
 }
 
 // ---------- Sending (SSE) ----------
@@ -448,7 +468,8 @@ function onEmbedMessage(e: MessageEvent) {
 }
 
 function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && embed) closeEmbed()
+    // Escape closes the confirmation dialog first, not the whole widget
+    if (e.key === "Escape" && embed && !confirmDialog.value?.open) closeEmbed()
 }
 
 function onResize() {
@@ -525,7 +546,7 @@ onBeforeUnmount(() => {
                     ><span class="rp-sep">·</span>{{ humanHandling ? "human" : "agent" }}
                 </p>
             </div>
-            <button v-if="phase === 'chat' && !preview" class="rp-icon" type="button" title="New conversation" aria-label="New conversation" :disabled="streaming" @click="newConversation">
+            <button v-if="phase === 'chat' && !preview" class="rp-icon" type="button" title="New conversation" aria-label="New conversation" :disabled="streaming" @click="askNewConversation">
                 <RotateCcw :size="17" />
             </button>
             <button v-if="embed" class="rp-icon" type="button" title="Close" aria-label="Close chat" @click="closeEmbed">
@@ -539,7 +560,7 @@ onBeforeUnmount(() => {
                 <template v-for="(m, i) in messages" :key="m._id">
                     <ChatBubble :message="m" :bot-initial="botInitial" :bot-icon="botIcon" :grouped="i > 0 ? messages[i - 1]!.role === m.role && m.role !== 'user' : m.role === 'assistant'">
                         <ChatEmailCard
-                            v-if="escalation && escalation.messageId === m._id && !preview && (escalation.doneEmail || !session?.visitorEmail || !session?.visitorName)"
+                            v-if="escalation && escalation.messageId === m._id && !preview && !ended && (escalation.doneEmail || !session?.visitorEmail || !session?.visitorName)"
                             :pending="emailPending"
                             :error="emailError"
                             :done-email="escalation.doneEmail"
@@ -553,7 +574,7 @@ onBeforeUnmount(() => {
 
                 <div v-if="phase === 'loading'" class="rp-loading" aria-label="Loading conversation"><span /><span /></div>
                 <ChatLimitCard
-                    v-if="limit && showLimit && phase === 'chat'"
+                    v-if="limit && showLimit && phase === 'chat' && !ended"
                     class="rp-in"
                     :message="limit.message"
                     :sent="limit.sent"
@@ -564,16 +585,31 @@ onBeforeUnmount(() => {
                     :initial-question="limit.question"
                     @submit="sendToTeam"
                 />
+                <div v-if="ended && phase === 'chat'" class="rp-ended rp-in">
+                    <p>{{ endedText }}</p>
+                    <button class="c-btn" type="button" @click="newConversation"><MessageSquarePlus :size="16" /> Start new conversation</button>
+                </div>
             </div>
         </main>
 
         <footer class="rp-foot">
             <div class="rp-col">
                 <p v-if="banner" class="rp-banner" role="alert">{{ banner }}</p>
-                <ChatComposer v-if="phase === 'chat' && !showLimit" ref="composer" v-model="draft" :placeholder="theme.placeholder" :busy="streaming" :max="MAX_CHARS" :hint="composerHint" @send="send" />
+                <ChatComposer v-if="phase === 'chat' && !showLimit && !ended" ref="composer" v-model="draft" :placeholder="theme.placeholder" :busy="streaming" :max="MAX_CHARS" :hint="composerHint" @send="send" />
                 <p class="rp-powered">Powered by <a href="https://github.com/ramadasnet/ragpulse" target="_blank" rel="noopener">RAGPulse</a></p>
             </div>
         </footer>
+
+        <dialog ref="confirmDialog" class="rp-confirm" aria-labelledby="rp-confirm-title" aria-describedby="rp-confirm-text" @click.self="confirmDialog?.close()">
+            <div class="rp-confirm-body">
+                <p id="rp-confirm-title" class="c-card-title">Start over?</p>
+                <p id="rp-confirm-text" class="c-card-text">This clears the current conversation.</p>
+                <div class="c-row">
+                    <button class="c-btn rp-btn-ghost" type="button" autofocus @click="confirmDialog?.close()">Cancel</button>
+                    <button class="c-btn" type="button" @click="confirmNewConversation">Start over</button>
+                </div>
+            </div>
+        </dialog>
     </div>
 </template>
 
@@ -937,6 +973,54 @@ onBeforeUnmount(() => {
     background: rgb(248 113 113 / 0.12);
     color: #f87171;
 }
+.rp-ended {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--c-border);
+    text-align: center;
+}
+.rp-ended p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--c-muted);
+}
+
+.rp-confirm {
+    width: min(340px, calc(100% - 32px));
+    padding: 0;
+    border: 1px solid var(--c-border);
+    border-radius: 18px;
+    background: var(--c-surface);
+    color: var(--c-text);
+    box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.45);
+}
+.rp-confirm::backdrop {
+    background: rgb(0 0 0 / 0.45);
+}
+.rp-confirm[open] {
+    animation: rp-rise 0.2s var(--ease) both;
+}
+.rp-confirm-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 18px;
+}
+.rp-confirm .c-row {
+    margin-top: 12px;
+}
+.rp-confirm .c-btn {
+    flex: 1;
+}
+.rp .rp-btn-ghost {
+    background: var(--c-surface-2);
+    color: var(--c-text);
+}
+
 .rp-powered {
     margin: 8px 0 0;
     text-align: center;
@@ -955,6 +1039,7 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
     .rp-pulse::after,
     .rp-in,
+    .rp-confirm[open],
     .rp-loading span {
         animation: none;
     }

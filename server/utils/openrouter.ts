@@ -2,6 +2,7 @@
 // or a custom OpenAI-compatible endpoint (Global Settings → AI Provider).
 // Docs: https://openrouter.ai/docs/api-reference
 import {parseRetryAfter} from "./ingest/throttle"
+import logger from "./logger"
 import {assertPublicHost} from "./public-url"
 import type {AppSettings} from "#shared/types"
 
@@ -24,6 +25,8 @@ export interface ChatCompletionOptions {
     temperature?: number
     maxTokens?: number
     signal?: AbortSignal
+    /** Logs the call (model, duration, outcome, token usage) under `action` with the ids in `context`. The texts are never logged. */
+    log?: {action: string; context: string[]}
 }
 
 export type ChatStreamEvent = {type: "delta"; text: string} | {type: "usage"; usage: LlmUsage}
@@ -123,8 +126,37 @@ async function failFromResponse(res: Response, what: string, providerName = "AI 
     throw createError({statusCode: 502, statusMessage: `${providerName} ${what} failed (${res.status}): ${detail}`.slice(0, 300)})
 }
 
-/** Non streaming chat completion. */
+/** Logs a completion requested with `opts.log`: model, duration, success or failure and token usage, never the texts. */
+function logCompletion(opts: ChatCompletionOptions, startedAt: number, outcome: {usage?: LlmUsage} | {error: unknown}) {
+    if (!opts.log) return
+    const {action, context} = opts.log
+    const took = `${Date.now() - startedAt} ms`
+    if ("error" in outcome) {
+        const err = outcome.error as any
+        // Only the status code or error type: a provider's error text can echo the prompt
+        const reason = typeof err?.statusCode === "number" ? `Status ${err.statusCode}` : String(err?.name || "Error")
+        logger.warn(action, ...context, `Model ${opts.model}`, `Failed after ${took}`, reason)
+        return
+    }
+    const u = outcome.usage
+    const tokens = u ? `Tokens ${u.promptTokens} in, ${u.completionTokens} out${u.cost !== undefined ? `, cost $${u.cost}` : ""}` : "No token usage reported"
+    logger.info(action, ...context, `Model ${opts.model}`, `Done in ${took}`, tokens)
+}
+
+/** Non streaming chat completion, logged when `opts.log` is set. */
 export async function chatCompletion(opts: ChatCompletionOptions): Promise<{content: string; usage?: LlmUsage}> {
+    const startedAt = Date.now()
+    try {
+        const res = await requestChatCompletion(opts)
+        logCompletion(opts, startedAt, {usage: res.usage})
+        return res
+    } catch (error) {
+        logCompletion(opts, startedAt, {error})
+        throw error
+    }
+}
+
+async function requestChatCompletion(opts: ChatCompletionOptions): Promise<{content: string; usage?: LlmUsage}> {
     const s = await provider()
     await guardProvider(s)
     const res = await fetch(`${s.baseUrl}/chat/completions`, {
@@ -146,8 +178,23 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<{cont
     return {content: data?.choices?.[0]?.message?.content ?? "", usage: mapUsage(data?.usage)}
 }
 
-/** Streaming chat completion, yields text deltas and (at the end) usage. */
+/** Streaming chat completion, yields text deltas and (at the end) usage. Logged when `opts.log` is set. */
 export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {
+    const startedAt = Date.now()
+    let usage: LlmUsage | undefined
+    try {
+        for await (const ev of requestChatStream(opts)) {
+            if (ev.type === "usage") usage = ev.usage
+            yield ev
+        }
+    } catch (error) {
+        logCompletion(opts, startedAt, {error})
+        throw error
+    }
+    logCompletion(opts, startedAt, {usage})
+}
+
+async function* requestChatStream(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {
     const s = await provider()
     await guardProvider(s)
     const res = await fetch(`${s.baseUrl}/chat/completions`, {

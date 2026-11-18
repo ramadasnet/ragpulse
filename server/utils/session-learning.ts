@@ -123,6 +123,7 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
         temperature: 0.2,
         maxTokens: 1200,
         signal: AbortSignal.timeout(60_000),
+        log: {action: "Session.learn", context: [`Session ${session._id}`, `Project ${project._id}`]},
         messages: [
             {role: "system", content: LEARN_PROMPT},
             {role: "user", content: `Conversation with a visitor of "${project.title}":\n\n${text}`}

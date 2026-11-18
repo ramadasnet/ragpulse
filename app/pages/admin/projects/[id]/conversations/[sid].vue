@@ -29,10 +29,14 @@ const {run, pending} = useAction()
 const {run: runGiveBack, pending: giveBackPending} = useAction()
 const thread = ref<HTMLElement>()
 
-/** Ends the human takeover: the assistant answers the visitor again. A FAQ is learned from the human replies in the background. */
+/**
+ * Ends the human takeover: the assistant answers the visitor again. An ended conversation is only marked as finished.
+ * Either way a FAQ is learned from the human replies in the background.
+ */
 async function giveBack() {
     if (!data.value) return
-    const res = await runGiveBack(() => $fetch<{session: Detail["session"]}>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished: true}}), "Given back to the agent: the assistant answers the visitor again")
+    const done = data.value.session.endedAt ? "Conversation finished: a FAQ is learned from your replies" : "Given back to the agent: the assistant answers the visitor again"
+    const res = await runGiveBack(() => $fetch<{session: Detail["session"]}>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished: true}}), done)
     // Reload instead of trusting the response: a reply sent meanwhile may have taken the conversation over again
     if (res) await refresh()
 }
@@ -128,8 +132,10 @@ function dayLabel(i: number): string | null {
                     <UiBadge v-if="data.session.unansweredCount" tone="warning">{{ data.session.unansweredCount }} unanswered</UiBadge>
                     <UiBadge v-if="data.session.humanHandledAt" tone="info"><UserRound :size="12" /> Human handling</UiBadge>
                     <UiBadge v-if="data.session.endedAt" tone="neutral" :title="endedText"><LogOut :size="12" /> Ended</UiBadge>
-                    <UiBadge v-if="data.session.finishedAt" tone="success" :title="`Given back to the agent ${timeAgo(data.session.finishedAt)}`"><CircleCheck :size="12" /> With agent</UiBadge>
-                    <UiButton v-else-if="canReply && !data.session.endedAt" size="sm" :loading="giveBackPending" title="End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies" @click="giveBack">
+                    <UiBadge v-if="data.session.finishedAt && data.session.endedAt" tone="success"><CircleCheck :size="12" /> Finished</UiBadge>
+                    <UiBadge v-else-if="data.session.finishedAt" tone="success" :title="`Given back to the agent ${timeAgo(data.session.finishedAt)}`"><CircleCheck :size="12" /> With agent</UiBadge>
+                    <UiButton v-else-if="canReply && data.session.endedAt" size="sm" :loading="giveBackPending" title="Flag as finished and learn a FAQ from your replies" @click="giveBack"><CircleCheck :size="14" /> Mark finished</UiButton>
+                    <UiButton v-else-if="canReply" size="sm" :loading="giveBackPending" title="End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies" @click="giveBack">
                         <Bot :size="14" /> Give back to agent
                     </UiButton>
                 </header>
@@ -212,7 +218,7 @@ function dayLabel(i: number): string | null {
                             <dd>{{ formatDate(data.session.endedAt, true) }} {{ data.session.endReason === "inactive" ? "(inactive)" : "by the visitor" }}</dd></template
                         >
                         <template v-if="data.session.finishedAt"
-                            ><dt>Given back</dt>
+                            ><dt>{{ data.session.endedAt ? "Finished" : "Given back" }}</dt>
                             <dd>
                                 {{ formatDate(data.session.finishedAt, true) }}<template v-if="data.session.finishedBy"> by {{ data.session.finishedBy.name }}</template>
                             </dd></template

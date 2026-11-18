@@ -159,6 +159,45 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
     return result
 }
 
+/** Learning runs per session: the next one of a session waits for it, and shutdown waits for all of them. */
+const learnings = new Map<string, Promise<SessionLearnResult>>()
+
+/**
+ * Runs `learnFaqFromSession` after any learning of the same session still running, with the FAQ that one
+ * learned, so finishing a conversation twice in a row updates one FAQ entry instead of creating two. Never throws.
+ */
+function learnInOrder(project: Project, session: ChatSession): Promise<SessionLearnResult> {
+    const run = (learnings.get(session._id) ?? Promise.resolve())
+        .then(async () => {
+            const {sessions} = await useCollections()
+            const current = await sessions.findOne({_id: session._id}, {projection: {learnedFaqId: 1}})
+            return learnFaqFromSession(project, {...session, learnedFaqId: current?.learnedFaqId})
+        })
+        .catch((err: any): SessionLearnResult => {
+            logger.error("Session.learn", `Learning from session ${session._id} failed`, err)
+            return {skipped: "summarization failed"}
+        })
+    learnings.set(session._id, run)
+    void run.finally(() => {
+        if (learnings.get(session._id) === run) learnings.delete(session._id)
+    })
+    return run
+}
+
+/** Waits (up to `timeoutMs`) for FAQ learnings still running, so a graceful restart does not drop them. */
+export async function waitForPendingLearning(timeoutMs = 10_000): Promise<void> {
+    if (!learnings.size) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs)
+    })
+    try {
+        await Promise.race([Promise.allSettled([...learnings.values()]), timeout])
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
 /**
  * Flags a conversation as finished, or reopens it (`finished: false`). Finishing gives the chat back to the
  * assistant (ends a human takeover) and triggers learning via `learnFaqFromSession`; its failures never block
@@ -187,10 +226,7 @@ export async function finishSession(params: {session: ChatSession; finished: boo
 
     const project = await projects.findOne({_id: session.projectId})
     if (!project || !(await hasAiProvider())) return {session: next, learned: {skipped: project ? "no AI provider configured" : "project not found"}}
-    const learning = learnFaqFromSession(project, next).catch((err: any): SessionLearnResult => {
-        logger.error("Session.learn", `Learning from session ${session._id} failed`, err)
-        return {skipped: "summarization failed"}
-    })
+    const learning = learnInOrder(project, next)
     if (params.learnInBackground) return {session: next}
     const learned = await learning
     if (learned.faq) next.learnedFaqId = learned.faq._id

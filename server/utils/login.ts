@@ -78,6 +78,6 @@ export async function loginWithProvider(requestEvent: H3Event | RequestEvent, pr
         loggedInAt: now.toISOString()
     })
     const redirect = getCookie(event, LOGIN_REDIRECT_COOKIE)
-    if (redirect) deleteCookie(event, LOGIN_REDIRECT_COOKIE)
+    if (redirect) deleteCookie(event, LOGIN_REDIRECT_COOKIE, {path: "/"})
     return sendRedirect(event, isAdminPath(redirect) ? redirect : "/admin")
 }

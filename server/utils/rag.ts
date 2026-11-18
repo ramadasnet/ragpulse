@@ -150,7 +150,8 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
 
     const history = (
         await messages
-            .find({sessionId: session._id, createdAt: {$lte: userMessage.createdAt}})
+            // The email fallback notice is not part of the dialogue, so it never takes a history slot
+            .find({sessionId: session._id, createdAt: {$lte: userMessage.createdAt}, emailFallback: {$ne: true}})
             .sort({createdAt: -1})
             .limit(HISTORY_MESSAGES)
             .toArray()

@@ -8,7 +8,8 @@ const {loggedIn} = useUserSession()
 const redirect = String(route.query.redirect || "")
 const target = isAdminPath(redirect) ? redirect : "/admin"
 if (loggedIn.value) await navigateTo(target)
-useCookie(LOGIN_REDIRECT_COOKIE, {maxAge: 600, sameSite: "lax"}).value = target === "/admin" ? null : target
+// A failed sign-in comes back with only `error`: the pending target is kept for the retry
+if (!route.query.error) useCookie(LOGIN_REDIRECT_COOKIE, {path: "/", maxAge: 600, sameSite: "lax"}).value = target === "/admin" ? null : target
 
 const errors: Record<string, string> = {
     not_invited: "This account has not been invited. Ask an admin to add your email.",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertTriangle, ArrowLeft, Bot, CircleCheck, FileText, Headset, LogOut, Send, UserRound} from "lucide-vue-next"
+import {AlertTriangle, ArrowLeft, Bot, Check, CircleCheck, FileText, Headset, LogOut, Send, UserRound} from "lucide-vue-next"
 import type {ChatMessage, ChatSession, Question} from "#shared/types"
 
 interface Detail {
@@ -13,6 +13,7 @@ const projectId = useProjectId()
 const sid = computed(() => String(route.params.sid))
 const allowed = await guardProjectPage(projectId.value!, "sessions:read")
 const {can} = useMe()
+const {refreshOpenQuestions} = useProjects()
 const canReply = computed(() => can(projectId.value, "questions:reply"))
 const modifierKey = useModifierKey()
 
@@ -31,15 +32,93 @@ const thread = ref<HTMLElement>()
 
 /**
  * Ends the human takeover: the assistant answers the visitor again. An ended conversation is only marked as finished.
- * Either way a FAQ is learned from the human replies in the background.
+ * Either way a FAQ is learned from the human replies in the background (replies already saved as an answer are skipped).
  */
-async function giveBack() {
+async function giveBack(done?: string) {
     if (!data.value) return
-    const done = data.value.session.endedAt ? "Conversation finished: a FAQ is learned from your replies" : "Given back to the agent: the assistant answers the visitor again"
+    done ??= data.value.session.endedAt ? "Conversation finished: a FAQ is learned from your replies" : "Given back to the agent: the assistant answers the visitor again"
     const res = await runGiveBack(() => $fetch<{session: Detail["session"]}>(`/api/projects/${projectId.value}/sessions/${sid.value}`, {method: "PATCH", body: {finished: true}}), done)
     // Reload instead of trusting the response: a reply sent meanwhile may have taken the conversation over again
     if (res) await refresh()
+    return !!res
 }
+
+// ----- Give back with answers -----
+/** One answer per open question, drafted from the replies posted in the chat after it */
+interface AnswerDraft {
+    question: Question
+    answer: string
+    replies: number
+    loading: boolean
+    saved: boolean
+}
+const answerDialog = ref(false)
+const drafts = ref<AnswerDraft[]>([])
+const draftsLoading = computed(() => drafts.value.some((d) => d.loading))
+const {run: runAnswers, pending: answersPending} = useAction()
+let draftRequest = 0
+
+/**
+ * Opens the dialog asking whether to also answer the open questions. Each answer is pre-filled with the draft of the
+ * Escalated view: a single reply as is, several replies composed by the AI. Without open questions the chat is given back right away.
+ */
+function startGiveBack() {
+    const open = data.value?.questions.filter((q) => q.status === "open") ?? []
+    if (!open.length) return giveBack()
+    const id = ++draftRequest
+    drafts.value = open.map((question) => ({question, answer: "", replies: 0, loading: true, saved: false}))
+    answerDialog.value = true
+    for (const draft of drafts.value) {
+        $fetch<{humanReplies: number; draft: string}>(`/api/projects/${projectId.value}/questions/${draft.question._id}/draft`)
+            .then((res) => {
+                if (id !== draftRequest) return
+                draft.replies = res.humanReplies
+                if (!draft.answer.trim()) draft.answer = res.draft
+            })
+            .catch(() => {
+                // The answer can still be written by hand
+            })
+            .finally(() => {
+                if (id === draftRequest) draft.loading = false
+            })
+    }
+}
+
+/** Saves each filled-in answer the way the Escalated view does (an empty one keeps its question open), then gives the chat back. */
+async function saveAnswersAndGiveBack() {
+    const todo = drafts.value.filter((d) => !d.saved && d.answer.trim())
+    const saved = await runAnswers(async () => {
+        for (const draft of todo) {
+            // The visitor already read these replies in the chat: the answer is recorded (FAQ, email when away) without posting it again
+            await $fetch(`/api/projects/${projectId.value}/questions/${draft.question._id}/reply`, {method: "POST", body: {answer: draft.answer.trim(), postToChat: false}})
+            draft.saved = true
+        }
+        return true
+    })
+    refreshOpenQuestions(projectId.value!).catch(() => {})
+    if (!saved) return refresh()
+    const answered = drafts.value.filter((d) => d.saved).length
+    answerDialog.value = false
+    await giveBack(`${answered === 1 ? "Answer saved" : `${answered} answers saved`} and given back to the agent`)
+}
+
+/** "No": only gives the chat back, the questions stay open. */
+async function giveBackOnly() {
+    answerDialog.value = false
+    await giveBack()
+}
+
+/** Where the pre-filled answer comes from. */
+function draftHint(d: AnswerDraft): string {
+    const keepOpen = drafts.value.length > 1 ? " Leave it empty to keep this question open." : ""
+    if (!d.replies) return `No reply to this question in the chat yet: write the answer here.${keepOpen}`
+    if (d.replies === 1) return `Your reply from the chat. Edit it before saving if needed.${keepOpen}`
+    return `Composed from your ${d.replies} replies in the chat. Review it before saving.${keepOpen}`
+}
+
+watch(answerDialog, (open) => {
+    if (!open) draftRequest++
+})
 
 async function send() {
     const content = reply.value.trim()
@@ -64,7 +143,7 @@ const POLL_MS = 10_000
 let poll: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
     poll = setInterval(async () => {
-        if (document.visibilityState !== "visible" || !data.value || status.value === "pending" || pending.value || giveBackPending.value) return
+        if (document.visibilityState !== "visible" || !data.value || status.value === "pending" || pending.value || giveBackPending.value || answersPending.value) return
         const current = data.value
         const fresh = await $fetch<Detail>(`/api/projects/${projectId.value}/sessions/${sid.value}`).catch(() => null)
         // A refresh or local action during the fetch has newer data: the stale poll result is discarded
@@ -134,10 +213,7 @@ function dayLabel(i: number): string | null {
                     <UiBadge v-if="data.session.endedAt" tone="neutral" :title="endedText"><LogOut :size="12" /> Ended</UiBadge>
                     <UiBadge v-if="data.session.finishedAt && data.session.endedAt" tone="success"><CircleCheck :size="12" /> Finished</UiBadge>
                     <UiBadge v-else-if="data.session.finishedAt" tone="success" :title="`Given back to the agent ${timeAgo(data.session.finishedAt)}`"><CircleCheck :size="12" /> With agent</UiBadge>
-                    <UiButton v-else-if="canReply && data.session.endedAt" size="sm" :loading="giveBackPending" title="Flag as finished and learn a FAQ from your replies" @click="giveBack"><CircleCheck :size="14" /> Mark finished</UiButton>
-                    <UiButton v-else-if="canReply" size="sm" :loading="giveBackPending" title="End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies" @click="giveBack">
-                        <Bot :size="14" /> Give back to agent
-                    </UiButton>
+                    <UiButton v-else-if="canReply && data.session.endedAt" size="sm" :loading="giveBackPending" title="Flag as finished and learn a FAQ from your replies" @click="giveBack()"><CircleCheck :size="14" /> Mark finished</UiButton>
                 </header>
 
                 <div ref="thread" class="thread">
@@ -180,11 +256,16 @@ function dayLabel(i: number): string | null {
                 <form v-else-if="canReply" class="composer" @submit.prevent="send">
                     <label class="sr-only" for="reply">Reply as support</label>
                     <textarea id="reply" v-model="reply" class="control" rows="3" maxlength="8000" placeholder="Reply to the visitor as a human agent… (Markdown supported)" @keydown="onKeydown" />
-                    <div class="row between">
+                    <div class="composer-foot">
                         <span class="tiny dim">
                             Shown in the visitor's chat. <span class="kbd">{{ modifierKey }}</span> + <span class="kbd">Enter</span> to send
                         </span>
-                        <UiButton type="submit" variant="primary" size="sm" :loading="pending" :disabled="!reply.trim()"><Send :size="14" /> Send reply</UiButton>
+                        <div class="composer-actions">
+                            <UiButton v-if="!data.session.finishedAt" size="sm" :loading="giveBackPending" title="End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies" @click="startGiveBack">
+                                <Bot :size="14" /> Give back to agent
+                            </UiButton>
+                            <UiButton type="submit" variant="primary" size="sm" :loading="pending" :disabled="!reply.trim()"><Send :size="14" /> Send reply</UiButton>
+                        </div>
                     </div>
                 </form>
             </section>
@@ -253,6 +334,39 @@ function dayLabel(i: number): string | null {
                 </UiCard>
             </aside>
         </div>
+
+        <UiModal
+            v-model:open="answerDialog"
+            title="Give back to agent"
+            :description="`The assistant answers the visitor again. Also save your ${drafts.length === 1 ? 'answer to the escalated question? It is' : 'answers to the escalated questions? They are'} added to the FAQ and emailed if the visitor isn't in the chat.`"
+            width="600px"
+        >
+            <div class="stack" style="--gap: 18px">
+                <div v-for="(d, i) in drafts" :key="d.question._id" class="stack" style="--gap: 8px">
+                    <blockquote class="draft-question small pre-wrap">{{ d.question.question }}</blockquote>
+                    <p v-if="d.saved" class="tiny row draft-saved" style="--gap: 6px"><CircleCheck :size="13" /> Answer saved</p>
+                    <UiTextarea
+                        v-else
+                        v-model="d.answer"
+                        :label="drafts.length > 1 ? `Answer ${i + 1}` : 'Answer'"
+                        :rows="5"
+                        maxlength="8000"
+                        :placeholder="d.loading ? 'Composing the answer from your replies…' : 'Write the answer… Markdown is supported.'"
+                        :hint="d.loading ? undefined : draftHint(d)"
+                    >
+                        <template v-if="d.loading" #aside
+                            ><span class="tiny dim row" style="--gap: 6px"><UiSpinner :size="12" /> Composing…</span></template
+                        >
+                    </UiTextarea>
+                </div>
+            </div>
+            <template #footer>
+                <UiButton variant="ghost" :disabled="answersPending" @click="giveBackOnly">No, just give back</UiButton>
+                <UiButton variant="primary" :loading="answersPending" :disabled="draftsLoading || !drafts.some((d) => !d.saved && d.answer.trim())" @click="saveAnswersAndGiveBack">
+                    <Check :size="14" /> {{ drafts.length === 1 ? "Save answer" : "Save answers" }} and give back
+                </UiButton>
+            </template>
+        </UiModal>
     </div>
 </template>
 
@@ -416,6 +530,28 @@ a.chip:hover {
 }
 .composer textarea {
     min-height: 72px;
+}
+.composer-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.composer-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+.draft-question {
+    margin: 0;
+    padding: 10px 14px;
+    border-left: 3px solid var(--warning);
+    background: var(--surface-2);
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+.draft-saved {
+    color: var(--success);
 }
 .facts {
     display: grid;

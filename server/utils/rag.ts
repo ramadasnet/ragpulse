@@ -172,7 +172,8 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
         temperature: project.temperature,
         messages: llmMessages,
         maxTokens: 1000,
-        signal: AbortSignal.timeout(120_000)
+        signal: AbortSignal.timeout(120_000),
+        log: {action: "Chat.answer", context: [`Session ${session._id}`, `Project ${project._id}`]}
     })) {
         if (ev.type === "usage") {
             usage = ev.usage

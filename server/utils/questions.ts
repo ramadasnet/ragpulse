@@ -107,6 +107,11 @@ const VISITOR_PRESENT_MS = 40_000
 /** Presence writes are skipped when the last one is more recent than this. */
 const PRESENCE_WRITE_MS = 10_000
 
+/** Whether the visitor has the chat open right now: it reported being visible within `VISITOR_PRESENT_MS` and the conversation has not ended. */
+export function visitorInChat(session: Pick<ChatSession, "visitorSeenAt" | "endedAt">, now = Date.now()): boolean {
+    return !session.endedAt && !!session.visitorSeenAt && now - new Date(session.visitorSeenAt).getTime() < VISITOR_PRESENT_MS
+}
+
 /** Records that the visitor has the chat open and visible. */
 export async function markVisitorSeen(sessionId: string): Promise<void> {
     const {sessions} = await useCollections()
@@ -221,7 +226,7 @@ export async function replyToQuestion(params: {
     let email: AnswerEmailStatus = "none"
     if (params.notifyVisitor !== false && question.visitorEmail) {
         const delayMinutes = ended ? 0 : (await getAppSettings()).answerEmailDelayMinutes
-        if (!ended && session?.visitorSeenAt && now.getTime() - new Date(session.visitorSeenAt).getTime() < VISITOR_PRESENT_MS) {
+        if (!ended && session && visitorInChat(session, now.getTime())) {
             email = "seen"
         } else if (delayMinutes > 0) {
             update.visitorEmailDueAt = new Date(now.getTime() + delayMinutes * 60_000)
@@ -359,6 +364,7 @@ export async function extractEscalatedQuestion(project: Project, history: ChatMe
             temperature: 0,
             maxTokens: 200,
             signal: AbortSignal.timeout(30_000),
+            log: {action: "Questions.extract", context: [`Session ${userMessage.sessionId}`, `Project ${project._id}`]},
             messages: [
                 {role: "system", content: QUESTION_EXTRACT_PROMPT},
                 {role: "user", content: transcript}
@@ -423,8 +429,9 @@ Rules:
 - Reply with the answer text only.`
 
 /**
- * Draft answer for an open question that a human already answered in the chat: summarizes the support
- * agent messages posted after the question. Falls back to the agent messages verbatim when no model is available.
+ * Draft answer for an open question that a human already answered in the chat: a single support agent reply
+ * after the question is the answer as is, several are composed into one answer with the AI.
+ * Falls back to the agent messages verbatim when no model is available.
  */
 export async function draftAnswerFromChat(question: Question, project: Project): Promise<{humanReplies: number; draft: string}> {
     const {messages, questions} = await useCollections()
@@ -444,7 +451,7 @@ export async function draftAnswerFromChat(question: Question, project: Project):
         .map((m) => m.content.trim())
         .join("\n\n")
         .slice(0, 8000)
-    if (!(await hasAiProvider())) return {humanReplies: replies.length, draft: fallback}
+    if (replies.length === 1 || !(await hasAiProvider())) return {humanReplies: replies.length, draft: fallback}
 
     const transcript = list
         .filter((m) => m.content.trim())
@@ -457,6 +464,7 @@ export async function draftAnswerFromChat(question: Question, project: Project):
             temperature: 0.2,
             maxTokens: 1200,
             signal: AbortSignal.timeout(60_000),
+            log: {action: "Questions.draft", context: [`Question ${question._id}`, `Session ${question.sessionId}`, `Project ${project._id}`, `${replies.length} replies`]},
             messages: [
                 {role: "system", content: DRAFT_PROMPT},
                 {role: "user", content: `Question:\n${question.question}\n\nChat:\n${transcript}`}

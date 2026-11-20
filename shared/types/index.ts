@@ -75,7 +75,7 @@ export interface Project {
     supportEmail?: string
     /** Domains allowed to embed the chat. Supports wildcards like `*.example.com`. The website domain is always allowed. */
     allowedDomains: string[]
-    /** Default refresh interval for sources, in hours (1..336), or 0 for manual only. Default 48. */
+    /** Default refresh interval for sources, in hours (1..336), or 0 for manual only. Default 168 (7 days). */
     refreshIntervalHours: number
     /** How much of the fetched content is indexed. Unset = `DEFAULT_INGEST_DETAIL`. */
     ingestDetail?: IngestDetail
@@ -429,7 +429,7 @@ export function projectIngestDetail(project: {ingestDetail?: IngestDetail | null
 
 export const REFRESH_MIN_HOURS = 1
 export const REFRESH_MAX_HOURS = 336
-export const DEFAULT_REFRESH_HOURS = 48
+export const DEFAULT_REFRESH_HOURS = 168
 /** Refresh interval of sources that only sync when requested */
 export const MANUAL_REFRESH = 0
 /** Refresh interval presets (hours) */

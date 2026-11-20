@@ -21,23 +21,47 @@ watch(
     }
 )
 
+const PROJECT_SECTIONS: Array<{suffix: string; label: string; icon: any; perm: ProjectPermission; exact?: boolean}> = [
+    {suffix: "", label: "Overview", icon: BarChart3, perm: "analytics:read", exact: true},
+    {suffix: "/conversations", label: "Conversations", icon: MessagesSquare, perm: "sessions:read"},
+    {suffix: "/questions", label: "Escalated", icon: Inbox, perm: "questions:reply"},
+    {suffix: "/knowledge", label: "Knowledge", icon: BookOpen, perm: "sources:manage"},
+    {suffix: "/appearance", label: "Appearance", icon: Palette, perm: "settings:edit"},
+    {suffix: "/install", label: "Install", icon: Code2, perm: "settings:edit"},
+    {suffix: "/settings", label: "Settings", icon: Settings, perm: "settings:edit"}
+]
+
 const projectNav = computed(() => {
     const id = projectId.value
     if (!id) return []
-    const items: Array<{to: string; label: string; icon: any; perm?: ProjectPermission; badge?: number; exact?: boolean}> = [
-        {to: `/admin/projects/${id}`, label: "Overview", icon: BarChart3, perm: "analytics:read", exact: true},
-        {to: `/admin/projects/${id}/conversations`, label: "Conversations", icon: MessagesSquare, perm: "sessions:read"},
-        {to: `/admin/projects/${id}/questions`, label: "Escalated", icon: Inbox, perm: "questions:reply", badge: current.value?.stats?.openQuestions},
-        {to: `/admin/projects/${id}/knowledge`, label: "Knowledge", icon: BookOpen, perm: "sources:manage"},
-        {to: `/admin/projects/${id}/appearance`, label: "Appearance", icon: Palette, perm: "settings:edit"},
-        {to: `/admin/projects/${id}/install`, label: "Install", icon: Code2, perm: "settings:edit"},
-        {to: `/admin/projects/${id}/settings`, label: "Settings", icon: Settings, perm: "settings:edit"}
-    ]
-    return items.filter((i) => can(id, i.perm))
+    return PROJECT_SECTIONS.filter((s) => can(id, s.perm)).map((s) => ({
+        to: `/admin/projects/${id}${s.suffix}`,
+        label: s.label,
+        icon: s.icon,
+        exact: s.exact,
+        badge: s.suffix === "/questions" ? current.value?.stats?.openQuestions : undefined
+    }))
 })
 
 function isActive(to: string, exact?: boolean) {
     return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`)
+}
+
+/** Active project section for the current route, used to keep the same area when switching projects. */
+const activeSection = computed(() => {
+    const id = projectId.value
+    if (!id) return undefined
+    const base = `/admin/projects/${id}`
+    return PROJECT_SECTIONS.find((s) => isActive(`${base}${s.suffix}`, s.exact))
+})
+
+/** Target route when switching to another project, keeping the current project section if accessible. */
+function projectSwitchTo(targetId: string) {
+    const section = activeSection.value
+    if (!section || !can(targetId, section.perm)) return `/admin/projects/${targetId}`
+    const path = `/admin/projects/${targetId}${section.suffix}`
+    if (section.suffix === "/knowledge" && typeof route.query.tab === "string") return {path, query: {tab: route.query.tab}}
+    return path
 }
 
 // Keeps the Escalated badge in sync with questions escalated (or answered elsewhere) after the projects were loaded
@@ -81,7 +105,7 @@ async function logout() {
                     <ChevronsUpDown :size="15" class="dim" />
                 </button>
                 <div v-if="switcherOpen" class="switcher-menu panel fade-in">
-                    <NuxtLink v-for="p in projects" :key="p._id" :to="`/admin/projects/${p._id}`" class="switcher-item" :class="{active: p._id === projectId}">
+                    <NuxtLink v-for="p in projects" :key="p._id" :to="projectSwitchTo(p._id)" class="switcher-item" :class="{active: p._id === projectId}" @click="switcherOpen = false">
                         <ProjectMark :title="p.title" :icon="p.icon" class="proj-mark sm" />
                         <span class="truncate">{{ p.title }}</span>
                     </NuxtLink>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ArrowLeft, FileQuestion} from "lucide-vue-next"
-import type {SourceView} from "#shared/types"
+import {DEFAULT_REFRESH_HOURS, type SourceView} from "#shared/types"
 
 const route = useRoute()
 const projectId = useProjectId()
@@ -19,7 +19,7 @@ const {
 })
 
 const project = computed(() => projects.value.find((p) => p._id === projectId.value))
-const projectHours = computed(() => project.value?.refreshIntervalHours ?? 48)
+const projectHours = computed(() => project.value?.refreshIntervalHours ?? DEFAULT_REFRESH_HOURS)
 const typeInfo = computed(() => sourceTypeInfo(source.value?.type ?? "url"))
 const backTo = computed(() => `/admin/projects/${projectId.value}/knowledge`)
 const form = ref<{pending: boolean} | null>(null)

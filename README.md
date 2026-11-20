@@ -230,7 +230,7 @@ Requests` responses slow the site down and are retried after `Retry-After`. A cr
   skipped and results are cached, so unchanged files are never sent twice.
 
 Everything is converted to Markdown, split into heading-aware chunks, embedded through the configured AI provider and stored in MongoDB.
-Unchanged documents and chunks are never re-embedded. Sources refresh automatically: every 2 days by default, configurable per
+Unchanged documents and chunks are never re-embedded. Sources refresh automatically: every 7 days by default, configurable per
 project and per source (every 2, 4, 12 or 24 hours, every 2, 3, 7 or 14 days, or **Manual only** — synced only when you click
 Sync). Sources are edited on their own page; the type of a source (website, git, Drive) can't be changed once it's added. Each source keeps a history of its sync runs (files, total size and duration per run,
 for `NUXT_SYNC_HISTORY_DAYS` days), opened from the history button in the source list.

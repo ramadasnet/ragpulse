@@ -1,4 +1,5 @@
 // Ingestion presets (compact / balanced / detailed): chunk sizes and markdown refinement. Pure module (no Nuxt auto-imports).
+import {createHash} from "node:crypto"
 import type {IngestDetail} from "#shared/types"
 import {splitBlocks, type ChunkOptions} from "./chunker"
 
@@ -224,6 +225,33 @@ export function dedupeAcrossDocuments<T extends {ref: string; markdown: string}>
         })
         return kept.length === blocks.length ? doc : {...doc, markdown: kept.join("\n\n")}
     })
+}
+
+/**
+ * Streaming cross-document deduplicator for low-memory syncs: hashes substantial blocks into a bounded Set
+ * so repeated site boilerplate is dropped without keeping every document's markdown in RAM.
+ */
+export function createStreamingDeduper(mode: DedupeMode = "exact", maxKeys = 20_000): (markdown: string) => string {
+    const seen = new Set<string>()
+    const minLen = mode === "exact" ? EXACT_MIN_CROSS_BLOCK_CHARS : MIN_CROSS_DEDUP_KEY
+    return (markdown: string) => {
+        const blocks = splitBlocks(markdown)
+        const docHashes = new Set<string>()
+        const kept = blocks.filter((block) => {
+            if (isHeadingBlock(block)) return true
+            const key = mode === "exact" ? exactKey(block) : similarityKey(block)
+            if (key.length < minLen) return true
+            const hash = createHash("sha256").update(key).digest("hex").slice(0, 16)
+            if (seen.has(hash)) return false
+            docHashes.add(hash)
+            return true
+        })
+        for (const hash of docHashes) {
+            if (seen.size >= maxKeys) break
+            seen.add(hash)
+        }
+        return kept.length === blocks.length ? markdown : kept.join("\n\n")
+    }
 }
 
 /**

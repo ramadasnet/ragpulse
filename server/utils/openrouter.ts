@@ -29,7 +29,8 @@ export interface ChatCompletionOptions {
     log?: {action: string; context: string[]}
 }
 
-export type ChatStreamEvent = {type: "delta"; text: string} | {type: "usage"; usage: LlmUsage}
+/** `model` is sent when the fallback model takes over, before any of its text */
+export type ChatStreamEvent = {type: "delta"; text: string} | {type: "usage"; usage: LlmUsage} | {type: "model"; model: string}
 
 /** Deadlines for provider calls without a caller-supplied signal — a hung endpoint must not stall sync jobs */
 const CHAT_TIMEOUT_MS = 300_000
@@ -198,7 +199,7 @@ async function requestChatCompletion(opts: ChatCompletionOptions): Promise<{cont
 
 /**
  * Streaming chat completion, yields text deltas and (at the end) usage. Logged when `opts.log` is set.
- * Retried with the fallback model when it fails before any text was streamed.
+ * Retried with the fallback model when it fails before any text was streamed, announced by a `model` event.
  */
 export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {
     let current = opts
@@ -217,6 +218,7 @@ export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncG
             const fallback = current === opts && !started ? await fallbackOptions(opts) : undefined
             if (!fallback) throw error
             current = fallback
+            yield {type: "model", model: fallback.model}
             continue
         }
         logCompletion(current, startedAt, {usage})

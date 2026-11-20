@@ -162,7 +162,8 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
     const hits = (await searchKnowledge(project._id, query, {limit: RAG_HIT_LIMIT, minScore: RAG_MIN_SCORE})).sort((a, b) => b.score - a.score)
 
     const {globalInstructions, defaultModel} = await getAppSettings()
-    const model = project.model || defaultModel
+    // The model that answered: the fallback model replaces it when the project's model fails
+    let model = project.model || defaultModel
     const llmMessages: LlmMessage[] = [{role: "system", content: buildSystemPrompt(project, session, hits, globalInstructions)}, ...toLlmHistory(history)]
 
     let full = ""
@@ -178,6 +179,12 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
     })) {
         if (ev.type === "usage") {
             usage = ev.usage
+            continue
+        }
+        if (ev.type === "model") {
+            model = ev.model
+            // Usage of the failed attempt must not be billed to the fallback answer
+            usage = undefined
             continue
         }
         full += ev.text

@@ -73,6 +73,8 @@ const customId = computed(() => {
 })
 
 const optionCount = computed(() => filtered.value.length + (customId.value ? 1 : 0))
+/** Keyboard index of the first option: -1 is the "Use the default model" option, when shown */
+const firstIndex = computed(() => (props.defaultModel ? -1 : 0))
 
 watch(search, () => (active.value = 0))
 watch(models, () => open.value && nextTick(place))
@@ -102,10 +104,12 @@ function toggle() {
     open.value = !open.value
     if (open.value) {
         search.value = ""
-        active.value = Math.max(
-            0,
-            filtered.value.findIndex((m) => m.id === model.value)
-        )
+        active.value = usingDefault.value
+            ? -1
+            : Math.max(
+                  0,
+                  filtered.value.findIndex((m) => m.id === model.value)
+              )
         load()
         place()
         nextTick(() => {
@@ -142,12 +146,14 @@ function scrollActive() {
 function onKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault()
-        if (!optionCount.value) return
-        active.value = (active.value + (e.key === "ArrowDown" ? 1 : -1) + optionCount.value) % optionCount.value
+        const total = optionCount.value - firstIndex.value
+        if (!total) return
+        active.value = ((active.value - firstIndex.value + (e.key === "ArrowDown" ? 1 : -1) + total) % total) + firstIndex.value
         scrollActive()
     } else if (e.key === "Enter") {
         e.preventDefault()
-        if (customId.value && active.value === filtered.value.length) choose(customId.value)
+        if (active.value === -1 && props.defaultModel) choose("")
+        else if (customId.value && active.value === filtered.value.length) choose(customId.value)
         else if (filtered.value[active.value]) choose(filtered.value[active.value]!.id)
         else if (customId.value) choose(customId.value)
     } else if (e.key === "Escape") {
@@ -206,7 +212,7 @@ onBeforeUnmount(() => {
                         <span class="nowrap">{{ isEmbedding ? "Per 1M tokens" : "In / out per 1M" }}</span>
                     </div>
                     <div :id="`${uid}-list`" ref="listEl" class="list" role="listbox">
-                        <button v-if="defaultModel" type="button" role="option" class="option default-option" :aria-selected="usingDefault" @click="choose('')">
+                        <button v-if="defaultModel" type="button" role="option" class="option default-option" data-index="-1" :aria-selected="usingDefault" :class="{active: active === -1}" @mouseenter="active = -1" @click="choose('')">
                             <span class="opt-main">
                                 <span class="row" style="--gap: 6px">
                                     <span>Use the default model</span>

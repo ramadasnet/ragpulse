@@ -1,5 +1,6 @@
 import type {IngestDetail} from "#shared/types"
 import type {BinaryMime} from "./binary"
+import type {HostThrottle} from "./throttle"
 
 export interface FetchedDocument {
     /** Stable identifier inside the source: normalized URL (web), file path (git) or Drive file id */
@@ -13,6 +14,8 @@ export interface FetchedDocument {
 
 export interface FetchOutcome {
     documents: FetchedDocument[]
+    /** Refs already streamed to persistence via `FetchContext.onDocument` (markdown is not retained in RAM) */
+    streamedRefs?: string[]
     /** Refs whose stored version is still current: not re-fetched, their documents are kept as-is */
     unchanged?: string[]
     /** Items intentionally not indexed (unsupported files, tiny images, empty pages…) */
@@ -76,6 +79,8 @@ export interface FetchContext {
     detail?: IngestDetail
     /** URL sources: minimum delay between requests to the same host */
     requestIntervalMs?: number
+    /** URL sources: shared per-host throttle (remembers backoff across retries and concurrent syncs) */
+    throttle?: HostThrottle
     signal?: AbortSignal
     log?: (msg: string) => void
     /** Converts PDFs, images and Office files to markdown. Without it these files are not indexed. */
@@ -84,8 +89,12 @@ export interface FetchContext {
     knownRevision?: string
     /** Fingerprint of the sync settings (preset, options, models), combined into `FetchOutcome.revision` */
     revisionSalt?: string
-    /** ref → version of the currently stored document; sources may skip re-downloading unchanged items (Drive) */
+    /** ref → version of the currently stored document; sources may skip re-downloading unchanged items (Drive, URL) */
     knownVersions?: Map<string, string>
+    /** ref → updatedAt (ms) of currently stored documents; crawlers use this to fetch unindexed and oldest pages first */
+    knownUpdatedAt?: Map<string, number>
+    /** Streaming sink: when set, fetched documents are persisted as they arrive instead of buffered in `outcome.documents` */
+    onDocument?: (doc: FetchedDocument) => Promise<void>
     /** Summarizes source code files of a git repository. Without it code is indexed as is. */
     summarizeCode?: (repo: RepoContext, files: CodeFile[]) => Promise<CodeSummaries>
 }

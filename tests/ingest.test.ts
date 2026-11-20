@@ -2,9 +2,9 @@ import {afterAll, beforeAll, describe, expect, test} from "bun:test"
 import {codeToMarkdown, defaultGitInclude, CODE_GIT_EXCLUDE, isCodeFile, parseLsRemote} from "../server/utils/ingest/git"
 import {matchesAnyGlob} from "../server/utils/ingest/glob"
 import {HostThrottle, MAX_HOST_INTERVAL_MS, parseRetryAfter} from "../server/utils/ingest/throttle"
-import {fetchUrlSource, parseRobotsTxt, robotsAgent} from "../server/utils/ingest/url"
+import {fetchUrlSource, parseRobotsTxt, resolveCrawlDir, robotsAgent} from "../server/utils/ingest/url"
 import {vectorIndexOutdated} from "../server/utils/db"
-import {compactMarkdown, COMPACT_MAX_CODE_LINES, dedupeAcrossDocuments, dropRepeatedPageLines, refineMarkdown} from "../server/utils/ingest/detail"
+import {compactMarkdown, COMPACT_MAX_CODE_LINES, createStreamingDeduper, dedupeAcrossDocuments, dropRepeatedPageLines, refineMarkdown} from "../server/utils/ingest/detail"
 import {htmlToMarkdown, prepareMarkdownFile} from "../server/utils/ingest/markdown"
 
 describe("Retry-After", () => {
@@ -88,7 +88,17 @@ describe("URL fetching with rate limits", () => {
                     return html(`The documentation index with enough readable text to be indexed. ${links}`)
                 }
                 if (path.startsWith("/docs/p")) return new Response("busy", {status: 429, headers: {"retry-after": "3600"}})
-                return html("A page with enough readable text to be indexed by the crawler.")
+                if (path === "/org/repo") {
+                    const links = ['<a href="/org/repo/p1">Page 1</a>', '<a href="/org/repo/p2">Page 2</a>', '<a href="/org/repo/p3">Page 3</a>', '<a href="/org/other/secret">Other repo</a>'].join(" ")
+                    return html(`Repository wiki home with enough readable text to be indexed. ${links}`)
+                }
+                if (path === "/cached") {
+                    if (req.headers.get("if-none-match") === '"v1"') return new Response(null, {status: 304})
+                    return new Response(`<html><head><title>Cached</title></head><body><main><h1>Cached</h1><p>A cached page with enough readable text to be indexed.</p></main></body></html>`, {
+                        headers: {"content-type": "text/html", etag: '"v1"'}
+                    })
+                }
+                return html(`Unique readable content for ${path} so the crawler indexes every page cleanly.`)
             }
         })
     })
@@ -107,6 +117,59 @@ describe("URL fetching with rate limits", () => {
         // Retry-After beyond the wait cap: no retries, and the crawl stops early
         expect([...hits.entries()].filter(([p]) => p.startsWith("/docs/p")).every(([, n]) => n === 1)).toBe(true)
         expect(outcome.failedRefs.length).toBeLessThanOrEqual(2)
+    })
+
+    test("prioritizes unindexed pages on resume, stays in extensionless child scope, and streams without buffering", async () => {
+        const streamed: string[] = []
+        const outcome = await fetchUrlSource(
+            `${base()}/org/repo`,
+            {crawl: true, maxPages: 3},
+            {
+                ...ctx,
+                knownUpdatedAt: new Map([
+                    [`${base()}/org/repo/p1`, 1000],
+                    [`${base()}/org/repo/p2`, 2000]
+                ]),
+                onDocument: async (doc) => {
+                    streamed.push(new URL(doc.ref).pathname)
+                }
+            }
+        )
+        // Markdown was streamed instead of buffered in RAM
+        expect(outcome.documents).toHaveLength(0)
+        expect(outcome.streamedRefs).toHaveLength(3)
+        // Unindexed p3 is crawled before known p1 (oldest) and p2, and sibling /org/other is excluded
+        expect(streamed).toContain("/org/repo")
+        expect(streamed).toContain("/org/repo/p3")
+        expect(streamed).toContain("/org/repo/p1")
+        expect(streamed).not.toContain("/org/repo/p2")
+        expect(streamed).not.toContain("/org/other/secret")
+    })
+
+    test("skips unchanged single-page URLs via ETag and invalidates when detail preset changes", async () => {
+        const first = await fetchUrlSource(`${base()}/cached`, {}, ctx)
+        expect(first.documents).toHaveLength(1)
+        expect(first.documents[0]!.version).toContain('"v1"')
+        const second = await fetchUrlSource(`${base()}/cached`, {}, {...ctx, knownVersions: new Map([[`${base()}/cached`, first.documents[0]!.version!]])})
+        expect(second.documents).toHaveLength(0)
+        expect(second.unchanged).toEqual([`${base()}/cached`])
+        // Switching detail preset bypasses the 304 cache
+        const detailed = await fetchUrlSource(`${base()}/cached`, {}, {...ctx, detail: "detailed", knownVersions: new Map([[`${base()}/cached`, first.documents[0]!.version!]])})
+        expect(detailed.documents).toHaveLength(1)
+    })
+
+    test("resolveCrawlDir scopes extensionless parent paths tightly without breaking sibling docs pages", () => {
+        expect(resolveCrawlDir("/org/repo", "https://deepwiki.com", ["https://deepwiki.com/org/repo/1-overview"])).toBe("/org/repo/")
+        expect(resolveCrawlDir("/docs/intro", "https://example.com", ["https://example.com/docs/api"])).toBe("/docs/")
+        expect(resolveCrawlDir("/docs/index.html", "https://example.com", ["https://example.com/docs/index.html/sub"])).toBe("/docs/")
+        expect(resolveCrawlDir("/docs/", "https://example.com", [])).toBe("/docs/")
+    })
+
+    test("createStreamingDeduper drops repeated boilerplate across streamed documents", () => {
+        const footer = "Copyright 2026 Example Corp. All rights reserved. Contact our legal team for licensing, privacy notices, security disclosures, terms of service, and compliance inquiries across all regions and subsidiaries worldwide."
+        const dedupe = createStreamingDeduper("exact")
+        expect(dedupe(`# Page 1\n\nBody one.\n\n${footer}`)).toContain("Copyright 2026")
+        expect(dedupe(`# Page 2\n\nBody two.\n\n${footer}`)).toBe("# Page 2\n\nBody two.")
     })
 })
 

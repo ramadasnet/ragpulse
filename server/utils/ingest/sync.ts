@@ -117,8 +117,8 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         let pending: PendingDoc[] = []
         let pendingChunks = 0
         const processedRefs = new Set<string>()
-        const embeddingFailedRefs: string[] = []
-        let embeddingError: string | undefined
+        const persistFailedRefs: string[] = []
+        let persistError: string | undefined
 
         const flush = async () => {
             if (!pending.length) return
@@ -126,8 +126,8 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
             pending = []
             pendingChunks = 0
 
-            if (embeddingError) {
-                for (const p of batch) embeddingFailedRefs.push(p.doc.ref)
+            if (persistError) {
+                for (const p of batch) persistFailedRefs.push(p.doc.ref)
                 return
             }
 
@@ -162,65 +162,74 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                     result.embedded += missing.length
                 } catch (err: any) {
                     // Keep documents already saved in earlier batches and stop fetching more pages until the next sync
-                    embeddingError = errorText(err, source)
-                    for (const p of batch) embeddingFailedRefs.push(p.doc.ref)
+                    persistError = errorText(err, source)
+                    for (const p of batch) persistFailedRefs.push(p.doc.ref)
                     stopFetch.abort()
-                    logger.warn("Ingest.sync", label, `Embeddings paused sync after ${result.changed} saved doc(s): ${embeddingError}`)
+                    logger.warn("Ingest.sync", label, `Embeddings paused sync after ${result.changed} saved doc(s): ${persistError}`)
                     return
                 }
             }
 
             const now = new Date()
-            for (const p of batch) {
-                const docId = p.prevId ?? newId()
-                const usable = p.chunks.filter((c) => vectors.has(c.hash))
-                const newChunks: Chunk[] = usable.map((c) => ({
-                    _id: newId(),
-                    projectId: source.projectId,
-                    sourceId: source._id,
-                    documentId: docId,
-                    sourceType: source.type,
-                    title: p.doc.title,
-                    ...(p.doc.url ? {url: p.doc.url} : {}),
-                    ...(c.heading ? {heading: c.heading} : {}),
-                    content: c.content,
-                    hash: c.hash,
-                    embedding: vectors.get(c.hash)!,
-                    embeddingModel,
-                    tokens: c.tokens,
-                    createdAt: now
-                }))
-                if (newChunks.length) await chunks.insertMany(newChunks, {ordered: false})
-                await chunks.deleteMany({documentId: docId, _id: {$nin: newChunks.map((c) => c._id)}})
-                const unset: Record<string, ""> = {}
-                if (!p.doc.url) unset.url = ""
-                if (!p.doc.version) unset.version = ""
-                await documents.updateOne(
-                    {sourceId: source._id, ref: p.doc.ref},
-                    {
-                        $set: {
-                            projectId: source.projectId,
-                            title: p.doc.title,
-                            ...(p.doc.url ? {url: p.doc.url} : {}),
-                            hash: p.hash,
-                            markdown: p.doc.markdown,
-                            ...(p.doc.version ? {version: p.doc.version} : {}),
-                            chunkCount: newChunks.length,
-                            updatedAt: now
+            let written = 0
+            try {
+                for (const p of batch) {
+                    const docId = p.prevId ?? newId()
+                    const usable = p.chunks.filter((c) => vectors.has(c.hash))
+                    const newChunks: Chunk[] = usable.map((c) => ({
+                        _id: newId(),
+                        projectId: source.projectId,
+                        sourceId: source._id,
+                        documentId: docId,
+                        sourceType: source.type,
+                        title: p.doc.title,
+                        ...(p.doc.url ? {url: p.doc.url} : {}),
+                        ...(c.heading ? {heading: c.heading} : {}),
+                        content: c.content,
+                        hash: c.hash,
+                        embedding: vectors.get(c.hash)!,
+                        embeddingModel,
+                        tokens: c.tokens,
+                        createdAt: now
+                    }))
+                    if (newChunks.length) await chunks.insertMany(newChunks, {ordered: false})
+                    await chunks.deleteMany({documentId: docId, _id: {$nin: newChunks.map((c) => c._id)}})
+                    const unset: Record<string, ""> = {}
+                    if (!p.doc.url) unset.url = ""
+                    if (!p.doc.version) unset.version = ""
+                    await documents.updateOne(
+                        {sourceId: source._id, ref: p.doc.ref},
+                        {
+                            $set: {
+                                projectId: source.projectId,
+                                title: p.doc.title,
+                                ...(p.doc.url ? {url: p.doc.url} : {}),
+                                hash: p.hash,
+                                markdown: p.doc.markdown,
+                                ...(p.doc.version ? {version: p.doc.version} : {}),
+                                chunkCount: newChunks.length,
+                                updatedAt: now
+                            },
+                            $setOnInsert: {_id: docId, sourceId: source._id, ref: p.doc.ref},
+                            ...(Object.keys(unset).length ? {$unset: unset} : {})
                         },
-                        $setOnInsert: {_id: docId, sourceId: source._id, ref: p.doc.ref},
-                        ...(Object.keys(unset).length ? {$unset: unset} : {})
-                    },
-                    {upsert: true}
-                )
-                processedRefs.add(p.doc.ref)
-                result.changed++
+                        {upsert: true}
+                    )
+                    processedRefs.add(p.doc.ref)
+                    result.changed++
+                    written++
+                }
+            } catch (err: any) {
+                persistError = errorText(err, source)
+                for (const p of batch.slice(written)) persistFailedRefs.push(p.doc.ref)
+                stopFetch.abort()
+                logger.warn("Ingest.sync", label, `Persistence paused sync after ${result.changed} saved doc(s): ${persistError}`)
             }
         }
 
         const ingestDocument = async (doc: FetchedDocument, streamRefine: boolean) => {
-            if (embeddingError) {
-                embeddingFailedRefs.push(doc.ref)
+            if (persistError) {
+                persistFailedRefs.push(doc.ref)
                 return
             }
             const markdown = streamRefine ? (streamingDeduper ? streamingDeduper(refineMarkdown(doc.markdown, detail)) : refineMarkdown(doc.markdown, detail)) : doc.markdown
@@ -293,15 +302,15 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
         }
         await flush()
 
-        // If embeddings failed before a single document existed or was saved, fail the sync with that error
-        if (embeddingError && !processedRefs.size && !existing.length && !outcome.unchanged?.length) {
-            throw new Error(embeddingError)
+        // If embeddings or persistence failed before a single document existed or was saved, fail the sync with that error
+        if (persistError && !processedRefs.size && !existing.length && !outcome.unchanged?.length) {
+            throw new Error(persistError)
         }
 
-        const incomplete = embeddingError || outcome.incomplete
+        const incomplete = persistError || outcome.incomplete
 
         // Documents that disappeared from the source (transient failures and incomplete fetches keep their previous version)
-        const keep = new Set([...processedRefs, ...outcome.failedRefs, ...embeddingFailedRefs, ...(outcome.unchanged ?? [])])
+        const keep = new Set([...processedRefs, ...(outcome.streamedRefs ?? []), ...outcome.failedRefs, ...persistFailedRefs, ...(outcome.unchanged ?? [])])
         const gone = incomplete ? [] : existing.filter((d) => !keep.has(d.ref)).map((d) => d._id)
         if (gone.length) {
             await chunks.deleteMany({documentId: {$in: gone}})

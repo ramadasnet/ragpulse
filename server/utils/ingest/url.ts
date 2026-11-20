@@ -376,14 +376,18 @@ function decodeXmlEntities(text: string): string {
         .replace(/&apos;/g, "'")
 }
 
-async function loadSitemapUrls(sitemapUrls: string[], ctx: UrlContext, limit: number): Promise<string[]> {
+async function loadSitemapUrls(sitemapUrls: string[], ctx: UrlContext, limit: number): Promise<{urls: string[]; rateLimited: boolean}> {
     const urls: string[] = []
     const queue = [...new Set(sitemapUrls)].filter((u) => !/\.gz(\?|$)/i.test(u))
     const visited = new Set<string>()
+    let rateLimited = false
     while (queue.length && visited.size < MAX_SITEMAPS && urls.length < limit && !ctx.signal?.aborted) {
         const url = queue.shift()!
         if (visited.has(url)) continue
-        if (ctx.throttle.isPenalized(hostOf(url))) break
+        if (ctx.throttle.isPenalized(hostOf(url))) {
+            rateLimited = true
+            break
+        }
         visited.add(url)
         try {
             const res = await fetchText(url, ctx, {
@@ -406,10 +410,13 @@ async function loadSitemapUrls(sitemapUrls: string[], ctx: UrlContext, limit: nu
                 }
             }
         } catch (err) {
-            if (err instanceof HttpError && (err.status === 429 || err.status === 503)) break
+            if (err instanceof HttpError && (err.status === 429 || err.status === 503)) {
+                rateLimited = true
+                break
+            }
         }
     }
-    return urls
+    return {urls, rateLimited}
 }
 
 /**
@@ -511,7 +518,11 @@ export async function fetchUrlSource(startUrl: string, options: {crawl?: boolean
         throw new Error(`Could not fetch ${start}: ${classifyError(err)}`)
     }
     await addDocument(start, first.finalUrl, firstDoc, first.version)
-    if (!options.crawl || ctx.signal?.aborted) return outcome
+    if (!options.crawl) return outcome
+    if (ctx.signal?.aborted) {
+        outcome.incomplete = "crawl interrupted before finishing, continues on the next sync"
+        return outcome
+    }
 
     const maxPages = Math.min(CRAWL_MAX_PAGES, Math.max(1, options.maxPages ?? CRAWL_DEFAULT_MAX_PAGES))
     const scopeUrl = new URL(first.finalUrl)
@@ -533,18 +544,20 @@ export async function fetchUrlSource(startUrl: string, options: {crawl?: boolean
     const seen = new Set<string>([start])
     const finalStart = normalizeCrawlUrl(first.finalUrl)
     if (finalStart) seen.add(finalStart)
-    // Two-tier queue: unindexed URLs run first so incomplete crawls make forward progress on retry;
-    // already-indexed URLs follow oldest-first.
+    // Prioritize unindexed pages only while resuming an under-budget/incomplete crawl;
+    // full-budget refreshes use deterministic BFS so capped sites don't churn pages across syncs.
+    const knownCount = ctx.knownUpdatedAt?.size ?? 0
+    const prioritizeUnindexed = knownCount > 0 && knownCount < maxPages
     const newQueue: string[] = []
     const knownQueue: string[] = []
     const queueSize = () => newQueue.length + knownQueue.length
     const enqueue = (raw: string, base?: string) => {
-        if (seen.size >= maxSeen) return
         const url = normalizeCrawlUrl(raw, base)
         if (!url || seen.has(url)) return
-        seen.add(url)
         if (!inScope(url) || !crawlable(url) || !robotsAllows(robots, url)) return
-        if (ctx.knownUpdatedAt?.has(url)) {
+        if (seen.size >= maxSeen) return
+        seen.add(url)
+        if (prioritizeUnindexed && ctx.knownUpdatedAt?.has(url)) {
             if (knownQueue.length < maxQueued) knownQueue.push(url)
         } else if (newQueue.length < maxQueued) {
             newQueue.push(url)
@@ -568,8 +581,11 @@ export async function fetchUrlSource(startUrl: string, options: {crawl?: boolean
     for (const link of firstDoc.links) enqueue(link)
     // Only probe sitemaps when links from the start page didn't already fill the crawl budget
     if (queueSize() < maxPages && !ctx.throttle.isPenalized(scopeUrl.host) && !ctx.signal?.aborted) {
-        const sitemapUrls = await loadSitemapUrls([...(robots?.sitemaps ?? []), `${origin}/sitemap.xml`], ctx, Math.min(2000, maxPages * 10))
-        for (const url of sitemapUrls) enqueue(url)
+        const sitemap = await loadSitemapUrls([...(robots?.sitemaps ?? []), `${origin}/sitemap.xml`], ctx, Math.min(2000, maxPages * 10))
+        for (const url of sitemap.urls) enqueue(url)
+        if (sitemap.rateLimited && queueSize() < maxPages && !outcome.incomplete) {
+            outcome.incomplete = `${scopeUrl.host} rate limited sitemap discovery, crawl continues on the next sync`
+        }
     }
 
     let processed = 1
@@ -630,7 +646,7 @@ export async function fetchUrlSource(startUrl: string, options: {crawl?: boolean
     }
     await Promise.all(Array.from({length: CONCURRENCY}, worker))
     // An interrupted crawl must never let the caller delete unreached previously-indexed pages
-    if (ctx.signal?.aborted && !outcome.incomplete && queueSize() > 0) {
+    if (ctx.signal?.aborted && !outcome.incomplete) {
         outcome.incomplete = `crawl interrupted after ${processed} page(s), continues on the next sync`
     }
     ctx.log?.(`crawled ${processed} page(s) from ${start}: ${indexedCount} indexed, ${outcome.skipped.length} skipped, ${outcome.failedRefs.length} failed${outcome.incomplete ? ` (${outcome.incomplete})` : ""}`)

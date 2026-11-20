@@ -62,9 +62,17 @@ export class HostThrottle {
             if (this.expired(s, now)) this.hosts.delete(host)
         }
         while (this.hosts.size >= MAX_TRACKED_HOSTS) {
-            const oldest = this.hosts.keys().next().value
-            if (oldest === undefined) break
-            this.hosts.delete(oldest)
+            // Prefer evicting the least-recently-used inactive host so active penalties/spacing stay intact
+            let candidate: string | undefined
+            for (const [host, s] of this.hosts) {
+                if (s.nextAt <= now) {
+                    candidate = host
+                    break
+                }
+            }
+            const evict = candidate ?? this.hosts.keys().next().value
+            if (evict === undefined) break
+            this.hosts.delete(evict)
         }
     }
 
@@ -81,6 +89,9 @@ export class HostThrottle {
             this.hosts.set(host, s)
         } else {
             s.lastUsedAt = now
+            // Refresh insertion order so Map iteration order stays least-recently-used first
+            this.hosts.delete(host)
+            this.hosts.set(host, s)
         }
         return s
     }

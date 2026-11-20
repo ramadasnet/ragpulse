@@ -17,8 +17,12 @@ function host(url: string) {
     }
 }
 
+const defaultModel = useDefaultModel()
+
+/** Short name of a project's model; projects without one use the default model. */
 function modelName(id: string) {
-    return id.split("/").pop() || id
+    const model = id || defaultModel.value
+    return model.split("/").pop() || model
 }
 
 const linkDefs: Array<{path: string; label: string; icon: any; perm: ProjectPermission}> = [
@@ -94,7 +98,7 @@ const homePath = (p: {_id: string; permissions: ProjectPermission[]}) => {
 
                     <p class="model tiny">
                         <span class="dot" :class="p.enabled ? 'ok' : ''" />
-                        <span class="mono truncate" :title="p.model">{{ modelName(p.model) }}</span>
+                        <span class="mono truncate" :title="p.model || defaultModel">{{ modelName(p.model) }}</span>
                     </p>
                 </NuxtLink>
 

@@ -67,7 +67,7 @@ export interface Project {
     /** Project icon as a data URI (usually the website favicon). Falls back to the two-letter mark when unset. */
     icon?: string
     systemInstructions: string
-    /** Model id of the configured AI provider, e.g. `openrouter/free` */
+    /** Model id of the configured AI provider, e.g. `openrouter/free`. Empty = the default model of the Global Settings. */
     model: string
     temperature: number
     /** Max user messages per chat session before redirecting to support. 0 = unlimited. */
@@ -352,6 +352,10 @@ export interface AppSettings {
     embeddingDimensions: number
     /** Send `dimensions` with embedding requests (shortened vectors). False = the model's native size. */
     embeddingDimensionsParam: boolean
+    /** Chat model of the projects that have no model of their own */
+    defaultModel: string
+    /** Chat model used when a request to the project's (or task's) model fails. Empty = no fallback. */
+    fallbackModel: string
     /** Model that summarizes source code of git repositories. Empty disables summaries. */
     codeSummaryModel: string
     /** User-Agent of the website crawler. Empty = default `RAGPulseBot/1.0 (+url)`. */

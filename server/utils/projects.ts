@@ -161,7 +161,8 @@ export const projectUpdateSchema = z
         title: z.string().trim().min(1, "Title is required").max(120),
         website: websiteSchema,
         systemInstructions: systemInstructionsSchema,
-        model: modelSchema,
+        /** Empty = the default model of the Global Settings */
+        model: z.union([z.literal(""), modelSchema]),
         temperature: z.number().min(0).max(2),
         rateLimit: z.number().int().min(0).max(1000),
         supportEmail: z.string().trim().toLowerCase().pipe(supportEmailSchema),
@@ -183,14 +184,14 @@ export type ProjectUpdateInput = z.output<typeof projectUpdateSchema>
 // ---------- Create / update ----------
 
 export function buildProject(input: ProjectCreateInput): Project {
-    const config = useRuntimeConfig()
     const now = new Date()
     const project: Project = {
         _id: newId(),
         title: input.title,
         website: input.website,
         systemInstructions: input.systemInstructions?.trim() || defaultSystemInstructions(input.title, input.website),
-        model: input.model || String(config.defaultChatModel),
+        // Empty follows the default model of the Global Settings
+        model: input.model || "",
         temperature: 0.3,
         rateLimit: 20,
         allowedDomains: [],

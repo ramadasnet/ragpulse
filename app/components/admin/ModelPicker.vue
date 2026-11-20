@@ -23,7 +23,8 @@ export function formatContext(tokens: number): string {
 import {Check, ChevronDown, Search} from "lucide-vue-next"
 
 const model = defineModel<string>({default: ""})
-const props = defineProps<{label?: string; hint?: string; placeholder?: string; disabled?: boolean; kind?: "chat" | "embedding"}>()
+// `defaultModel` adds a "Use the default model" option that sets the value to "" (the Global Settings default applies)
+const props = defineProps<{label?: string; hint?: string; placeholder?: string; disabled?: boolean; kind?: "chat" | "embedding"; defaultModel?: string}>()
 
 const isEmbedding = computed(() => props.kind === "embedding")
 const models = useState<ModelInfo[] | null>(isEmbedding.value ? "openrouter-embedding-models" : "openrouter-models", () => null)
@@ -54,7 +55,10 @@ async function load() {
 }
 onMounted(load)
 
-const selected = computed(() => models.value?.find((m) => m.id === model.value))
+/** The model shown: the chosen one, or the default model while none is chosen. */
+const shown = computed(() => model.value || props.defaultModel || "")
+const selected = computed(() => models.value?.find((m) => m.id === shown.value))
+const usingDefault = computed(() => !!props.defaultModel && !model.value)
 
 const filtered = computed(() => {
     const list = models.value ?? []
@@ -169,9 +173,9 @@ onBeforeUnmount(() => {
         <div ref="root" class="picker">
             <button :id="uid" ref="triggerEl" type="button" class="control trigger" :disabled="disabled" aria-haspopup="listbox" :aria-expanded="open" @click="toggle">
                 <span class="grow trigger-text">
-                    <template v-if="model">
-                        <span class="truncate strong">{{ selected?.name || model }}</span>
-                        <span class="truncate dim mono tiny">{{ model }}</span>
+                    <template v-if="shown">
+                        <span class="truncate strong">{{ selected?.name || shown }}<span v-if="usingDefault" class="dim"> · default model</span></span>
+                        <span class="truncate dim mono tiny">{{ shown }}</span>
                     </template>
                     <span v-else class="dim">{{ placeholder || "Select a model" }}</span>
                 </span>
@@ -202,6 +206,15 @@ onBeforeUnmount(() => {
                         <span class="nowrap">{{ isEmbedding ? "Per 1M tokens" : "In / out per 1M" }}</span>
                     </div>
                     <div :id="`${uid}-list`" ref="listEl" class="list" role="listbox">
+                        <button v-if="defaultModel" type="button" role="option" class="option default-option" :aria-selected="usingDefault" @click="choose('')">
+                            <span class="opt-main">
+                                <span class="row" style="--gap: 6px">
+                                    <span>Use the default model</span>
+                                    <Check v-if="usingDefault" :size="14" class="accent" />
+                                </span>
+                                <span class="truncate mono tiny dim">{{ defaultModel }}</span>
+                            </span>
+                        </button>
                         <div v-if="loading" class="state"><UiSpinner :size="16" /> Loading models…</div>
                         <p v-else-if="loadError" class="state small">
                             <span class="danger-text">Could not load models.</span> <span class="dim">Type a model id (e.g. {{ isEmbedding ? "openai/text-embedding-3-small" : "openrouter/free" }}) to use it anyway.</span>
@@ -315,6 +328,9 @@ onBeforeUnmount(() => {
     padding: 7px 8px;
     border-radius: 8px;
     text-align: left;
+}
+.default-option {
+    grid-template-columns: minmax(0, 1fr);
 }
 .option.active {
     background: var(--surface-2);

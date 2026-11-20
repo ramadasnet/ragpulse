@@ -161,14 +161,15 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
     const query = buildRetrievalQuery(history.filter((m) => m.role === "user").map((m) => m.content))
     const hits = (await searchKnowledge(project._id, query, {limit: RAG_HIT_LIMIT, minScore: RAG_MIN_SCORE})).sort((a, b) => b.score - a.score)
 
-    const {globalInstructions} = await getAppSettings()
+    const {globalInstructions, defaultModel} = await getAppSettings()
+    const model = project.model || defaultModel
     const llmMessages: LlmMessage[] = [{role: "system", content: buildSystemPrompt(project, session, hits, globalInstructions)}, ...toLlmHistory(history)]
 
     let full = ""
     let sent = 0
     let usage: LlmUsage | undefined
     for await (const ev of streamChatCompletion({
-        model: project.model,
+        model,
         temperature: project.temperature,
         messages: llmMessages,
         maxTokens: 1000,
@@ -205,7 +206,7 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
         sessionId: session._id,
         role: "assistant",
         content: answer || escalationText(project, humanRequested),
-        model: project.model,
+        model,
         usage,
         latencyMs: Date.now() - startedAt,
         createdAt: now

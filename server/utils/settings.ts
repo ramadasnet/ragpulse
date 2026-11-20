@@ -1,7 +1,7 @@
 // Workspace settings stored in MongoDB (`settings` collection, one document), with environment variables as defaults.
 // Both the admin and the chat instance read them; the cache keeps the chat instance in sync within CACHE_TTL_MS.
 import {z} from "zod"
-import type {AppSettings} from "#shared/types"
+import type {AppSettings, Project} from "#shared/types"
 import {
     ANSWER_EMAIL_MAX_DELAY_MINUTES,
     CHAT_AUTO_CLOSE_MAX_DAYS,
@@ -37,6 +37,8 @@ export function defaultAppSettings(): AppSettings {
         embeddingModel: String(config.embeddingModel || "openai/text-embedding-3-small"),
         embeddingDimensions: Number(config.embeddingDimensions) || 1536,
         embeddingDimensionsParam: true,
+        defaultModel: String(config.defaultChatModel || "openrouter/free").trim(),
+        fallbackModel: String(config.fallbackModel ?? "").trim(),
         codeSummaryModel: String(config.codeSummaryModel ?? "").trim(),
         userAgent: String(config.crawlerUserAgent || "").trim(),
         requestIntervalMs: Math.max(0, Number(config.crawlerRequestIntervalMs ?? 500) || 0),
@@ -89,6 +91,11 @@ export function embeddingKey(s: Pick<AppSettings, "embeddingModel" | "embeddingD
     return `${s.embeddingModel}#${s.embeddingDimensions}`
 }
 
+/** The chat model of a project: its own, or the default model of the Global Settings when it has none. */
+export async function projectModel(project: Pick<Project, "model">): Promise<string> {
+    return project.model || (await getAppSettings()).defaultModel
+}
+
 export function invalidateAppSettings() {
     cache = null
 }
@@ -116,6 +123,8 @@ export const settingsPatchSchema = z
         embeddingModel: modelId,
         /** null = the model's native size */
         embeddingDimensions: z.number().int().min(32).max(8192).nullable(),
+        defaultModel: modelId,
+        fallbackModel: z.union([z.literal(""), modelId]),
         codeSummaryModel: z.union([z.literal(""), modelId]),
         userAgent: z
             .string()

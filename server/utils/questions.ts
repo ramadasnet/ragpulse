@@ -360,7 +360,7 @@ export async function extractEscalatedQuestion(project: Project, history: ChatMe
     try {
         if (!(await hasAiProvider())) return fallback
         const res = await chatCompletion({
-            model: project.model,
+            model: await projectModel(project),
             temperature: 0,
             maxTokens: 200,
             signal: AbortSignal.timeout(30_000),
@@ -500,7 +500,7 @@ export async function draftAnswerFromChat(question: Question, project: Project):
         .slice(0, 24_000)
     try {
         const res = await chatCompletion({
-            model: project.model,
+            model: await projectModel(project),
             temperature: 0.2,
             maxTokens: 1200,
             signal: AbortSignal.timeout(60_000),

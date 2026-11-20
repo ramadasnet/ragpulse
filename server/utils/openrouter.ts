@@ -143,7 +143,14 @@ function logCompletion(opts: ChatCompletionOptions, startedAt: number, outcome: 
     logger.info(action, ...context, `Model ${opts.model}`, `Done in ${took}`, tokens)
 }
 
-/** Non streaming chat completion, logged when `opts.log` is set. */
+/** The fallback model (Global Settings) to retry a failed request with, or undefined when there is none or the caller aborted. */
+async function fallbackOptions(opts: ChatCompletionOptions): Promise<ChatCompletionOptions | undefined> {
+    if (opts.signal?.aborted) return undefined
+    const {fallbackModel} = await getAppSettings()
+    return fallbackModel && fallbackModel !== opts.model ? {...opts, model: fallbackModel} : undefined
+}
+
+/** Non streaming chat completion, logged when `opts.log` is set. Retried once with the fallback model when it fails. */
 export async function chatCompletion(opts: ChatCompletionOptions): Promise<{content: string; usage?: LlmUsage}> {
     const startedAt = Date.now()
     try {
@@ -152,7 +159,18 @@ export async function chatCompletion(opts: ChatCompletionOptions): Promise<{cont
         return res
     } catch (error) {
         logCompletion(opts, startedAt, {error})
-        throw error
+        const fallback = await fallbackOptions(opts)
+        if (!fallback) throw error
+        const fallbackStartedAt = Date.now()
+        try {
+            const res = await requestChatCompletion(fallback)
+            logCompletion(fallback, fallbackStartedAt, {usage: res.usage})
+            return res
+        } catch (fallbackError) {
+            logCompletion(fallback, fallbackStartedAt, {error: fallbackError})
+            // The original failure is the one worth reporting
+            throw error
+        }
     }
 }
 
@@ -178,20 +196,32 @@ async function requestChatCompletion(opts: ChatCompletionOptions): Promise<{cont
     return {content: data?.choices?.[0]?.message?.content ?? "", usage: mapUsage(data?.usage)}
 }
 
-/** Streaming chat completion, yields text deltas and (at the end) usage. Logged when `opts.log` is set. */
+/**
+ * Streaming chat completion, yields text deltas and (at the end) usage. Logged when `opts.log` is set.
+ * Retried with the fallback model when it fails before any text was streamed.
+ */
 export async function* streamChatCompletion(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {
-    const startedAt = Date.now()
-    let usage: LlmUsage | undefined
-    try {
-        for await (const ev of requestChatStream(opts)) {
-            if (ev.type === "usage") usage = ev.usage
-            yield ev
+    let current = opts
+    while (true) {
+        const startedAt = Date.now()
+        let usage: LlmUsage | undefined
+        let started = false
+        try {
+            for await (const ev of requestChatStream(current)) {
+                if (ev.type === "usage") usage = ev.usage
+                else started = true
+                yield ev
+            }
+        } catch (error) {
+            logCompletion(current, startedAt, {error})
+            const fallback = current === opts && !started ? await fallbackOptions(opts) : undefined
+            if (!fallback) throw error
+            current = fallback
+            continue
         }
-    } catch (error) {
-        logCompletion(opts, startedAt, {error})
-        throw error
+        logCompletion(current, startedAt, {usage})
+        return
     }
-    logCompletion(opts, startedAt, {usage})
 }
 
 async function* requestChatStream(opts: ChatCompletionOptions): AsyncGenerator<ChatStreamEvent> {

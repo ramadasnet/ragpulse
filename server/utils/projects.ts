@@ -96,7 +96,7 @@ const headerNameSchema = z
     .string()
     .trim()
     .regex(/^[!#$%&'*+.^_`|~0-9a-zA-Z-]+$/, "Invalid header name")
-const escalationWebhookSchema = z.object({
+export const escalationWebhookSchema = z.object({
     url: z
         .string()
         .trim()

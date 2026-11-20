@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {AlertTriangle, Globe, ImageUp, RotateCcw, Trash2} from "lucide-vue-next"
+import {AlertTriangle, Globe, ImageUp, RotateCcw, Send, Trash2} from "lucide-vue-next"
 import type {IngestDetail, Project, ProjectPermission} from "#shared/types"
 import {INGEST_DETAIL_INFO, INGEST_DETAILS, MANUAL_REFRESH, projectIngestDetail, REFRESH_PRESETS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
@@ -141,6 +141,21 @@ const webhookUrlPlaceholder = "https://example.com/hooks/escalated"
 const webhookBodyHint = `Placeholders render a JSON value, quoted or not: ${ESCALATION_WEBHOOK_PLACEHOLDERS.map((p) => `{{${p}}}`).join(", ")}`
 
 const {run, pending} = useAction()
+const webhookTest = useAction()
+const toast = useToast()
+const canTestWebhook = computed(() => !!form.value?.webhookUrl.trim() && !errors.value.webhookUrl && !errors.value.webhookHeaders)
+
+async function testWebhook() {
+    const f = form.value
+    if (!f || !canTestWebhook.value) return
+    const res = await webhookTest.run(() =>
+        $fetch<{ok: boolean; status: number}>(`/api/projects/${projectId.value}/webhook-test`, {
+            method: "POST",
+            body: {url: f.webhookUrl.trim(), headers: parseHeaders(f.webhookHeaders), bodyTemplate: f.webhookBody}
+        })
+    )
+    if (res) toast.success(`Test webhook delivered (HTTP ${res.status})`)
+}
 
 async function save() {
     const f = form.value
@@ -397,6 +412,12 @@ async function deleteProject() {
                         </template>
                     </UiTextarea>
                 </div>
+                <template #footer>
+                    <div class="row between wrap grow" style="--gap: 10px">
+                        <p class="tiny muted">Sends a sample <code>question.escalated</code> event using the settings above.</p>
+                        <UiButton size="sm" :loading="webhookTest.pending.value" :disabled="!canTestWebhook" @click="testWebhook"><Send :size="14" aria-hidden="true" /> Test webhook</UiButton>
+                    </div>
+                </template>
             </UiCard>
 
             <UiCard title="Knowledge" description="How much of your sources is indexed, and how often they are re-synced.">

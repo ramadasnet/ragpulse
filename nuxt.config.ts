@@ -14,6 +14,7 @@ const adminOnly = [
     "app/layouts/default.vue",
     "app/middleware/auth.global.ts",
     "server/api/*.ts",
+    "server/api/models/**",
     "server/api/projects/**",
     "server/api/system/**",
     "server/api/tokens/**",

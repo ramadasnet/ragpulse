@@ -14,6 +14,7 @@ const adminOnly = [
     "app/layouts/default.vue",
     "app/middleware/auth.global.ts",
     "server/api/*.ts",
+    "server/api/models/**",
     "server/api/projects/**",
     "server/api/system/**",
     "server/api/tokens/**",
@@ -85,7 +86,10 @@ export default defineNuxtConfig({
         // Defaults: the embedding model can be changed on the Settings page (stored chunks are then re-embedded)
         embeddingModel: "openai/text-embedding-3-small",
         embeddingDimensions: 1536,
+        // Default chat model of projects without their own (can be changed on the Settings page)
         defaultChatModel: "openrouter/free",
+        // Chat model tried when the model of a request fails (empty = no fallback; can be changed on the Settings page)
+        fallbackModel: "",
         // Vision model for images and scanned PDFs (empty disables them; PDFs with text are always read locally)
         visionModel: "openrouter/free",
         // Max images / scanned PDFs sent to the vision model per source sync, the rest continues on the next sync

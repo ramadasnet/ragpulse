@@ -23,7 +23,8 @@ export function formatContext(tokens: number): string {
 import {Check, ChevronDown, Search} from "lucide-vue-next"
 
 const model = defineModel<string>({default: ""})
-const props = defineProps<{label?: string; hint?: string; placeholder?: string; disabled?: boolean; kind?: "chat" | "embedding"}>()
+// `defaultModel` adds a "Use the default model" option that sets the value to "" (the Global Settings default applies)
+const props = defineProps<{label?: string; hint?: string; placeholder?: string; disabled?: boolean; kind?: "chat" | "embedding"; defaultModel?: string}>()
 
 const isEmbedding = computed(() => props.kind === "embedding")
 const models = useState<ModelInfo[] | null>(isEmbedding.value ? "openrouter-embedding-models" : "openrouter-models", () => null)
@@ -54,7 +55,10 @@ async function load() {
 }
 onMounted(load)
 
-const selected = computed(() => models.value?.find((m) => m.id === model.value))
+/** The model shown: the chosen one, or the default model while none is chosen. */
+const shown = computed(() => model.value || props.defaultModel || "")
+const selected = computed(() => models.value?.find((m) => m.id === shown.value))
+const usingDefault = computed(() => !!props.defaultModel && !model.value)
 
 const filtered = computed(() => {
     const list = models.value ?? []
@@ -69,6 +73,8 @@ const customId = computed(() => {
 })
 
 const optionCount = computed(() => filtered.value.length + (customId.value ? 1 : 0))
+/** Keyboard index of the first option: -1 is the "Use the default model" option, when shown */
+const firstIndex = computed(() => (props.defaultModel ? -1 : 0))
 
 watch(search, () => (active.value = 0))
 watch(models, () => open.value && nextTick(place))
@@ -98,10 +104,12 @@ function toggle() {
     open.value = !open.value
     if (open.value) {
         search.value = ""
-        active.value = Math.max(
-            0,
-            filtered.value.findIndex((m) => m.id === model.value)
-        )
+        active.value = usingDefault.value
+            ? -1
+            : Math.max(
+                  0,
+                  filtered.value.findIndex((m) => m.id === model.value)
+              )
         load()
         place()
         nextTick(() => {
@@ -138,12 +146,14 @@ function scrollActive() {
 function onKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault()
-        if (!optionCount.value) return
-        active.value = (active.value + (e.key === "ArrowDown" ? 1 : -1) + optionCount.value) % optionCount.value
+        const total = optionCount.value - firstIndex.value
+        if (!total) return
+        active.value = ((active.value - firstIndex.value + (e.key === "ArrowDown" ? 1 : -1) + total) % total) + firstIndex.value
         scrollActive()
     } else if (e.key === "Enter") {
         e.preventDefault()
-        if (customId.value && active.value === filtered.value.length) choose(customId.value)
+        if (active.value === -1 && props.defaultModel) choose("")
+        else if (customId.value && active.value === filtered.value.length) choose(customId.value)
         else if (filtered.value[active.value]) choose(filtered.value[active.value]!.id)
         else if (customId.value) choose(customId.value)
     } else if (e.key === "Escape") {
@@ -169,9 +179,9 @@ onBeforeUnmount(() => {
         <div ref="root" class="picker">
             <button :id="uid" ref="triggerEl" type="button" class="control trigger" :disabled="disabled" aria-haspopup="listbox" :aria-expanded="open" @click="toggle">
                 <span class="grow trigger-text">
-                    <template v-if="model">
-                        <span class="truncate strong">{{ selected?.name || model }}</span>
-                        <span class="truncate dim mono tiny">{{ model }}</span>
+                    <template v-if="shown">
+                        <span class="truncate strong">{{ selected?.name || shown }}<span v-if="usingDefault" class="dim"> · default model</span></span>
+                        <span class="truncate dim mono tiny">{{ shown }}</span>
                     </template>
                     <span v-else class="dim">{{ placeholder || "Select a model" }}</span>
                 </span>
@@ -202,6 +212,15 @@ onBeforeUnmount(() => {
                         <span class="nowrap">{{ isEmbedding ? "Per 1M tokens" : "In / out per 1M" }}</span>
                     </div>
                     <div :id="`${uid}-list`" ref="listEl" class="list" role="listbox">
+                        <button v-if="defaultModel" type="button" role="option" class="option default-option" data-index="-1" :aria-selected="usingDefault" :class="{active: active === -1}" @mouseenter="active = -1" @click="choose('')">
+                            <span class="opt-main">
+                                <span class="row" style="--gap: 6px">
+                                    <span>Use the default model</span>
+                                    <Check v-if="usingDefault" :size="14" class="accent" />
+                                </span>
+                                <span class="truncate mono tiny dim">{{ defaultModel }}</span>
+                            </span>
+                        </button>
                         <div v-if="loading" class="state"><UiSpinner :size="16" /> Loading models…</div>
                         <p v-else-if="loadError" class="state small">
                             <span class="danger-text">Could not load models.</span> <span class="dim">Type a model id (e.g. {{ isEmbedding ? "openai/text-embedding-3-small" : "openrouter/free" }}) to use it anyway.</span>
@@ -315,6 +334,9 @@ onBeforeUnmount(() => {
     padding: 7px 8px;
     border-radius: 8px;
     text-align: left;
+}
+.default-option {
+    grid-template-columns: minmax(0, 1fr);
 }
 .option.active {
     background: var(--surface-2);

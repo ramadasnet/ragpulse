@@ -119,7 +119,7 @@ export async function learnFaqFromSession(project: Project, session: ChatSession
     if (!text) return {skipped: "the conversation is empty"}
 
     const res = await chatCompletion({
-        model: project.model,
+        model: await projectModel(project),
         temperature: 0.2,
         maxTokens: 1200,
         signal: AbortSignal.timeout(60_000),

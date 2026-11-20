@@ -6,7 +6,7 @@ type Kind = "docs" | "code"
 const props = defineProps<{sources: NonNullable<ChatUiMessage["sources"]>}>()
 
 const GROUPS = [
-    {kind: "docs" as const, label: "Documents", icon: FileText},
+    {kind: "docs" as const, label: "References", icon: FileText},
     {kind: "code" as const, label: "Source code", icon: CodeXml}
 ]
 

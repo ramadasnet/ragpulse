@@ -12,6 +12,7 @@ const allowed = await guardProjectPage(projectId.value!, "settings:edit")
 const {isAdmin} = useMe()
 const {refresh: refreshProjects} = useProjects()
 const {confirm} = useConfirm()
+const defaultModel = useDefaultModel()
 useHead({title: "Settings · RAGPulse"})
 
 const {data: project, error} = useFetch<ProjectWithPerms>(() => `/api/projects/${projectId.value}`, {
@@ -114,7 +115,6 @@ const errors = computed(() => {
             break
         }
     }
-    if (!f.model.trim()) e.model = "Choose a model"
     return e
 })
 const valid = computed(() => Object.keys(errors.value).length === 0)
@@ -336,8 +336,7 @@ async function deleteProject() {
 
             <UiCard title="AI" description="Model and behaviour of the assistant.">
                 <div class="stack" style="--gap: 18px">
-                    <AdminModelPicker v-model="form.model" label="Model" hint="Prices are USD per 1M input / output tokens, shown when the provider reports them." />
-                    <p v-if="errors.model" class="field-error">{{ errors.model }}</p>
+                    <AdminModelPicker v-model="form.model" label="Model" :default-model="defaultModel" hint="Pick the default model to follow the Global Settings. Prices are USD per 1M input / output tokens." />
 
                     <UiField label="Temperature" :hint="`${temperatureLabel} — lower is more factual, higher is more varied. 0.2–0.4 works best for support.`">
                         <template #aside
@@ -372,7 +371,15 @@ async function deleteProject() {
 
             <UiCard title="Escalation webhook" description="POST a JSON event to your endpoint whenever a question is escalated. Leave the URL empty to disable it.">
                 <div class="stack" style="--gap: 18px">
-                    <UiInput v-model="form.webhookUrl" label="Webhook URL" optional inputmode="url" :placeholder="webhookUrlPlaceholder" :error="errors.webhookUrl" hint="Public http(s) endpoint by default; private URLs need RAGPULSE_ALLOW_PRIVATE_URLS=true." />
+                    <UiInput
+                        v-model="form.webhookUrl"
+                        label="Webhook URL"
+                        optional
+                        inputmode="url"
+                        :placeholder="webhookUrlPlaceholder"
+                        :error="errors.webhookUrl"
+                        hint="Public http(s) endpoint by default; private URLs need RAGPULSE_ALLOW_PRIVATE_URLS=true."
+                    />
                     <UiTextarea
                         v-model="form.webhookHeaders"
                         label="Headers"

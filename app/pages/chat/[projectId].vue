@@ -618,7 +618,7 @@ onBeforeUnmount(() => {
             <div class="rp-col">
                 <p v-if="banner" class="rp-banner" role="alert">{{ banner }}</p>
                 <ChatComposer v-if="phase === 'chat' && !showLimit && !ended" ref="composer" v-model="draft" :placeholder="theme.placeholder" :busy="streaming" :max="MAX_CHARS" :hint="composerHint" @send="send" />
-                <p class="rp-powered">Powered by <a href="https://github.com/ramadasnet/ragpulse" target="_blank" rel="noopener">RAGPulse</a></p>
+                <p class="rp-powered">Powered by <a href="https://ragpulse.dev" target="_blank" rel="noopener">RAGPulse</a></p>
             </div>
         </footer>
 

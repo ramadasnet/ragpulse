@@ -40,6 +40,9 @@ interface Form {
     embeddingModel: string
     /** Empty = the model's native size */
     embeddingDimensions: string
+    defaultModel: string
+    fallback: boolean
+    fallbackModel: string
     summarize: boolean
     codeSummaryModel: string
     userAgent: string
@@ -62,6 +65,9 @@ function toForm(s: AppSettingsView): Form {
         removeAiProviderApiKey: false,
         embeddingModel: s.embeddingModel,
         embeddingDimensions: s.embeddingDimensionsParam ? String(s.embeddingDimensions) : "",
+        defaultModel: s.defaultModel,
+        fallback: !!s.fallbackModel,
+        fallbackModel: s.fallbackModel || "openrouter/free",
         summarize: !!s.codeSummaryModel,
         codeSummaryModel: s.codeSummaryModel || "openrouter/free",
         userAgent: s.userAgent,
@@ -112,6 +118,8 @@ const errors = computed(() => {
     if (!f.embeddingModel.trim()) e.embeddingModel = "Choose an embedding model"
     const dims = f.embeddingDimensions.trim()
     if (dims && (!/^\d+$/.test(dims) || Number(dims) < 32 || Number(dims) > 8192)) e.embeddingDimensions = "A whole number between 32 and 8192, or empty"
+    if (!f.defaultModel.trim()) e.defaultModel = "Choose a model"
+    if (f.fallback && !f.fallbackModel.trim()) e.fallbackModel = "Choose a model"
     if (f.summarize && !f.codeSummaryModel.trim()) e.codeSummaryModel = "Choose a model"
     if (f.userAgent && !/^[\x20-\x7E]*$/.test(f.userAgent)) e.userAgent = "Only printable ASCII characters"
     const interval = Number(f.requestIntervalMs)
@@ -191,6 +199,8 @@ async function save() {
                     ...(f.removeOpenrouterApiKey ? {openrouterApiKey: ""} : f.openrouterApiKey.trim() ? {openrouterApiKey: f.openrouterApiKey.trim()} : {}),
                     ...(f.removeAiProviderApiKey ? {aiProviderApiKey: ""} : f.aiProviderApiKey.trim() ? {aiProviderApiKey: f.aiProviderApiKey.trim()} : {}),
                     ...(embeddingChanged.value ? {embeddingModel: f.embeddingModel.trim(), embeddingDimensions: f.embeddingDimensions.trim() ? Number(f.embeddingDimensions) : null} : {}),
+                    defaultModel: f.defaultModel.trim(),
+                    fallbackModel: f.fallback ? f.fallbackModel.trim() : "",
                     codeSummaryModel: f.summarize ? f.codeSummaryModel.trim() : "",
                     userAgent: f.userAgent.trim(),
                     requestIntervalMs: Number(f.requestIntervalMs),
@@ -311,6 +321,34 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         />
                         <UiToggle v-if="data.settings.savedAiProviderApiKey" v-model="form.removeAiProviderApiKey" label="Remove saved key" />
                     </div>
+                    <AdminModelPicker v-model="form.defaultModel" label="Default model" hint="Used by every project that doesn't pick a model of its own. Any chat model of the configured provider. Prices are USD per 1M input / output tokens." />
+                    <p v-if="errors.defaultModel" class="field-error">{{ errors.defaultModel }}</p>
+                    <UiToggle v-model="form.fallback" label="Use a fallback model" description="When a request to a model fails (chat answers, FAQ imports, summaries), it is retried once with this model." />
+                    <template v-if="form.fallback">
+                        <AdminModelPicker v-model="form.fallbackModel" label="Fallback model" hint="Any chat model of the configured provider. Prices are USD per 1M input / output tokens." />
+                        <p v-if="errors.fallbackModel" class="field-error">{{ errors.fallbackModel }}</p>
+                    </template>
+                </div>
+            </UiCard>
+
+            <UiCard>
+                <template #header>
+                    <div class="row" style="--gap: 8px">
+                        <Code2 :size="16" class="dim" />
+                        <h2 class="card-title">Source code summaries</h2>
+                    </div>
+                </template>
+                <div class="stack" style="--gap: 16px">
+                    <UiToggle
+                        v-model="form.summarize"
+                        label="Summarize source code of git repositories"
+                        description="Each code file is summarized with the whole repository as context, and an overview of how the application works is written from all summaries. Helps the assistant answer technical questions. Summaries are cached: unchanged files are never sent twice."
+                    />
+                    <template v-if="form.summarize">
+                        <AdminModelPicker v-model="form.codeSummaryModel" label="Summary model" hint="A fast model with a large context window works best. Prices are USD per 1M input / output tokens." />
+                        <p v-if="errors.codeSummaryModel" class="field-error">{{ errors.codeSummaryModel }}</p>
+                    </template>
+                    <p v-else class="tiny dim">Code files are still indexed as plain code when a repository source includes them.</p>
                 </div>
             </UiCard>
 
@@ -335,7 +373,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         <p class="tiny dim">{{ formatNumber(embedding?.current ?? 0) }} of {{ formatNumber(embedding?.total ?? 0) }} chunks done. Answers use the re-indexed knowledge only until this finishes.</p>
                     </div>
 
-                    <AdminModelPicker v-model="form.embeddingModel" kind="embedding" label="Embedding model" hint="Any embedding model of the configured provider. Prices are USD per 1M tokens, shown when the provider reports them." />
+                    <AdminModelPicker v-model="form.embeddingModel" kind="embedding" label="Embedding model" hint="Any embedding model of the configured provider. Prices are USD per 1M tokens." />
                     <p v-if="errors.embeddingModel" class="field-error">{{ errors.embeddingModel }}</p>
                     <UiInput
                         v-model="form.embeddingDimensions"
@@ -367,27 +405,6 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
             <UiCard>
                 <template #header>
                     <div class="row" style="--gap: 8px">
-                        <Code2 :size="16" class="dim" />
-                        <h2 class="card-title">Source code summaries</h2>
-                    </div>
-                </template>
-                <div class="stack" style="--gap: 16px">
-                    <UiToggle
-                        v-model="form.summarize"
-                        label="Summarize source code of git repositories"
-                        description="Each code file is summarized with the whole repository as context, and an overview of how the application works is written from all summaries. Helps the assistant answer technical questions. Summaries are cached: unchanged files are never sent twice."
-                    />
-                    <template v-if="form.summarize">
-                        <AdminModelPicker v-model="form.codeSummaryModel" label="Summary model" hint="A fast model with a large context window works best. Prices are USD per 1M input / output tokens, shown when the provider reports them." />
-                        <p v-if="errors.codeSummaryModel" class="field-error">{{ errors.codeSummaryModel }}</p>
-                    </template>
-                    <p v-else class="tiny dim">Code files are still indexed as plain code when a repository source includes them.</p>
-                </div>
-            </UiCard>
-
-            <UiCard>
-                <template #header>
-                    <div class="row" style="--gap: 8px">
                         <Bot :size="16" class="dim" />
                         <h2 class="card-title">Website crawler</h2>
                     </div>
@@ -412,6 +429,35 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         label="Delay between requests (ms)"
                         :error="errors.requestIntervalMs"
                         hint="Minimum time between two requests to the same site. A longer robots.txt Crawl-delay wins. Sites that answer “429 Too Many Requests” are slowed down further and retried after their Retry-After time."
+                    />
+                </div>
+            </UiCard>
+
+            <UiCard>
+                <template #header>
+                    <div class="row" style="--gap: 8px">
+                        <Mail :size="16" class="dim" />
+                        <h2 class="card-title">Escalation & emails</h2>
+                    </div>
+                </template>
+                <div class="stack" style="--gap: 16px">
+                    <UiInput
+                        v-model.number="form.humanTakeoverWaitMinutes"
+                        type="number"
+                        :min="0"
+                        :max="HUMAN_TAKEOVER_MAX_WAIT_MINUTES"
+                        label="Human takeover waiting time (minutes)"
+                        :error="errors.humanTakeoverWaitMinutes"
+                        hint="When a question is escalated, the chat asks for the visitor's name and email right away and waits this long for a team member to take over. If nobody does, the assistant says the team will get back by email (projects without a support email only ask for the visitor's details). 0 = say it right away."
+                    />
+                    <UiInput
+                        v-model.number="form.answerEmailDelayMinutes"
+                        type="number"
+                        :min="0"
+                        :max="ANSWER_EMAIL_MAX_DELAY_MINUTES"
+                        label="Email delay (minutes)"
+                        :error="errors.answerEmailDelayMinutes"
+                        hint="When the team answers a question and the visitor isn't looking at the chat, the answer is emailed after this delay, unless they open the chat meanwhile. Visitors who are in the chat are never emailed. 0 = email right away."
                     />
                 </div>
             </UiCard>
@@ -450,35 +496,6 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         label="Keep escalated questions (days)"
                         :error="errors.questionRetentionDays"
                         hint="Escalated questions older than this are deleted automatically, 0 keeps them forever. FAQ entries created from answers or learned from conversations are kept."
-                    />
-                </div>
-            </UiCard>
-
-            <UiCard>
-                <template #header>
-                    <div class="row" style="--gap: 8px">
-                        <Mail :size="16" class="dim" />
-                        <h2 class="card-title">Escalation & emails</h2>
-                    </div>
-                </template>
-                <div class="stack" style="--gap: 16px">
-                    <UiInput
-                        v-model.number="form.humanTakeoverWaitMinutes"
-                        type="number"
-                        :min="0"
-                        :max="HUMAN_TAKEOVER_MAX_WAIT_MINUTES"
-                        label="Human takeover wait (minutes)"
-                        :error="errors.humanTakeoverWaitMinutes"
-                        hint="When a question is escalated, the chat asks for the visitor's name and email right away and waits this long for a team member to take over. If nobody does, the assistant says the team will get back by email (projects without a support email only ask for the visitor's details). 0 = say it right away."
-                    />
-                    <UiInput
-                        v-model.number="form.answerEmailDelayMinutes"
-                        type="number"
-                        :min="0"
-                        :max="ANSWER_EMAIL_MAX_DELAY_MINUTES"
-                        label="Email delay (minutes)"
-                        :error="errors.answerEmailDelayMinutes"
-                        hint="When the team answers a question and the visitor isn't looking at the chat, the answer is emailed after this delay, unless they open the chat meanwhile. Visitors who are in the chat are never emailed. 0 = email right away."
                     />
                 </div>
             </UiCard>

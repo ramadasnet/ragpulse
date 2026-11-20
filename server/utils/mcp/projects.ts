@@ -17,6 +17,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
             mcpSafely(ctx, "list_projects", async () => {
                 const {projects, questions} = await useCollections()
                 const ids = accessibleProjectIds(ctx.user)
+                const {defaultModel} = await getAppSettings()
                 const list = await projects
                     .find(ids ? {_id: {$in: ids}} : {}, {projection: {_id: 1, title: 1, website: 1, model: 1, enabled: 1}})
                     .sort({title: 1})
@@ -27,7 +28,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
                     id: p._id,
                     title: p.title,
                     website: p.website,
-                    model: p.model,
+                    model: p.model || defaultModel,
                     enabled: p.enabled,
                     openQuestions: openBy.get(p._id) ?? 0,
                     permissions: projectPermissions(ctx.user, p._id)
@@ -63,7 +64,7 @@ export function registerMcpProjectTools(server: McpServer, ctx: McpContext) {
                         title: project.title,
                         website: project.website,
                         enabled: project.enabled,
-                        model: project.model,
+                        model: await projectModel(project),
                         temperature: project.temperature,
                         systemInstructions: project.systemInstructions,
                         rateLimit: project.rateLimit,

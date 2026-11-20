@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     if (!(await hasAiProvider())) throw createError({statusCode: 503, statusMessage: "No AI provider configured (Global Settings → AI Provider)"})
 
     const res = await chatCompletion({
-        model: project.model,
+        model: await projectModel(project),
         temperature: 0,
         maxTokens: 8000,
         signal: AbortSignal.timeout(120_000),

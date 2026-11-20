@@ -161,14 +161,16 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
     const query = buildRetrievalQuery(history.filter((m) => m.role === "user").map((m) => m.content))
     const hits = (await searchKnowledge(project._id, query, {limit: RAG_HIT_LIMIT, minScore: RAG_MIN_SCORE})).sort((a, b) => b.score - a.score)
 
-    const {globalInstructions} = await getAppSettings()
+    const {globalInstructions, defaultModel} = await getAppSettings()
+    // The model that answered: the fallback model replaces it when the project's model fails
+    let model = project.model || defaultModel
     const llmMessages: LlmMessage[] = [{role: "system", content: buildSystemPrompt(project, session, hits, globalInstructions)}, ...toLlmHistory(history)]
 
     let full = ""
     let sent = 0
     let usage: LlmUsage | undefined
     for await (const ev of streamChatCompletion({
-        model: project.model,
+        model,
         temperature: project.temperature,
         messages: llmMessages,
         maxTokens: 1000,
@@ -177,6 +179,12 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
     })) {
         if (ev.type === "usage") {
             usage = ev.usage
+            continue
+        }
+        if (ev.type === "model") {
+            model = ev.model
+            // Usage of the failed attempt must not be billed to the fallback answer
+            usage = undefined
             continue
         }
         full += ev.text
@@ -205,7 +213,7 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
         sessionId: session._id,
         role: "assistant",
         content: answer || escalationText(project, humanRequested),
-        model: project.model,
+        model,
         usage,
         latencyMs: Date.now() - startedAt,
         createdAt: now

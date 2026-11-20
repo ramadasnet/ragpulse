@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ChevronDown, FileText, GitBranch, Globe, HardDrive, History, Library, Pencil, Plus, RefreshCw, Trash2} from "lucide-vue-next"
-import type {SourceView} from "#shared/types"
+import {DEFAULT_REFRESH_HOURS, type SourceView} from "#shared/types"
 
 const props = defineProps<{projectId: string}>()
 
@@ -12,7 +12,7 @@ const toast = useToast()
 const {data, refresh, status, error} = useFetch<SourceView[]>(() => `/api/projects/${props.projectId}/sources`, {lazy: true, default: () => []})
 const sources = computed(() => data.value ?? [])
 
-const projectHours = computed(() => projects.value.find((p) => p._id === props.projectId)?.refreshIntervalHours ?? 48)
+const projectHours = computed(() => projects.value.find((p) => p._id === props.projectId)?.refreshIntervalHours ?? DEFAULT_REFRESH_HOURS)
 
 const busy = computed(() => sources.value.some((s) => s.status === "queued" || s.status === "syncing"))
 let poll: ReturnType<typeof setInterval> | undefined

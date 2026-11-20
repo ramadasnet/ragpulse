@@ -89,6 +89,20 @@ no server needed (Pages: build command `bun run build:landing`, output directory
 
 `git` must be installed on the admin server to index git repositories (the admin Docker image includes it).
 
+### Auto-deploy to Dokploy
+
+On every push to `master`, the `Docker images` GitHub workflow builds and pushes both images to GHCR and can then trigger a
+redeploy in [Dokploy](https://dokploy.com). Add these under Settings → Secrets and variables → Actions → Secrets:
+
+| Secret                 | Description                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `DOKPLOY_URL`          | Base URL of your Dokploy instance, without a trailing slash                       |
+| `DOKPLOY_API_KEY`      | Dokploy API key (Settings → Profile → API/CLI)                                    |
+| `DOKPLOY_ADMIN_APP_ID` | Dokploy `applicationId` of the admin app (the last segment of its URL in Dokploy) |
+| `DOKPLOY_CHAT_APP_ID`  | Dokploy `applicationId` of the chat app (the last segment of its URL in Dokploy)  |
+
+The redeploy step is skipped unless both `DOKPLOY_URL` and `DOKPLOY_API_KEY` are set; once they are, a missing app ID fails the job.
+
 ## Configuration
 
 All settings are environment variables, see [`.env.example`](.env.example). Both apps take the same configuration. The important ones:

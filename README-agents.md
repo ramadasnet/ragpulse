@@ -38,6 +38,7 @@ Self-hosted, single-tenant AI support chat: indexes docs (FAQ, git repos, web pa
 - `NUXT_DEV_LOGIN` enables a passwordless dev sign-in
 - Compose requires `NUXT_MONGODB_URI=…?directConnection=true` against the atlas-local container
 - Two GH workflows: `docker.yml` (check + build/push admin+chat images to ghcr, Dokploy hook) and `landing.yml` (check + build + `wrangler deploy`)
+- The Dokploy redeploy step in `docker.yml` runs only when the `DOKPLOY_URL` and `DOKPLOY_API_KEY` Actions secrets are set, and then also needs the `DOKPLOY_ADMIN_APP_ID` and `DOKPLOY_CHAT_APP_ID` Actions secrets (all four are secrets, not variables)
 
 ## Pointers
 

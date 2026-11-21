@@ -1,4 +1,5 @@
 import type {Db} from "mongodb"
+import {AI_PROVIDERS} from "#shared/utils/ai-providers"
 
 const COLLECTIONS = ["projects", "sources", "faqs", "documents", "chunks", "sessions", "messages", "questions", "users", "apiTokens", "syncRuns", "locks", "extractions", "settings"] as const
 
@@ -53,9 +54,9 @@ export default defineEventHandler(async (event) => {
     await requireAdmin(event)
     const db = await useDb()
     const config = useRuntimeConfig()
-    const {projects, sources} = await useCollections()
+    const {projects, sources, messages: messagesCol} = await useCollections()
 
-    const [settings, embedding, dbStats, collections, projectList, chunks, documents, sessions, messages, schedulerRows, nextDue] = await Promise.all([
+    const [settings, embedding, dbStats, collections, projectList, chunks, documents, sessions, messages, schedulerRows, nextDue, usageByModel] = await Promise.all([
         getAppSettings(),
         embeddingStatus(),
         db.stats().catch(() => null),
@@ -76,6 +77,23 @@ export default defineEventHandler(async (event) => {
             .find({status: "idle", nextSyncAt: {$lt: MANUAL_NEXT_SYNC}}, {projection: {nextSyncAt: 1}})
             .sort({nextSyncAt: 1})
             .limit(1)
+            .toArray()
+            .catch(() => []),
+        // Chat answers are the model calls stored with their usage, so only models that answered appear
+        messagesCol
+            .aggregate<{_id: string; answers: number; promptTokens: number; completionTokens: number; cost: number}>([
+                {$match: {role: "assistant", model: {$type: "string", $ne: ""}}},
+                {
+                    $group: {
+                        _id: "$model",
+                        answers: {$sum: 1},
+                        promptTokens: {$sum: {$ifNull: ["$usage.promptTokens", 0]}},
+                        completionTokens: {$sum: {$ifNull: ["$usage.completionTokens", 0]}},
+                        cost: {$sum: {$ifNull: ["$usage.cost", 0]}}
+                    }
+                },
+                {$sort: {cost: -1, answers: -1}}
+            ])
             .toArray()
             .catch(() => [])
     ])
@@ -104,6 +122,8 @@ export default defineEventHandler(async (event) => {
         googleDrive = config.googleServiceAccountKey ? parseServiceAccountKey(config.googleServiceAccountKey).client_email : null
     } catch {}
 
+    const enabledProviders = AI_PROVIDERS.filter((p) => providerEnabled(settings, p.id))
+
     return {
         db: {
             name: db.databaseName,
@@ -119,8 +139,12 @@ export default defineEventHandler(async (event) => {
         embeddingDimensions: settings.embeddingDimensions,
         embedding,
         perProject,
+        usageByModel: usageByModel.map(({_id, ...u}) => ({model: _id, ...u})),
         config: {
-            aiProvider: await hasAiProvider(),
+            aiProvider: enabledProviders.length > 0,
+            // Indexing and retrieval need embeddings, which not every provider has
+            embeddingProvider: enabledProviders.some((p) => p.embeddings),
+            aiProviders: enabledProviders.map((p) => ({id: p.id, name: p.name, embeddings: p.embeddings, verified: providerVerified(settings, p.id)})),
             smtp: isMailConfigured(),
             google: !!(oauth.google?.clientId && oauth.google?.clientSecret),
             microsoft: !!(oauth.microsoft?.clientId && oauth.microsoft?.clientSecret),

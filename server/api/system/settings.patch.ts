@@ -1,4 +1,5 @@
 import type {AppSettings} from "#shared/types"
+import {AI_PROVIDERS} from "#shared/utils/ai-providers"
 import logger from "../../utils/logger"
 
 const MAX_INDEX_DIMENSIONS = 8192
@@ -7,16 +8,10 @@ export default defineEventHandler(async (event) => {
     const admin = await requireAdmin(event)
     const input = await readZodBody(event, settingsPatchSchema)
     const current = await getAppSettings({fresh: true})
-    const config = useRuntimeConfig()
+    // Every enabled provider must have passed a test of its current credentials (Global Settings → AI Providers)
+    const untested = AI_PROVIDERS.find((p) => providerEnabled(current, p.id) && !providerVerified(current, p.id))
+    if (untested) throw createError({statusCode: 400, statusMessage: `Test the ${untested.name} ${untested.id === "custom" ? "base URL and key" : "API key"} first`})
     const patch: Partial<AppSettings> = {}
-    const unset: (keyof AppSettings)[] = []
-    // An empty API key removes the saved override so the environment variable applies again
-    if (input.openrouterApiKey) patch.openrouterApiKey = input.openrouterApiKey
-    else if (input.openrouterApiKey !== undefined) unset.push("openrouterApiKey")
-    if (input.customAiProvider !== undefined) patch.customAiProvider = input.customAiProvider
-    if (input.aiProviderBaseUrl !== undefined) patch.aiProviderBaseUrl = input.aiProviderBaseUrl.replace(/\/+$/, "")
-    if (input.aiProviderApiKey) patch.aiProviderApiKey = input.aiProviderApiKey
-    else if (input.aiProviderApiKey !== undefined) unset.push("aiProviderApiKey")
     if (input.defaultModel !== undefined) patch.defaultModel = input.defaultModel
     if (input.fallbackModel !== undefined) patch.fallbackModel = input.fallbackModel
     if (input.codeSummaryModel !== undefined) patch.codeSummaryModel = input.codeSummaryModel
@@ -29,25 +24,9 @@ export default defineEventHandler(async (event) => {
     if (input.humanTakeoverWaitMinutes !== undefined) patch.humanTakeoverWaitMinutes = input.humanTakeoverWaitMinutes
     if (input.chatAutoCloseDays !== undefined) patch.chatAutoCloseDays = input.chatAutoCloseDays
 
-    // The effective provider of this patch: a removed key falls back to its environment variable
-    const candidate: AppSettings = {
-        ...current,
-        ...patch,
-        openrouterApiKey: input.openrouterApiKey === undefined ? current.openrouterApiKey : input.openrouterApiKey || String(config.openrouterApiKey || ""),
-        aiProviderApiKey: input.aiProviderApiKey === undefined ? current.aiProviderApiKey : input.aiProviderApiKey || String(config.aiProviderApiKey || "")
-    }
-    const providerChanged = candidate.customAiProvider !== current.customAiProvider || candidate.aiProviderBaseUrl !== current.aiProviderBaseUrl || patch.openrouterApiKey !== undefined || patch.aiProviderApiKey !== undefined || unset.length > 0
-    if (candidate.customAiProvider && !candidate.aiProviderBaseUrl.trim()) {
-        throw createError({statusCode: 400, statusMessage: "The custom AI provider needs a base URL"})
-    }
-    // Also when the provider is switched on with an already saved (or environment) URL
-    if (candidate.aiProviderBaseUrl.trim() && (input.aiProviderBaseUrl?.trim() || (candidate.customAiProvider && input.customAiProvider === true))) {
-        try {
-            await assertPublicHost(candidate.aiProviderBaseUrl.trim(), "The AI provider base URL")
-        } catch (err: any) {
-            throw createError({statusCode: 400, statusMessage: String(err?.message || "Invalid AI provider base URL")})
-        }
-    }
+    const candidate: AppSettings = {...current, ...patch}
+    // A picked model must belong to an enabled provider
+    assertGlobalModelProviders(current, {...candidate, embeddingModel: input.embeddingModel ?? candidate.embeddingModel})
 
     let embeddingChanged = false
     if (input.embeddingModel !== undefined || input.embeddingDimensions !== undefined) {
@@ -59,7 +38,7 @@ export default defineEventHandler(async (event) => {
             // Try the model before switching (against the provider of this patch), and learn its vector size
             let vector: number[] | undefined
             try {
-                const {embeddings} = await createEmbeddings(["RAGPulse embedding model check"], {model, dimensions: requested ?? undefined, provider: resolveAiProvider(candidate)})
+                const {embeddings} = await createEmbeddings(["RAGPulse embedding model check"], {model, dimensions: requested ?? undefined, settings: candidate})
                 vector = embeddings[0]
             } catch (err: any) {
                 throw createError({statusCode: 400, statusMessage: `Could not use embedding model "${model}": ${err?.statusMessage || err?.message || err}`.slice(0, 300)})
@@ -78,13 +57,9 @@ export default defineEventHandler(async (event) => {
         }
     }
 
-    if (Object.keys(patch).length || unset.length) {
-        const saved = await saveAppSettings(patch, admin._id, unset)
-        const changed = [...Object.keys(patch), ...unset.map((k) => `-${k}`)]
-        logger.info("Settings.patch", `By ${admin.email}`, `Changed: ${changed.join(", ")}`)
-        if (providerChanged) {
-            logger.info("Settings.patch", `AI provider changed to ${saved.customAiProvider ? "custom" : "OpenRouter"} by ${admin.email}`)
-        }
+    if (Object.keys(patch).length) {
+        const saved = await saveAppSettings(patch, admin._id)
+        logger.info("Settings.patch", `By ${admin.email}`, `Changed: ${Object.keys(patch).join(", ")}`)
         if (input.syncHistoryDays !== undefined && input.syncHistoryDays !== current.syncHistoryDays) {
             await purgeOldSyncRuns(await useCollections(), saved.syncHistoryDays).catch((err) => logger.warn("Settings.patch", "Sync history cleanup failed", err))
         }

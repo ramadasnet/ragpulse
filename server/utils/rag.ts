@@ -1,5 +1,5 @@
 import type {ChatMessage, ChatSession, MessageSourceRef, Project, Question} from "#shared/types"
-import type {LlmMessage, LlmUsage} from "./openrouter"
+import type {LlmMessage, LlmUsage} from "./llm"
 import type {SearchHit} from "./vector"
 import {isCodeFile, OVERVIEW_REF} from "./ingest/git"
 
@@ -175,6 +175,7 @@ export async function* generateAnswer(params: {project: Project; session: ChatSe
         messages: llmMessages,
         maxTokens: 1000,
         signal: AbortSignal.timeout(120_000),
+        session: session._id,
         log: {action: "Chat.answer", context: [`Session ${session._id}`, `Project ${project._id}`]}
     })) {
         if (ev.type === "usage") {

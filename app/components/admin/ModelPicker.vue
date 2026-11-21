@@ -1,14 +1,19 @@
 <script lang="ts">
+import {aiProviderInfo, EMBEDDING_PROVIDER_NAMES, splitModelId, type AiProviderId} from "#shared/utils/ai-providers"
+
 export interface ModelInfo {
+    /** `provider:model` */
     id: string
+    provider: AiProviderId
     name: string
     contextLength: number
-    /** USD per 1M tokens */
-    promptPrice: number
-    completionPrice: number
+    /** USD per 1M tokens, unset when the provider doesn't publish prices */
+    promptPrice?: number
+    completionPrice?: number
 }
 
-export function formatModelPrice(usdPerMillion: number): string {
+export function formatModelPrice(usdPerMillion?: number): string {
+    if (usdPerMillion === undefined) return "—"
     if (!usdPerMillion) return "free"
     return usdPerMillion < 0.1 ? `$${usdPerMillion.toFixed(3)}` : `$${usdPerMillion.toFixed(2)}`
 }
@@ -27,7 +32,7 @@ const model = defineModel<string>({default: ""})
 const props = defineProps<{label?: string; hint?: string; placeholder?: string; disabled?: boolean; kind?: "chat" | "embedding"; defaultModel?: string}>()
 
 const isEmbedding = computed(() => props.kind === "embedding")
-const models = useState<ModelInfo[] | null>(isEmbedding.value ? "openrouter-embedding-models" : "openrouter-models", () => null)
+const models = useState<ModelInfo[] | null>(isEmbedding.value ? "ai-embedding-models" : "ai-models", () => null)
 const loadError = ref("")
 const loading = ref(false)
 const open = ref(false)
@@ -57,7 +62,15 @@ onMounted(load)
 
 /** The model shown: the chosen one, or the default model while none is chosen. */
 const shown = computed(() => model.value || props.defaultModel || "")
-const selected = computed(() => models.value?.find((m) => m.id === shown.value))
+/** Ids saved before multiple providers were supported have no prefix: they are OpenRouter's (or the custom provider's) */
+const selected = computed(() => {
+    const list = models.value ?? []
+    const id = shown.value
+    if (splitModelId(id).provider) return list.find((m) => m.id === id)
+    return list.find((m) => m.id === `openrouter:${id}`) ?? list.find((m) => m.id === `custom:${id}`)
+})
+/** The list entry of the chosen model, none while the default model applies */
+const chosen = computed(() => (model.value ? selected.value : undefined))
 const usingDefault = computed(() => !!props.defaultModel && !model.value)
 
 const filtered = computed(() => {
@@ -67,12 +80,22 @@ const filtered = computed(() => {
     return matches.slice(0, 80)
 })
 
-const customId = computed(() => {
+/** A typed id that isn't listed: as is when it names its provider, otherwise one option per provider in the list. */
+const customIds = computed(() => {
     const value = search.value.trim()
-    return /^[\w.:/@~-]+$/.test(value) && !models.value?.some((m) => m.id === value) ? value : ""
+    if (!/^[\w.:/@~-]+$/.test(value)) return []
+    const providers = splitModelId(value).provider ? [] : [...new Set((models.value ?? []).map((m) => m.provider))]
+    const ids = providers.length ? providers.map((p) => `${p}:${value}`) : [value]
+    return ids.filter((id) => !models.value?.some((m) => m.id === id))
 })
 
-const optionCount = computed(() => filtered.value.length + (customId.value ? 1 : 0))
+/** Provider name of a model id, empty when it has no prefix. */
+function providerName(id: string) {
+    const provider = splitModelId(id).provider
+    return provider ? aiProviderInfo(provider).name : ""
+}
+
+const optionCount = computed(() => filtered.value.length + customIds.value.length)
 /** Keyboard index of the first option: -1 is the "Use the default model" option, when shown */
 const firstIndex = computed(() => (props.defaultModel ? -1 : 0))
 
@@ -108,7 +131,7 @@ function toggle() {
             ? -1
             : Math.max(
                   0,
-                  filtered.value.findIndex((m) => m.id === model.value)
+                  filtered.value.findIndex((m) => m === chosen.value)
               )
         load()
         place()
@@ -153,9 +176,11 @@ function onKeydown(e: KeyboardEvent) {
     } else if (e.key === "Enter") {
         e.preventDefault()
         if (active.value === -1 && props.defaultModel) choose("")
-        else if (customId.value && active.value === filtered.value.length) choose(customId.value)
         else if (filtered.value[active.value]) choose(filtered.value[active.value]!.id)
-        else if (customId.value) choose(customId.value)
+        else {
+            const id = customIds.value[active.value - filtered.value.length] ?? customIds.value[0]
+            if (id) choose(id)
+        }
     } else if (e.key === "Escape") {
         e.stopPropagation()
         open.value = false
@@ -223,13 +248,17 @@ onBeforeUnmount(() => {
                         </button>
                         <div v-if="loading" class="state"><UiSpinner :size="16" /> Loading models…</div>
                         <p v-else-if="loadError" class="state small">
-                            <span class="danger-text">Could not load models.</span> <span class="dim">Type a model id (e.g. {{ isEmbedding ? "openai/text-embedding-3-small" : "openrouter/free" }}) to use it anyway.</span>
+                            <span class="danger-text">Could not load models.</span>
+                            <span class="dim">Type a model id with its provider (e.g. {{ isEmbedding ? "openai:text-embedding-3-small" : "openrouter:openrouter/free" }}) to use it anyway.</span>
                         </p>
-                        <button v-for="(m, i) in filtered" :key="m.id" type="button" role="option" class="option" :data-index="i" :aria-selected="m.id === model" :class="{active: i === active}" @mouseenter="active = i" @click="choose(m.id)">
+                        <p v-else-if="!loading && models && !models.length && !search" class="state small dim">
+                            {{ isEmbedding ? `No embedding models: enable ${EMBEDDING_PROVIDER_NAMES} on the Global Settings.` : "No models: enable an AI provider on the Global Settings." }}
+                        </p>
+                        <button v-for="(m, i) in filtered" :key="m.id" type="button" role="option" class="option" :data-index="i" :aria-selected="m === chosen" :class="{active: i === active}" @mouseenter="active = i" @click="choose(m.id)">
                             <span class="opt-main">
                                 <span class="row" style="--gap: 6px">
                                     <span class="truncate">{{ m.name }}</span>
-                                    <Check v-if="m.id === model" :size="14" class="accent" />
+                                    <Check v-if="m === chosen" :size="14" class="accent" />
                                 </span>
                                 <span class="truncate mono tiny dim">{{ m.id }}</span>
                             </span>
@@ -237,21 +266,23 @@ onBeforeUnmount(() => {
                             <span class="tiny muted nowrap price">{{ priceLabel(m) }}</span>
                         </button>
                         <button
-                            v-if="customId"
+                            v-for="(id, i) in customIds"
+                            :key="id"
                             type="button"
                             role="option"
                             class="option"
-                            :data-index="filtered.length"
+                            :data-index="filtered.length + i"
                             :aria-selected="false"
-                            :class="{active: active === filtered.length}"
-                            @mouseenter="active = filtered.length"
-                            @click="choose(customId)"
+                            :class="{active: active === filtered.length + i}"
+                            @mouseenter="active = filtered.length + i"
+                            @click="choose(id)"
                         >
                             <span class="opt-main"
-                                ><span>Use custom id</span><span class="mono tiny dim truncate">{{ customId }}</span></span
+                                ><span>{{ providerName(id) ? `Use custom id with ${providerName(id)}` : "Use custom id" }}</span
+                                ><span class="mono tiny dim truncate">{{ id }}</span></span
                             >
                         </button>
-                        <p v-if="!loading && !loadError && !filtered.length && !customId" class="state small dim">No models match “{{ search }}”.</p>
+                        <p v-if="!loading && !loadError && search && !filtered.length && !customIds.length" class="state small dim">No models match “{{ search }}”.</p>
                     </div>
                 </div>
             </Teleport>

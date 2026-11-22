@@ -280,6 +280,8 @@ export interface Question {
     faqId?: string
     /** The AI decided the question only concerns this visitor (their account, order, data): its answer is not added to the FAQ by default */
     userSpecific?: boolean
+    /** Set while the user-specific classification runs (cleared when it ends), so a reply on any server waits for its decision */
+    classifyingAt?: Date
     createdAt: Date
     updatedAt: Date
 }

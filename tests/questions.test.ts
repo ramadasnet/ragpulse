@@ -255,7 +255,7 @@ describe("user-specific questions", () => {
         expect(question.userSpecific).toBeUndefined()
         release()
         await Bun.sleep(5)
-        expect(updates).toEqual([[{_id: question._id}, {$set: {userSpecific: true}}]])
+        expect(updates).toEqual([[{_id: question._id}, {$set: {userSpecific: true}, $unset: {classifyingAt: ""}}]])
         expect(question.userSpecific).toBe(true)
     })
 
@@ -309,5 +309,30 @@ describe("user-specific questions", () => {
         const result = await reply
         expect(faqs.length).toBe(0)
         expect(result.faq).toBeUndefined()
+    })
+
+    test("a reply on another server waits for a classification stored as running in the database", async () => {
+        const question = {_id: "q1", projectId: "project", sessionId: "session", question: "Why was my account suspended?", visitorName: "Visitor", status: "open", classifyingAt: new Date(), createdAt: new Date()}
+        const faqs = mockReply(question)
+        const collections = await (globalThis as any).useCollections()
+        let reads = 0
+        Object.assign(globalThis, {
+            useCollections: async () => ({
+                ...collections,
+                // First read: still classifying (no in-process promise here); later reads: the other server stored its decision
+                questions: {...collections.questions, findOne: async () => (reads++ < 2 ? question : {_id: "q1", userSpecific: true})}
+            })
+        })
+        const result = await replyToQuestion({questionId: "q1", answer: "It was flagged for review.", author, notifyVisitor: false})
+        expect(reads).toBeGreaterThan(2)
+        expect(faqs.length).toBe(0)
+        expect(result.faq).toBeUndefined()
+    })
+
+    test("a stale classification marker is not waited for", async () => {
+        const faqs = mockReply({_id: "q1", projectId: "project", sessionId: "session", question: "How do I reset my password?", visitorName: "Visitor", status: "open", classifyingAt: new Date(Date.now() - 10 * 60_000), createdAt: new Date()})
+        const result = await replyToQuestion({questionId: "q1", answer: "Use the reset link.", author, notifyVisitor: false})
+        expect(faqs.length).toBe(1)
+        expect(result.faq).toBeDefined()
     })
 })

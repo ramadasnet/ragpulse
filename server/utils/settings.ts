@@ -39,6 +39,7 @@ export function defaultAppSettings(): AppSettings {
         embeddingDimensionsParam: true,
         defaultModel: String(config.defaultChatModel || "openrouter/free").trim(),
         fallbackModel: String(config.fallbackModel ?? "").trim(),
+        decisionModel: String(config.decisionModel ?? "").trim(),
         codeSummaryModel: String(config.codeSummaryModel ?? "").trim(),
         userAgent: String(config.crawlerUserAgent || "").trim(),
         requestIntervalMs: Math.max(0, Number(config.crawlerRequestIntervalMs ?? 500) || 0),
@@ -125,6 +126,7 @@ export const settingsPatchSchema = z
         embeddingDimensions: z.number().int().min(32).max(8192).nullable(),
         defaultModel: modelId,
         fallbackModel: z.union([z.literal(""), modelId]),
+        decisionModel: z.union([z.literal(""), modelId]),
         codeSummaryModel: z.union([z.literal(""), modelId]),
         userAgent: z
             .string()

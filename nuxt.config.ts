@@ -90,6 +90,8 @@ export default defineNuxtConfig({
         defaultChatModel: "openrouter/free",
         // Chat model tried when the model of a request fails (empty = no fallback; can be changed on the Settings page)
         fallbackModel: "",
+        // Small, cheap model for yes / no decisions such as tagging escalated questions as user specific (empty = the project's model; can be changed on the Settings page)
+        decisionModel: "typesafe/jev-router",
         // Vision model for images and scanned PDFs (empty disables them; PDFs with text are always read locally)
         visionModel: "openrouter/free",
         // Max images / scanned PDFs sent to the vision model per source sync, the rest continues on the next sync

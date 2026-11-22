@@ -10,6 +10,8 @@ export interface ModelInfo {
 
 export function formatModelPrice(usdPerMillion: number): string {
     if (!usdPerMillion) return "free"
+    // OpenRouter reports -1 for routers whose price depends on the model they pick
+    if (usdPerMillion < 0) return "variable"
     return usdPerMillion < 0.1 ? `$${usdPerMillion.toFixed(3)}` : `$${usdPerMillion.toFixed(2)}`
 }
 

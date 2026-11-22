@@ -39,16 +39,21 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 
     const now = new Date()
     const visitorEmail = params.visitorEmail || session.visitorEmail
+    const text = params.question.trim().slice(0, 4000)
+    // Classified as user specific in the background: only when an AI provider can decide
+    const classify = !!text && (await hasAiProvider())
     const question: Question = {
         _id: newId(),
         projectId: project._id,
         sessionId: session._id,
         messageId: params.messageId,
-        question: params.question.trim().slice(0, 4000),
+        question: text,
         visitorName: session.visitorName,
         visitorEmail,
         reason: params.reason,
         status: "open",
+        // Stored with the question so a reply on any server (chat or admin) sees the classification is still running
+        ...(classify ? {classifyingAt: now} : {}),
         createdAt: now,
         updatedAt: now
     }
@@ -82,8 +87,96 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 
     // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)
     void sendEscalationWebhook(project, session, question)
+    if (classify) {
+        const classification = tagUserSpecific(project, question).finally(() => pendingClassifications.delete(question._id))
+        pendingClassifications.set(question._id, classification)
+    }
 
     return question
+}
+
+/** Background user-specific classifications still running in this process, by question id: a reply waits for it before deciding on the FAQ */
+const pendingClassifications = new Map<string, Promise<boolean | undefined>>()
+
+/** Longest a classification can run: two 30 s model calls (the decision model, then the project's model) plus a margin */
+const CLASSIFY_MAX_MS = 75_000
+/** How often a reply on another server re-reads a question whose classification is still running */
+const CLASSIFY_POLL_MS = 250
+
+/**
+ * Waits for the user-specific classification of a question that is still running, here (`pending`) or in another process
+ * (the chat server classifies, the admin server replies), and returns its decision. A `classifyingAt` older than
+ * `CLASSIFY_MAX_MS` is stale (e.g. the server restarted mid-classification) and is not waited for.
+ */
+async function awaitClassification(question: Question, pending?: Promise<boolean | undefined>): Promise<boolean | undefined> {
+    if (pending) return pending
+    if (!question.classifyingAt) return question.userSpecific
+    const {questions} = await useCollections()
+    const deadline = new Date(question.classifyingAt).getTime() + CLASSIFY_MAX_MS
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, CLASSIFY_POLL_MS))
+        const fresh = await questions.findOne({_id: question._id}, {projection: {classifyingAt: 1, userSpecific: 1}})
+        if (!fresh?.classifyingAt) return fresh?.userSpecific
+    }
+    return undefined
+}
+
+const USER_SPECIFIC_PROMPT = `You decide whether a support question escalated from a chat only concerns the one visitor who asked it, or is a general question other visitors could ask too.
+
+- User specific: about the visitor's own account, order, subscription, billing, data or situation, so only the support team can answer it by looking at that visitor's details. Examples: "Why was my account suspended?", "Where is my order 1234?", "Why was I charged twice this month?".
+- General: the answer helps other visitors too (how something works, policies, pricing, setup steps, limits), even when phrased with "I" or "my". Examples: "How do I reset my password?", "Can I run it on AWS for free?".
+
+Reply with strict JSON only, no markdown fences: {"userSpecific": true} or {"userSpecific": false}`
+
+/** Asks the AI whether an escalated question only concerns the visitor who asked it. Undefined when no decision could be made. */
+export async function classifyUserSpecific(project: Project, question: string, questionId?: string): Promise<boolean | undefined> {
+    if (!question.trim() || !(await hasAiProvider())) return undefined
+    const chatModel = await projectModel(project)
+    const model = (await getAppSettings()).decisionModel || chatModel
+    const decide = (id: string) =>
+        chatCompletion({
+            model: id,
+            temperature: 0,
+            maxTokens: 20,
+            signal: AbortSignal.timeout(30_000),
+            log: {action: "Questions.classify", context: [`Question ${questionId ?? "new"}`, `Project ${project._id}`]},
+            messages: [
+                {role: "system", content: USER_SPECIFIC_PROMPT},
+                {role: "user", content: question.slice(0, 4000)}
+            ]
+        })
+    // The decision model may not exist on a custom provider: the project's model decides then
+    const res = await decide(model).catch((err) => (model === chatModel ? Promise.reject(err) : decide(chatModel)))
+    const text = res.content
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "")
+    try {
+        const decision = JSON.parse(text)
+        return typeof decision?.userSpecific === "boolean" ? decision.userSpecific : undefined
+    } catch {
+        return undefined
+    }
+}
+
+/** Stores the `classifyUserSpecific` decision on a new question (clearing its `classifyingAt`) and returns it. Runs in the background and never throws. */
+async function tagUserSpecific(project: Project, question: Question): Promise<boolean | undefined> {
+    let userSpecific: boolean | undefined
+    try {
+        userSpecific = await classifyUserSpecific(project, question.question, question._id)
+    } catch (err) {
+        logger.warn("Questions.classify", `Could not classify question ${question._id}`, err)
+    }
+    try {
+        const {questions} = await useCollections()
+        await questions.updateOne({_id: question._id}, userSpecific === undefined ? {$unset: {classifyingAt: ""}} : {$set: {userSpecific}, $unset: {classifyingAt: ""}})
+        delete question.classifyingAt
+        if (userSpecific !== undefined) question.userSpecific = userSpecific
+        if (userSpecific) logger.info("Questions.classify", `Question ${question._id}`, "User specific")
+    } catch (err) {
+        logger.warn("Questions.classify", `Could not store the classification of question ${question._id}`, err)
+    }
+    return userSpecific
 }
 
 /**
@@ -147,7 +240,7 @@ async function sendAnswerEmail(question: Question, project: Project): Promise<bo
 /**
  * Answers an open question: stores the answer, posts it into the chat session as an `agent` message
  * (unless `postToChat` is false, e.g. when it was already answered in the chat, or the conversation ended), adds the Q&A to the
- * project's FAQ (default, one entry per question, reusing the one learned from its finished conversation) and emails the visitor when they are not in the chat:
+ * project's FAQ (default unless the question is user specific, one entry per question, reusing the one learned from its finished conversation) and emails the visitor when they are not in the chat:
  * right away, or after the `answerEmailDelayMinutes` setting unless they open the chat meanwhile.
  */
 export async function replyToQuestion(params: {
@@ -164,6 +257,8 @@ export async function replyToQuestion(params: {
     const answer = params.answer.trim()
     if (!answer) throw createError({statusCode: 400, statusMessage: "Answer cannot be empty"})
 
+    // Taken before the read: a classification finishing in between has then either been read or is still awaited below
+    const pendingClassification = pendingClassifications.get(params.questionId)
     const question = await questions.findOne({_id: params.questionId})
     if (!question) throw createError({statusCode: 404, statusMessage: "Question not found"})
     if (question.status === "dismissed") throw createError({statusCode: 409, statusMessage: "Question was dismissed"})
@@ -241,8 +336,12 @@ export async function replyToQuestion(params: {
     }
 
     let faq: Faq | undefined
+    // A reply right after the escalation waits for its classification (on this or another server), so a user-specific answer never lands in the FAQ by default
+    if (params.addToFaq === undefined && question.userSpecific === undefined && !question.faqId) question.userSpecific = await awaitClassification(question, pendingClassification)
+    // User-specific questions are only added when asked explicitly
+    const addToFaq = params.addToFaq ?? !question.userSpecific
     // When sanitizing removes everything the answer was only personal data, so no FAQ entry is created
-    const faqAnswer = params.addToFaq !== false && !question.faqId ? cleanFaqText(answer, question, project.supportEmail, 8000) : ""
+    const faqAnswer = addToFaq && !question.faqId ? cleanFaqText(answer, question, project.supportEmail, 8000) : ""
     if (faqAnswer) {
         try {
             // The conversation was finished after the question was asked: its learned FAQ already covers it, so it becomes this question's entry

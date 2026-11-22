@@ -43,6 +43,7 @@ interface Form {
     defaultModel: string
     fallback: boolean
     fallbackModel: string
+    decisionModel: string
     summarize: boolean
     codeSummaryModel: string
     userAgent: string
@@ -68,6 +69,7 @@ function toForm(s: AppSettingsView): Form {
         defaultModel: s.defaultModel,
         fallback: !!s.fallbackModel,
         fallbackModel: s.fallbackModel || "openrouter/free",
+        decisionModel: s.decisionModel,
         summarize: !!s.codeSummaryModel,
         codeSummaryModel: s.codeSummaryModel || "openrouter/free",
         userAgent: s.userAgent,
@@ -201,6 +203,7 @@ async function save() {
                     ...(embeddingChanged.value ? {embeddingModel: f.embeddingModel.trim(), embeddingDimensions: f.embeddingDimensions.trim() ? Number(f.embeddingDimensions) : null} : {}),
                     defaultModel: f.defaultModel.trim(),
                     fallbackModel: f.fallback ? f.fallbackModel.trim() : "",
+                    decisionModel: f.decisionModel.trim(),
                     codeSummaryModel: f.summarize ? f.codeSummaryModel.trim() : "",
                     userAgent: f.userAgent.trim(),
                     requestIntervalMs: Number(f.requestIntervalMs),
@@ -328,6 +331,12 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         <AdminModelPicker v-model="form.fallbackModel" label="Fallback model" hint="Any chat model of the configured provider. Prices are USD per 1M input / output tokens." />
                         <p v-if="errors.fallbackModel" class="field-error">{{ errors.fallbackModel }}</p>
                     </template>
+                    <AdminModelPicker
+                        v-model="form.decisionModel"
+                        label="Decision model"
+                        :default-model="form.defaultModel"
+                        hint="A small, cheap model for quick yes / no decisions, like tagging escalated questions as user specific. Pick the default model to use each project's own model. Prices are USD per 1M input / output tokens."
+                    />
                 </div>
             </UiCard>
 

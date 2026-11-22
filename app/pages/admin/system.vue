@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import {Activity, Cpu, Database, RefreshCw, Settings2} from "lucide-vue-next"
+import {Activity, Cpu, Database, RefreshCw, Settings2, Sparkles} from "lucide-vue-next"
+import {aiProviderInfo, EMBEDDING_PROVIDER_NAMES, splitModelId, type AiProviderId} from "#shared/utils/ai-providers"
+
+interface EnabledProvider {
+    id: AiProviderId
+    name: string
+    embeddings: boolean
+    verified: boolean
+}
 
 interface SystemStats {
     db: {name: string; dataSize: number; storageSize: number; indexSize: number; collections: number; objects: number}
@@ -9,7 +17,18 @@ interface SystemStats {
     embeddingDimensions: number
     embedding: {model: string; total: number; current: number}
     perProject: Array<{projectId: string; title: string; chunks: number; documents: number; sessions: number; messages: number; estimatedBytes: number}>
-    config: {aiProvider: boolean; smtp: boolean; google: boolean; microsoft: boolean; googleDrive: string | null; adminUrl: string; chatUrl: string}
+    usageByModel: Array<{model: string; answers: number; promptTokens: number; completionTokens: number; cost: number}>
+    config: {
+        aiProvider: boolean
+        embeddingProvider: boolean
+        aiProviders: EnabledProvider[]
+        smtp: boolean
+        google: boolean
+        microsoft: boolean
+        googleDrive: string | null
+        adminUrl: string
+        chatUrl: string
+    }
     scheduler: {queued: number; syncing: number; errors: number; idle?: number; nextDue?: string}
 }
 
@@ -23,16 +42,33 @@ const collections = computed(() => [...(data.value?.collections ?? [])].sort((a,
 const maxProjectBytes = computed(() => Math.max(1, ...(data.value?.perProject.map((p) => p.estimatedBytes) ?? [1])))
 const maxCollectionBytes = computed(() => Math.max(1, ...collections.value.map((c) => c.storageSize + c.indexSize)))
 
+/** Splits a stored model id into its display name and optional provider name. */
+function modelLabel(id: string): {name: string; provider: string} {
+    const {provider, model} = splitModelId(id)
+    return {name: model, provider: provider ? aiProviderInfo(provider).name : ""}
+}
+
 const checks = computed(() => {
     const c = data.value?.config
     if (!c) return []
     const oauthAny = c.google || c.microsoft
+    const embeddingProviders = c.aiProviders
+        .filter((p) => p.embeddings)
+        .map((p) => p.name)
+        .join(", ")
     return [
         {
-            label: "AI provider",
+            label: "AI providers",
             ok: c.aiProvider,
             level: c.aiProvider ? "ok" : "err",
-            hint: c.aiProvider ? "Chat and embeddings are available." : "Set an OpenRouter key or a custom provider in Global Settings → AI Provider — chat and indexing will fail without it."
+            hint: "Enable an AI provider in Global Settings → AI Providers, chat and indexing will fail without one.",
+            providers: c.aiProviders
+        },
+        {
+            label: "Embeddings",
+            ok: c.embeddingProvider,
+            level: c.embeddingProvider ? "ok" : "err",
+            hint: c.embeddingProvider ? `Available via ${embeddingProviders}.` : `No enabled provider has embedding models, so knowledge can't be indexed or searched. Enable ${EMBEDDING_PROVIDER_NAMES}.`
         },
         {label: "SMTP email", ok: c.smtp, level: c.smtp ? "ok" : "warn", hint: c.smtp ? "Escalations, replies and invites are emailed." : "Set NUXT_SMTP_PASS (Cloudflare API token) and NUXT_SMTP_FROM to email support, visitors and invitees."},
         {label: "Google sign-in", ok: c.google, level: c.google ? "ok" : oauthAny ? "warn" : "err", hint: c.google ? "Configured." : "Set NUXT_OAUTH_GOOGLE_CLIENT_ID / _CLIENT_SECRET."},
@@ -69,7 +105,7 @@ const vector = computed(() => {
             <div>
                 <p class="eyebrow">Workspace</p>
                 <h1>System</h1>
-                <p>Database usage, vector search, configuration health and the sync scheduler.</p>
+                <p>Database and model usage, vector search, the sync scheduler and configuration health.</p>
             </div>
             <UiButton variant="secondary" :loading="status === 'pending' && !!data" @click="refresh()"><RefreshCw :size="14" /> Refresh</UiButton>
         </header>
@@ -143,23 +179,46 @@ const vector = computed(() => {
                 </UiCard>
             </div>
 
-            <UiCard>
+            <UiCard :pad="false">
                 <template #header>
-                    <div class="row" style="--gap: 8px">
-                        <Settings2 :size="16" class="dim" />
-                        <h2 class="card-title">Configuration health</h2>
+                    <div class="stack" style="--gap: 2px">
+                        <div class="row" style="--gap: 8px">
+                            <Sparkles :size="16" class="dim" />
+                            <h2 id="usage-by-model-title" class="card-title">Usage by model</h2>
+                        </div>
+                        <p class="muted small">Chat answers, token totals and cost for models with recorded usage</p>
                     </div>
                 </template>
-                <ul class="checks">
-                    <li v-for="c in checks" :key="c.label">
-                        <span class="dot" :class="c.level" />
-                        <div class="grow">
-                            <p class="strong small">{{ c.label }}</p>
-                            <p class="tiny dim break">{{ c.hint }}</p>
-                        </div>
-                        <UiBadge :tone="c.ok ? 'success' : c.level === 'err' ? 'danger' : 'warning'">{{ c.ok ? "OK" : "Missing" }}</UiBadge>
-                    </li>
-                </ul>
+                <p v-if="!data.usageByModel.length" class="muted small" style="padding: 20px">No model usage yet.</p>
+                <div v-else tabindex="0" role="region" aria-labelledby="usage-by-model-title" class="usage-wrap">
+                    <table class="table usage-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Model</th>
+                                <th scope="col" class="num">Answers</th>
+                                <th scope="col" class="num">Input</th>
+                                <th scope="col" class="num">Output</th>
+                                <th scope="col" class="num">Total tokens</th>
+                                <th scope="col" class="num">Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="u in data.usageByModel" :key="u.model">
+                                <th scope="row">
+                                    <div class="model-cell">
+                                        <span class="mono small truncate" :title="u.model">{{ modelLabel(u.model).name }}</span>
+                                        <UiBadge v-if="modelLabel(u.model).provider" tone="neutral">{{ modelLabel(u.model).provider }}</UiBadge>
+                                    </div>
+                                </th>
+                                <td class="num">{{ formatNumber(u.answers) }}</td>
+                                <td class="num">{{ formatNumber(u.promptTokens) }}</td>
+                                <td class="num">{{ formatNumber(u.completionTokens) }}</td>
+                                <td class="num">{{ formatNumber(u.promptTokens + u.completionTokens) }}</td>
+                                <td class="num">{{ formatCost(u.cost) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </UiCard>
 
             <UiCard title="Usage by project" description="Estimated from document counts and average document sizes" :pad="false">
@@ -209,6 +268,30 @@ const vector = computed(() => {
                         </tbody>
                     </table>
                 </div>
+            </UiCard>
+
+            <UiCard>
+                <template #header>
+                    <div class="row" style="--gap: 8px">
+                        <Settings2 :size="16" class="dim" />
+                        <h2 class="card-title">Configuration health</h2>
+                    </div>
+                </template>
+                <ul class="checks">
+                    <li v-for="c in checks" :key="c.label">
+                        <span class="dot" :class="c.level" />
+                        <div class="grow">
+                            <p class="strong small">{{ c.label }}</p>
+                            <div v-if="c.providers?.length" class="provider-list">
+                                <UiBadge v-for="p in c.providers" :key="p.id" :tone="p.verified ? 'neutral' : 'warning'" :title="p.verified ? `${p.name} (verified)` : `${p.name} (not tested yet)`">
+                                    {{ p.name }}
+                                </UiBadge>
+                            </div>
+                            <p v-else class="tiny dim break">{{ c.hint }}</p>
+                        </div>
+                        <UiBadge :tone="c.ok ? 'success' : c.level === 'err' ? 'danger' : 'warning'">{{ c.ok ? "OK" : "Missing" }}</UiBadge>
+                    </li>
+                </ul>
             </UiCard>
         </div>
     </div>
@@ -269,6 +352,121 @@ const vector = computed(() => {
 }
 .break {
     word-break: break-word;
+}
+.provider-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+.usage-wrap {
+    overflow: auto;
+    max-inline-size: 100%;
+    max-block-size: min(500px, 80vh);
+    container-type: inline-size;
+}
+.usage-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    --label-2: "Answers";
+    --label-3: "Input";
+    --label-4: "Output";
+    --label-5: "Total tokens";
+    --label-6: "Cost";
+}
+.usage-table thead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+}
+.usage-table tbody th {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13.5px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+.usage-table tbody tr:last-child th {
+    border-bottom: 0;
+}
+.model-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+@container (width < 600px) {
+    .usage-wrap {
+        max-block-size: none;
+    }
+    .usage-table,
+    .usage-table thead,
+    .usage-table tbody,
+    .usage-table tr,
+    .usage-table th,
+    .usage-table td {
+        display: block;
+    }
+    .usage-table thead {
+        display: none;
+    }
+    .usage-table tbody tr + tr {
+        border-top: 1px solid var(--border);
+    }
+    .usage-table tbody th {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 2;
+        background: var(--bg-elev);
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        white-space: normal;
+    }
+    .usage-table tbody tr:last-child th {
+        border-bottom: 1px solid var(--border);
+    }
+    .model-cell {
+        flex-wrap: wrap;
+    }
+    .usage-table td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 0;
+        text-align: right;
+    }
+    .usage-table td:last-child {
+        padding-bottom: 12px;
+    }
+    .usage-table td::before {
+        color: var(--text-dim);
+        font-size: 12px;
+        text-align: left;
+    }
+    .usage-table td:nth-child(2)::before {
+        content: var(--label-2);
+    }
+    .usage-table td:nth-child(3)::before {
+        content: var(--label-3);
+    }
+    .usage-table td:nth-child(4)::before {
+        content: var(--label-4);
+    }
+    .usage-table td:nth-child(5)::before {
+        content: var(--label-5);
+    }
+    .usage-table td:nth-child(6)::before {
+        content: var(--label-6);
+    }
 }
 .projects {
     list-style: none;

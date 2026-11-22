@@ -1,4 +1,5 @@
 import type {AppSettingsView, EmbeddingStatus} from "#shared/types"
+import {AI_PROVIDERS} from "#shared/utils/ai-providers"
 
 export interface SettingsResponse {
     settings: AppSettingsView
@@ -13,15 +14,20 @@ export async function settingsResponse(): Promise<SettingsResponse> {
     const config = useRuntimeConfig()
     const {settings: settingsCol, projects} = await useCollections()
     const [s, embedding, projectCount, doc] = await Promise.all([getAppSettings({fresh: true}), embeddingStatus(), projects.estimatedDocumentCount(), settingsCol.findOne({_id: SETTINGS_ID})])
-    const {openrouterApiKey: _openrouterKey, aiProviderApiKey: _aiProviderKey, ...rest} = s
+    const {aiProviders, ...rest} = s
     const view: AppSettingsView = {
         ...rest,
-        hasOpenrouterApiKey: !!s.openrouterApiKey,
-        savedOpenrouterApiKey: !!doc?.openrouterApiKey,
-        envOpenrouterApiKey: !!config.openrouterApiKey,
-        hasAiProviderApiKey: !!s.aiProviderApiKey,
-        savedAiProviderApiKey: !!doc?.aiProviderApiKey,
-        envAiProviderApiKey: !!config.aiProviderApiKey
+        aiProviders: Object.fromEntries(
+            AI_PROVIDERS.map((p) => [
+                p.id,
+                {
+                    hasApiKey: !!aiProviders[p.id].apiKey,
+                    saved: !!savedApiKey(doc, p.id) || (p.id === "custom" && !!doc?.aiProviderBaseUrl),
+                    envApiKey: !!(config as Record<string, unknown>)[p.configKey],
+                    verified: providerVerified(s, p.id)
+                }
+            ])
+        ) as AppSettingsView["aiProviders"]
     }
     return {settings: view, defaults: {userAgent: defaultUserAgent()}, embedding, vectorMode: getVectorMode(), projectCount}
 }

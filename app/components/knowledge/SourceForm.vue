@@ -190,10 +190,9 @@ defineExpose({pending})
             </div>
             <UiInput
                 v-model="draft.accessToken"
-                type="password"
+                secret
                 label="Access token"
                 optional
-                autocomplete="new-password"
                 :disabled="draft.removeToken"
                 :placeholder="source?.options.hasAccessToken ? '•••••••• (saved)' : 'ghp_… / glpat-…'"
                 :hint="source?.options.hasAccessToken ? 'A token is saved — leave empty to keep it.' : 'Only for private repositories (read-only scope is enough). Never shown again.'"

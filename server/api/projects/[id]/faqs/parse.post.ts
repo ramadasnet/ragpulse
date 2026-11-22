@@ -18,7 +18,7 @@ Rules:
 export default defineEventHandler(async (event) => {
     const {user, project} = await requireProjectAccess(event, "sources:manage")
     const body = await readIngestBody(event, faqParseInputSchema)
-    if (!(await hasAiProvider())) throw createError({statusCode: 503, statusMessage: "No AI provider configured (Global Settings → AI Provider)"})
+    if (!(await hasAiProvider())) throw createError({statusCode: 503, statusMessage: "No AI provider configured (Global Settings → AI Providers)"})
 
     const res = await chatCompletion({
         model: await projectModel(project),

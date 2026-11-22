@@ -4,7 +4,7 @@ Self-hosted, single-tenant AI support chat for your projects. Index your docs (F
 chat on your sites, escalate what the AI can't answer to your support email — and plug your own bots and agents in via **MCP**
 so they can act on escalated questions.
 
-- **Stack:** TypeScript · Nuxt 4 · Bun · MongoDB (documents + vectors) · OpenRouter or any OpenAI-compatible provider (chat + embeddings)
+- **Stack:** TypeScript · Nuxt 4 · Bun · MongoDB (documents + vectors) · OpenRouter, Anthropic, OpenAI, Gemini, Mistral, xAI, OpenCode or any OpenAI-compatible provider (chat + embeddings)
 - **Admin:** Google / Microsoft social login, Admin and Assistant roles with per-project permissions
 - **Chat:** JS embed (floating launcher) or iframe, light/dark themes with 3 custom colours, domain allowlist
 - **MCP:** Streamable HTTP endpoint at `/mcp`, authenticated with personal API tokens
@@ -114,8 +114,8 @@ All settings are environment variables, see [`.env.example`](.env.example). Both
 | `NUXT_APP_SECRET`                                                                    | 32+ chars secret for the admin session cookie and visitor IP hashing                                                                                                                     |
 | `NUXT_ADMIN_EMAILS`                                                                  | Emails auto-provisioned as admins on first login. Everyone else must be invited from **Users**                                                                                           |
 | `NUXT_MONGODB_URI`                                                                   | MongoDB connection string                                                                                                                                                                |
-| `NUXT_OPENROUTER_API_KEY`                                                            | OpenRouter key, used for chat and embeddings. Change it on **Global Settings** instead (see below)                                                                                       |
-| `NUXT_CUSTOM_AI_PROVIDER` / `NUXT_AI_PROVIDER_BASE_URL` / `NUXT_AI_PROVIDER_API_KEY` | Custom OpenAI-compatible endpoint used instead of OpenRouter. Change it on **Global Settings** instead (see below)                                                                       |
+| `NUXT_<PROVIDER>_API_KEY`                                                            | Enables a provider: `OPENROUTER`, `ANTHROPIC`, `GEMINI`, `MISTRAL`, `OPENAI`, `OPENCODE`, `OPENCODE_GO`, `XAI`. Change keys on **Global Settings** instead                               |
+| `NUXT_CUSTOM_AI_PROVIDER` / `NUXT_AI_PROVIDER_BASE_URL` / `NUXT_AI_PROVIDER_API_KEY` | Custom OpenAI-compatible endpoint, enabled by its base URL. `NUXT_CUSTOM_AI_PROVIDER` makes unprefixed model ids belong to it instead of OpenRouter                                      |
 | `NUXT_EMBEDDING_MODEL` / `NUXT_EMBEDDING_DIMENSIONS`                                 | Default embedding model (default `openai/text-embedding-3-small`, 1536). Change it on **Global Settings** instead (see below)                                                            |
 | `NUXT_VISION_MODEL` / `NUXT_VISION_MAX_PER_SYNC`                                     | Vision model for images and scanned PDFs (default `openrouter/free`, empty disables), max new files per sync (100)                                                                       |
 | `NUXT_DEFAULT_CHAT_MODEL`                                                            | Default chat model of projects without a model of their own (default `openrouter/free`). Change it on **Global Settings** instead (see below)                                            |
@@ -138,13 +138,18 @@ All settings are environment variables, see [`.env.example`](.env.example). Both
 
 Admins can change these workspace-wide settings on **Global Settings**; saved values override the environment defaults above:
 
-- **AI provider**: OpenRouter by default (the API key is editable here), or a custom OpenAI-compatible endpoint behind the
-  **Use a custom AI provider** toggle — set its base URL (e.g. `https://api.openai.com/v1` or `http://localhost:11434/v1`) and an
-  optional API key. Applies to chat answers, embeddings, vision and code summaries of all projects.
+- **AI providers**: Anthropic, Google Gemini, Mistral, OpenAI, OpenCode Go, OpenCode Zen, OpenRouter, xAI and a custom
+  OpenAI-compatible endpoint (base URL like `http://localhost:11434/v1` and an optional API key). Pick a provider in the
+  dropdown, enter its key and **Test and save**: a key is only saved once the provider accepts it, keys from the environment
+  are tested when the page opens, and the other settings can only be saved while every enabled provider passed its test.
+  Providers with a key are enabled (the custom one with a base URL). Several can be enabled at once: the model pickers list
+  the models of all of them, and model ids carry their provider as a prefix (`openai:gpt-5-mini`, `openrouter:z-ai/glm-4.6`). Ids without a prefix, saved
+  before multiple providers were supported, belong to OpenRouter (or to the custom provider when `NUXT_CUSTOM_AI_PROVIDER` or
+  the former custom provider toggle was on).
 - **Global system instructions**: base rules added to the chat answers of **all projects**, with precedence over each project's
   own instructions. The default forbids sharing credentials, private keys, environment variables, secrets and personal
   information, and guards against prompt injection. Leave empty to disable.
-- **Embedding model** and optional **dimensions** (any embedding model the configured provider offers). The model is tested before it is applied.
+- **Embedding model** and optional **dimensions** (any embedding model of the enabled providers). The model is tested before it is applied.
   Vectors of different models can't be compared, so changing it re-indexes the knowledge of **all projects**: the scheduler
   re-embeds the stored chunks in the background (no re-fetching), the vector index is updated automatically, and progress is
   shown on **Global Settings** and **System**. Until it finishes, answers only use the knowledge that has already been re-indexed.

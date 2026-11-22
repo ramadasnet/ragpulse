@@ -77,9 +77,17 @@ export default defineNuxtConfig({
         // Build target (RAGPULSE_APP): empty when one server serves both the admin and the chat
         appTarget: target,
         mongodbUri: "mongodb://127.0.0.1:27017/ragpulse?directConnection=true",
+        // AI provider API keys: a provider with a key is enabled (keys saved on Global Settings → AI Providers override these)
+        anthropicApiKey: "",
+        geminiApiKey: "",
+        mistralApiKey: "",
+        openaiApiKey: "",
+        opencodeApiKey: "",
+        opencodeGoApiKey: "",
         openrouterApiKey: "",
         openrouterBaseUrl: "https://openrouter.ai/api/v1",
-        // Custom OpenAI-compatible provider used instead of OpenRouter (overridden by Global Settings → AI Provider)
+        xaiApiKey: "",
+        // Custom OpenAI-compatible provider, enabled by its base URL. With customAiProvider, model ids without a provider prefix belong to it instead of OpenRouter.
         customAiProvider: false,
         aiProviderBaseUrl: "",
         aiProviderApiKey: "",

@@ -6,7 +6,7 @@ Self-hosted, single-tenant AI support chat: indexes docs (FAQ, git repos, web pa
 
 - TypeScript, Nuxt 4 (Nitro `bun` preset), Vue 3, zod — Bun, `bun.lock`
 - MongoDB for documents + vectors: native `$vectorSearch` on Atlas / `mongodb-atlas-local` / `mongod`+mongot; automatic in-app cosine fallback on plain mongod
-- OpenRouter or any OpenAI-compatible API for chat + embeddings (+ optional vision/code-summary models)
+- Multiple AI providers over their OpenAI-compatible APIs (`server/utils/llm.ts`, registry in `shared/utils/ai-providers.ts`); model ids are `provider:model`, unprefixed legacy ids belong to OpenRouter (or the custom provider)
 - `@modelcontextprotocol/sdk`, `nuxt-auth-utils` (Google/Microsoft), nodemailer, Readability/turndown/unpdf for ingestion
 - Tests `bun test` (`tests/`); typecheck = `vue-tsc` on `.nuxt/tsconfig.{server,app}.json`; Prettier via `format`/`format:check`
 

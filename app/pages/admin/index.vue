@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {BookOpen, Inbox, MessagesSquare, Plus, Settings, Sparkles, FolderKanban} from "lucide-vue-next"
 import type {ProjectPermission} from "#shared/types"
+import {splitModelId} from "#shared/utils/ai-providers"
 
 useHead({title: "Projects · RAGPulse"})
 
@@ -21,7 +22,7 @@ const defaultModel = useDefaultModel()
 
 /** Short name of a project's model; projects without one use the default model. */
 function modelName(id: string) {
-    const model = id || defaultModel.value
+    const model = splitModelId(id || defaultModel.value).model
     return model.split("/").pop() || model
 }
 

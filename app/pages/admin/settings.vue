@@ -2,6 +2,7 @@
 import {AlertTriangle, Bot, Code2, Eraser, KeyRound, Mail, ShieldCheck, Sparkles} from "lucide-vue-next"
 import type {AppSettingsView, EmbeddingStatus} from "#shared/types"
 import {ANSWER_EMAIL_MAX_DELAY_MINUTES, CHAT_AUTO_CLOSE_MAX_DAYS, HUMAN_TAKEOVER_MAX_WAIT_MINUTES, QUESTION_RETENTION_MAX_DAYS, SYNC_HISTORY_MAX_DAYS} from "#shared/types"
+import {AI_PROVIDERS, aiProviderInfo, EMBEDDING_PROVIDER_NAMES, type AiProviderId} from "#shared/utils/ai-providers"
 import {DEFAULT_GLOBAL_INSTRUCTIONS} from "#shared/utils/instructions"
 
 interface SettingsResponse {
@@ -29,14 +30,6 @@ function isHttpUrl(value: string): boolean {
 }
 
 interface Form {
-    customAiProvider: boolean
-    /** Empty = keep the saved key */
-    openrouterApiKey: string
-    removeOpenrouterApiKey: boolean
-    aiProviderBaseUrl: string
-    /** Empty = keep the saved key */
-    aiProviderApiKey: string
-    removeAiProviderApiKey: boolean
     embeddingModel: string
     /** Empty = the model's native size */
     embeddingDimensions: string
@@ -58,20 +51,14 @@ interface Form {
 
 function toForm(s: AppSettingsView): Form {
     return {
-        customAiProvider: s.customAiProvider,
-        openrouterApiKey: "",
-        removeOpenrouterApiKey: false,
-        aiProviderBaseUrl: s.aiProviderBaseUrl,
-        aiProviderApiKey: "",
-        removeAiProviderApiKey: false,
         embeddingModel: s.embeddingModel,
         embeddingDimensions: s.embeddingDimensionsParam ? String(s.embeddingDimensions) : "",
         defaultModel: s.defaultModel,
         fallback: !!s.fallbackModel,
-        fallbackModel: s.fallbackModel || "openrouter/free",
+        fallbackModel: s.fallbackModel,
         decisionModel: s.decisionModel,
         summarize: !!s.codeSummaryModel,
-        codeSummaryModel: s.codeSummaryModel || "openrouter/free",
+        codeSummaryModel: s.codeSummaryModel,
         userAgent: s.userAgent,
         requestIntervalMs: s.requestIntervalMs,
         syncHistoryDays: s.syncHistoryDays,
@@ -85,12 +72,30 @@ function toForm(s: AppSettingsView): Form {
 
 const form = ref<Form | null>(null)
 const original = ref("")
+/** The provider shown in the AI Providers card (not a setting) */
+const provider = ref<AiProviderId>("openrouter")
+/** API keys typed per provider, and the custom provider's base URL being edited: tested and saved on their own */
+const keys = ref(Object.fromEntries(AI_PROVIDERS.map((p) => [p.id, ""])) as Record<AiProviderId, string>)
+const baseUrl = ref("")
+const testErrors = ref<Partial<Record<AiProviderId, string>>>({})
+const testing = ref<AiProviderId[]>([])
 watch(
     () => data.value?.settings,
     (s) => {
         if (!s) return
         // Polling refreshes `data`: keep edits in progress
         if (form.value && JSON.stringify(form.value) !== original.value) return
+        if (!form.value) {
+            // Start with the first enabled provider, and test the enabled ones that never passed a test (e.g. keys from the environment)
+            provider.value = AI_PROVIDERS.find((p) => providerEnabled(p.id))?.id ?? "openrouter"
+            baseUrl.value = s.aiProviderBaseUrl
+            // One after another: each response carries the results of the tests before it
+            const untested = AI_PROVIDERS.filter((p) => providerEnabled(p.id) && !s.aiProviders[p.id].verified)
+            testing.value = untested.map((p) => p.id)
+            ;(async () => {
+                for (const p of untested) await testProvider(p.id, true)
+            })()
+        }
         form.value = toForm(s)
         original.value = JSON.stringify(form.value)
     },
@@ -112,11 +117,6 @@ const errors = computed(() => {
     const f = form.value
     const e: Partial<Record<keyof Form, string>> = {}
     if (!f) return e
-    const baseUrl = f.aiProviderBaseUrl.trim()
-    if (f.customAiProvider) {
-        if (!baseUrl) e.aiProviderBaseUrl = "Base URL is required"
-        else if (!isHttpUrl(baseUrl)) e.aiProviderBaseUrl = "Enter a valid http(s) URL"
-    }
     if (!f.embeddingModel.trim()) e.embeddingModel = "Choose an embedding model"
     const dims = f.embeddingDimensions.trim()
     if (dims && (!/^\d+$/.test(dims) || Number(dims) < 32 || Number(dims) > 8192)) e.embeddingDimensions = "A whole number between 32 and 8192, or empty"
@@ -141,22 +141,100 @@ const errors = computed(() => {
 })
 const valid = computed(() => Object.keys(errors.value).length === 0)
 
-const openrouterKeyHint = computed(() => {
+// --- AI providers: credentials are tested and saved on their own (Test and save), not with the form ---
+
+/** Whether a provider is enabled: it has an API key, the custom provider a base URL. */
+function providerEnabled(id: AiProviderId): boolean {
     const s = data.value?.settings
-    if (!s) return ""
-    if (s.savedOpenrouterApiKey) return "A key is saved here — leave empty to keep it. Removing it falls back to NUXT_OPENROUTER_API_KEY."
-    if (s.envOpenrouterApiKey) return "A key is configured via NUXT_OPENROUTER_API_KEY — enter one here to override it."
-    return "Required for chat and embeddings. Or set NUXT_OPENROUTER_API_KEY on the server."
+    if (!s) return false
+    return id === "custom" ? !!s.aiProviderBaseUrl : s.aiProviders[id].hasApiKey
+}
+
+/** Credentials typed but not tested yet */
+function pendingCredentials(id: AiProviderId): boolean {
+    return !!keys.value[id].trim() || (id === "custom" && baseUrl.value.trim() !== (data.value?.settings.aiProviderBaseUrl ?? ""))
+}
+
+/** Badge of a provider in the picker, none when it isn't set up */
+function providerStatus(id: AiProviderId): {tone: "success" | "danger" | "neutral"; label: string} | undefined {
+    if (testing.value.includes(id)) return {tone: "neutral", label: "Testing…"}
+    if (!providerEnabled(id)) return undefined
+    if (data.value?.settings.aiProviders[id].verified) return {tone: "success", label: "Enabled"}
+    return {tone: "danger", label: testErrors.value[id] ? "Key rejected" : "Not tested"}
+}
+
+/** Why the settings can't be saved yet: every enabled provider must have passed a test */
+const providerBlocker = computed(() => {
+    const typed = AI_PROVIDERS.find((p) => pendingCredentials(p.id))
+    if (typed) return `Test the ${typed.name} ${typed.id === "custom" ? "settings" : "API key"} first, or clear it`
+    const untested = AI_PROVIDERS.find((p) => providerEnabled(p.id) && !data.value?.settings.aiProviders[p.id].verified)
+    return untested ? `The ${untested.name} ${untested.id === "custom" ? "settings" : "API key"} didn't pass the test yet` : ""
 })
-const aiProviderKeyHint = computed(() => {
-    const s = data.value?.settings
-    if (!s) return ""
-    if (s.savedAiProviderApiKey) return "A key is saved here — leave empty to keep it. Removing it falls back to NUXT_AI_PROVIDER_API_KEY."
-    if (s.envAiProviderApiKey) return "A key is configured via NUXT_AI_PROVIDER_API_KEY — enter one here to override it."
-    return "Sent as Bearer token. Leave empty for endpoints without authentication (most local servers)."
+
+/** Applies a settings response after a provider change, keeping form edits in progress */
+function applyProviders(res: SettingsResponse) {
+    data.value = res
+    baseUrl.value = res.settings.aiProviderBaseUrl
+    // Model lists of the previous credentials would be stale
+    useState("ai-models", () => null).value = null
+    useState("ai-embedding-models", () => null).value = null
+}
+
+/** Tests the typed credentials of a provider (or its configured ones) and saves them when the provider accepts them. */
+async function testProvider(id: AiProviderId, auto = false) {
+    const info = aiProviderInfo(id)
+    const apiKey = keys.value[id].trim()
+    const url = id === "custom" && baseUrl.value.trim() !== data.value?.settings.aiProviderBaseUrl ? baseUrl.value.trim() : ""
+    if (url && !isHttpUrl(url)) return void (testErrors.value[id] = "Enter a valid http(s) URL")
+    testing.value.push(id)
+    try {
+        const res = await $fetch<SettingsResponse>(`/api/system/ai-providers/${id}`, {method: "POST", body: {...(apiKey ? {apiKey} : {}), ...(url ? {baseUrl: url} : {})}})
+        keys.value[id] = ""
+        delete testErrors.value[id]
+        applyProviders(res)
+        if (!auto) useToast().success(apiKey || url ? `${info.name} works, saved` : `${info.name} works`)
+    } catch (err) {
+        testErrors.value[id] = errorMessage(err)
+    } finally {
+        testing.value = testing.value.filter((t) => t !== id)
+    }
+}
+
+/** Removes the saved credentials of a provider: its environment variable applies again, without one it is disabled. */
+async function removeCredentials(id: AiProviderId) {
+    const info = aiProviderInfo(id)
+    const env = data.value?.settings.aiProviders[id].envApiKey
+    const ok = await confirm({
+        title: id === "custom" ? "Remove the custom AI provider?" : `Remove the ${info.name} API key?`,
+        message: env ? `${info.env} applies again.` : `${info.name} is disabled, its models can't be used anymore.`,
+        confirmLabel: "Remove",
+        danger: true
+    })
+    if (!ok) return
+    const res = await run(() => $fetch<SettingsResponse>(`/api/system/ai-providers/${id}`, {method: "DELETE"}), `${info.name} ${env ? "uses its environment key again" : "removed"}`)
+    if (!res) return
+    delete testErrors.value[id]
+    applyProviders(res)
+}
+
+const providerInfo = computed(() => aiProviderInfo(provider.value))
+const providerView = computed(() => data.value?.settings.aiProviders[provider.value])
+const enabledProviders = computed(() => AI_PROVIDERS.filter((p) => providerEnabled(p.id)))
+/** Indexing and retrieval need embeddings, which not every provider has */
+const noEmbeddings = computed(() => !enabledProviders.value.some((p) => p.embeddings))
+const providerHint = computed(() => (providerInfo.value.embeddings ? undefined : `${providerInfo.value.name} has no embedding models, enable a provider with embeddings as well.`))
+
+const keyHint = computed(() => {
+    const v = providerView.value
+    const {env, name} = providerInfo.value
+    if (!v) return ""
+    if (v.saved) return provider.value === "custom" ? "Saved here. Enter a new key to replace it." : "A key is saved here. Enter a new one to replace it."
+    if (v.envApiKey) return `A key is configured via ${env}, enter one here to override it.`
+    if (provider.value === "custom") return "Sent as Bearer token. Leave empty for endpoints without authentication (most local servers)."
+    return `Enter a key and test it to enable ${name}, or set ${env} on the server.`
 })
 const aiProviderBaseUrlPlaceholder = "https://api.openai.com/v1"
-const aiProviderBaseUrlHint = `The OpenAI-compatible endpoint, without /chat/completions or /embeddings — e.g. ${aiProviderBaseUrlPlaceholder} or http://localhost:11434/v1.`
+const aiProviderBaseUrlHint = `Enables the custom provider: any OpenAI-compatible endpoint, without /chat/completions or /embeddings, e.g. ${aiProviderBaseUrlPlaceholder} or http://localhost:11434/v1.`
 
 const embedding = computed(() => data.value?.embedding)
 const reembedding = computed(() => !!embedding.value && embedding.value.current < embedding.value.total)
@@ -180,7 +258,7 @@ const {run, pending} = useAction()
 
 async function save() {
     const f = form.value
-    if (!f || !valid.value || !data.value) return
+    if (!f || !valid.value || !data.value || providerBlocker.value) return
     if (embeddingChanged.value) {
         const projects = data.value.projectCount
         const ok = await confirm({
@@ -196,10 +274,6 @@ async function save() {
             $fetch<SettingsResponse>("/api/system/settings", {
                 method: "PATCH",
                 body: {
-                    customAiProvider: f.customAiProvider,
-                    ...(f.customAiProvider ? {aiProviderBaseUrl: f.aiProviderBaseUrl.trim()} : {}),
-                    ...(f.removeOpenrouterApiKey ? {openrouterApiKey: ""} : f.openrouterApiKey.trim() ? {openrouterApiKey: f.openrouterApiKey.trim()} : {}),
-                    ...(f.removeAiProviderApiKey ? {aiProviderApiKey: ""} : f.aiProviderApiKey.trim() ? {aiProviderApiKey: f.aiProviderApiKey.trim()} : {}),
                     ...(embeddingChanged.value ? {embeddingModel: f.embeddingModel.trim(), embeddingDimensions: f.embeddingDimensions.trim() ? Number(f.embeddingDimensions) : null} : {}),
                     defaultModel: f.defaultModel.trim(),
                     fallbackModel: f.fallback ? f.fallbackModel.trim() : "",
@@ -221,9 +295,6 @@ async function save() {
     form.value = toForm(saved.settings)
     original.value = JSON.stringify(form.value)
     data.value = saved
-    // Model lists of the previous provider would be stale
-    useState("openrouter-models", () => null).value = null
-    useState("openrouter-embedding-models", () => null).value = null
 }
 
 function discard() {
@@ -247,7 +318,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
             <div>
                 <p class="eyebrow">Workspace</p>
                 <h1>Global Settings</h1>
-                <p>The AI provider, global instructions, embeddings, source code summaries, the website crawler and data cleanup, for all projects.</p>
+                <p>The AI providers, global instructions, embeddings, source code summaries, the website crawler and data cleanup, for all projects.</p>
             </div>
         </header>
 
@@ -269,7 +340,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                     </div>
                 </template>
                 <div class="stack" style="--gap: 16px">
-                    <p class="small muted">Base security rules for the assistant of every project. They are added to every answer and take precedence over the instructions of each project.</p>
+                    <p class="small muted">Base instructions used by all projects. They are added to every answer and take precedence over the instructions of each project.</p>
                     <UiTextarea
                         v-model="form.globalInstructions"
                         label="Instructions"
@@ -291,44 +362,58 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                 <template #header>
                     <div class="row" style="--gap: 8px">
                         <KeyRound :size="16" class="dim" />
-                        <h2 class="card-title">AI Provider</h2>
+                        <h2 class="card-title">AI Providers</h2>
                     </div>
                 </template>
                 <div class="stack" style="--gap: 16px">
-                    <p class="small muted">The API used for chat answers and embeddings, for every project.</p>
-                    <UiToggle v-model="form.customAiProvider" label="Use a custom AI provider" description="Send requests to any OpenAI-compatible endpoint instead of OpenRouter." />
-                    <div v-if="!form.customAiProvider" class="stack" style="--gap: 16px">
-                        <UiInput
-                            v-model="form.openrouterApiKey"
-                            type="password"
-                            label="OpenRouter API key"
-                            optional
-                            autocomplete="new-password"
-                            :disabled="form.removeOpenrouterApiKey"
-                            :placeholder="data.settings.hasOpenrouterApiKey ? '•••••••• (configured)' : 'sk-or-…'"
-                            :hint="openrouterKeyHint"
-                        />
-                        <UiToggle v-if="data.settings.savedOpenrouterApiKey" v-model="form.removeOpenrouterApiKey" label="Remove saved key" />
+                    <p class="small muted">The APIs used for chat answers and embeddings, for every project. A provider is enabled once it has an API key, and the model pickers list the models of all enabled providers.</p>
+                    <div v-if="noEmbeddings" class="notice warn" role="alert">
+                        <AlertTriangle :size="16" class="warn-icon" />
+                        <div class="stack" style="--gap: 4px">
+                            <p class="small strong">{{ enabledProviders.length ? "Enable at least one provider with embedding models" : "No AI provider is enabled, chat and indexing won't work" }}</p>
+                            <p class="tiny muted">Knowledge is indexed and searched with embeddings, which not every provider offers (OpenCode Go, Anthropic and xAI don't). Enable {{ EMBEDDING_PROVIDER_NAMES }}.</p>
+                        </div>
                     </div>
-                    <div v-else class="stack" style="--gap: 16px">
-                        <UiInput v-model="form.aiProviderBaseUrl" label="Base URL" inputmode="url" autocomplete="off" :placeholder="aiProviderBaseUrlPlaceholder" :error="errors.aiProviderBaseUrl" :hint="aiProviderBaseUrlHint" />
-                        <UiInput
-                            v-model="form.aiProviderApiKey"
-                            type="password"
-                            label="API key"
-                            optional
-                            autocomplete="new-password"
-                            :disabled="form.removeAiProviderApiKey"
-                            :placeholder="data.settings.hasAiProviderApiKey ? '•••••••• (configured)' : 'sk-…'"
-                            :hint="aiProviderKeyHint"
-                        />
-                        <UiToggle v-if="data.settings.savedAiProviderApiKey" v-model="form.removeAiProviderApiKey" label="Remove saved key" />
+                    <AdminProviderPicker v-model="provider" label="AI provider" :status="providerStatus" :hint="providerHint" />
+                    <UiInput
+                        v-if="provider === 'custom'"
+                        v-model="baseUrl"
+                        label="Base URL"
+                        inputmode="url"
+                        autocomplete="off"
+                        :placeholder="aiProviderBaseUrlPlaceholder"
+                        :hint="aiProviderBaseUrlHint"
+                        @keydown.enter.prevent="testProvider(provider)"
+                    />
+                    <UiInput
+                        :key="provider"
+                        v-model="keys[provider]"
+                        secret
+                        :label="provider === 'custom' ? 'API key' : `${providerInfo.name} API key`"
+                        :optional="provider === 'custom'"
+                        :placeholder="providerView?.hasApiKey ? '•••••••• (configured)' : providerInfo.keyPlaceholder"
+                        :error="testErrors[provider]"
+                        :hint="keyHint"
+                        @keydown.enter.prevent="testProvider(provider)"
+                    >
+                        <template v-if="providerView?.saved" #aside>
+                            <button type="button" class="link-btn tiny" @click="removeCredentials(provider)">{{ provider === "custom" ? "Remove" : "Remove key" }}</button>
+                        </template>
+                    </UiInput>
+                    <div class="row end">
+                        <UiButton variant="secondary" size="sm" :loading="testing.includes(provider)" :disabled="testing.includes(provider) || (!pendingCredentials(provider) && !providerEnabled(provider))" @click="testProvider(provider)">
+                            {{ pendingCredentials(provider) ? "Test and save" : "Test again" }}
+                        </UiButton>
                     </div>
-                    <AdminModelPicker v-model="form.defaultModel" label="Default model" hint="Used by every project that doesn't pick a model of its own. Any chat model of the configured provider. Prices are USD per 1M input / output tokens." />
+                    <AdminModelPicker v-model="form.defaultModel" label="Default model" hint="Used by every project that doesn't pick a model of its own. Any chat model of the enabled providers. Prices are USD per 1M input / output tokens." />
                     <p v-if="errors.defaultModel" class="field-error">{{ errors.defaultModel }}</p>
-                    <UiToggle v-model="form.fallback" label="Use a fallback model" description="When a request to a model fails (chat answers, FAQ imports, summaries), it is retried once with this model." />
+                    <UiToggle
+                        v-model="form.fallback"
+                        label="Use a fallback model"
+                        description="When a request to a model fails (chat answers, FAQ imports, summaries), it is retried once with this model. Pick one of another provider to survive provider outages."
+                    />
                     <template v-if="form.fallback">
-                        <AdminModelPicker v-model="form.fallbackModel" label="Fallback model" hint="Any chat model of the configured provider. Prices are USD per 1M input / output tokens." />
+                        <AdminModelPicker v-model="form.fallbackModel" label="Fallback model" hint="Any chat model of the enabled providers. Prices are USD per 1M input / output tokens." />
                         <p v-if="errors.fallbackModel" class="field-error">{{ errors.fallbackModel }}</p>
                     </template>
                     <AdminModelPicker
@@ -382,7 +467,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         <p class="tiny dim">{{ formatNumber(embedding?.current ?? 0) }} of {{ formatNumber(embedding?.total ?? 0) }} chunks done. Answers use the re-indexed knowledge only until this finishes.</p>
                     </div>
 
-                    <AdminModelPicker v-model="form.embeddingModel" kind="embedding" label="Embedding model" hint="Any embedding model of the configured provider. Prices are USD per 1M tokens." />
+                    <AdminModelPicker v-model="form.embeddingModel" kind="embedding" label="Embedding model" hint="Any embedding model of the enabled providers. Prices are USD per 1M tokens." />
                     <p v-if="errors.embeddingModel" class="field-error">{{ errors.embeddingModel }}</p>
                     <UiInput
                         v-model="form.embeddingDimensions"
@@ -512,9 +597,10 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
             <Transition name="bar">
                 <div v-if="dirty" class="savebar panel">
                     <span class="dot warn" />
-                    <span class="grow small">Unsaved changes<template v-if="embeddingChanged"> · re-indexes all projects</template></span>
+                    <span v-if="providerBlocker" class="grow small danger-text">{{ providerBlocker }}</span>
+                    <span v-else class="grow small">Unsaved changes<template v-if="embeddingChanged"> · re-indexes all projects</template></span>
                     <UiButton variant="ghost" size="sm" @click="discard">Discard</UiButton>
-                    <UiButton variant="primary" size="sm" type="submit" :loading="pending" :disabled="!valid">Save changes</UiButton>
+                    <UiButton variant="primary" size="sm" type="submit" :loading="pending" :disabled="!valid || !!providerBlocker">Save changes</UiButton>
                 </div>
             </Transition>
         </form>
@@ -527,6 +613,12 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
 }
 .card-title {
     font-size: 15px;
+}
+.link-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--accent);
 }
 .notice {
     display: flex;

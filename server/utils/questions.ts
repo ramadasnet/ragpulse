@@ -82,10 +82,14 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 
     // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)
     void sendEscalationWebhook(project, session, question)
-    void tagUserSpecific(project, question)
+    const classification = tagUserSpecific(project, question).finally(() => pendingClassifications.delete(question._id))
+    pendingClassifications.set(question._id, classification)
 
     return question
 }
+
+/** Background user-specific classifications still running, by question id: a reply waits for it before deciding on the FAQ */
+const pendingClassifications = new Map<string, Promise<boolean | undefined>>()
 
 const USER_SPECIFIC_PROMPT = `You decide whether a support question escalated from a chat only concerns the one visitor who asked it, or is a general question other visitors could ask too.
 
@@ -108,21 +112,31 @@ export async function classifyUserSpecific(project: Project, question: string, q
             {role: "user", content: question.slice(0, 4000)}
         ]
     })
-    const match = res.content.match(/"userSpecific"\s*:\s*(true|false)/)
-    return match ? match[1] === "true" : undefined
+    const text = res.content
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "")
+    try {
+        const decision = JSON.parse(text)
+        return typeof decision?.userSpecific === "boolean" ? decision.userSpecific : undefined
+    } catch {
+        return undefined
+    }
 }
 
-/** Stores the `classifyUserSpecific` decision on a new question. Runs in the background and never throws. */
-async function tagUserSpecific(project: Project, question: Question): Promise<void> {
+/** Stores the `classifyUserSpecific` decision on a new question and returns it. Runs in the background and never throws. */
+async function tagUserSpecific(project: Project, question: Question): Promise<boolean | undefined> {
     try {
         const userSpecific = await classifyUserSpecific(project, question.question, question._id)
-        if (userSpecific === undefined) return
+        if (userSpecific === undefined) return undefined
         const {questions} = await useCollections()
         await questions.updateOne({_id: question._id}, {$set: {userSpecific}})
         question.userSpecific = userSpecific
         if (userSpecific) logger.info("Questions.classify", `Question ${question._id}`, "User specific")
+        return userSpecific
     } catch (err) {
         logger.warn("Questions.classify", `Could not classify question ${question._id}`, err)
+        return undefined
     }
 }
 
@@ -204,6 +218,8 @@ export async function replyToQuestion(params: {
     const answer = params.answer.trim()
     if (!answer) throw createError({statusCode: 400, statusMessage: "Answer cannot be empty"})
 
+    // Taken before the read: a classification finishing in between has then either been read or is still awaited below
+    const pendingClassification = pendingClassifications.get(params.questionId)
     const question = await questions.findOne({_id: params.questionId})
     if (!question) throw createError({statusCode: 404, statusMessage: "Question not found"})
     if (question.status === "dismissed") throw createError({statusCode: 409, statusMessage: "Question was dismissed"})
@@ -281,6 +297,8 @@ export async function replyToQuestion(params: {
     }
 
     let faq: Faq | undefined
+    // A reply right after the escalation waits for its classification, so a user-specific answer never lands in the FAQ by default
+    if (pendingClassification && params.addToFaq === undefined && question.userSpecific === undefined && !question.faqId) question.userSpecific = await pendingClassification
     // User-specific questions are only added when asked explicitly
     const addToFaq = params.addToFaq ?? !question.userSpecific
     // When sanitizing removes everything the answer was only personal data, so no FAQ entry is created

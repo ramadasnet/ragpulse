@@ -58,7 +58,7 @@ async function loadList() {
 }
 
 /**
- * Refreshes the counts, whether each listed visitor is in the chat and adds new escalations on top. Questions that left
+ * Refreshes the counts, whether each listed visitor is in the chat, the user-specific tag and adds new escalations on top. Questions that left
  * the tab stay listed (like after a reply), so the one being read is never closed under the admin.
  */
 let pollRequest = 0
@@ -70,8 +70,11 @@ async function poll() {
     await loadCounts()
     if (!fresh || id !== requestId || current !== pollRequest) return
     const known = new Set(items.value.map((q) => q._id))
-    const inChat = new Map(fresh.map((q) => [q._id, q.visitorInChat]))
-    const updated = items.value.map((q) => (inChat.has(q._id) && inChat.get(q._id) !== q.visitorInChat ? {...q, visitorInChat: inChat.get(q._id)} : q))
+    const freshById = new Map(fresh.map((q) => [q._id, q]))
+    const updated = items.value.map((q) => {
+        const f = freshById.get(q._id)
+        return f && (f.visitorInChat !== q.visitorInChat || f.userSpecific !== q.userSpecific) ? {...q, visitorInChat: f.visitorInChat, userSpecific: f.userSpecific} : q
+    })
     items.value = [...fresh.filter((q) => !known.has(q._id)), ...updated]
 }
 

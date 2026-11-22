@@ -270,4 +270,26 @@ describe("user-specific questions", () => {
         expect(faqs.length).toBe(count)
         expect(!!result.faq).toBe(count > 0)
     })
+
+    test("a reply sent while the classification is pending waits for it before adding to the FAQ", async () => {
+        const db = fakeDb()
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        mockEscalation(db, {
+            ...decide('{"userSpecific": true}'),
+            chatCompletion: async () => {
+                await gate
+                return {content: '{"userSpecific": true}'}
+            }
+        })
+        const created = await createQuestion({project, session, question: "Why was my account suspended?", reason: "user_request", messageId: "m1"})
+        const faqs = mockReply({...created})
+        const reply = replyToQuestion({questionId: created._id, answer: "It was flagged for review.", author, notifyVisitor: false})
+        release()
+        const result = await reply
+        expect(faqs.length).toBe(0)
+        expect(result.faq).toBeUndefined()
+    })
 })

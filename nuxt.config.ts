@@ -69,16 +69,8 @@ export default defineNuxtConfig({
                 {name: "color-scheme", content: "dark light"},
                 {name: "theme-color", content: "#0a0b0e"}
             ],
-            link: [
-                {rel: "icon", type: "image/svg+xml", href: "/favicon.svg"},
-                // The admin dashboard is installable as a PWA, the public chat and landing builds are not
-                ...(target === "chat" || landing
-                    ? []
-                    : [
-                          {rel: "manifest", href: "/manifest.webmanifest"},
-                          {rel: "apple-touch-icon", href: "/apple-touch-icon.png"}
-                      ])
-            ]
+            // The PWA manifest links are added from app/app.vue, only on dashboard and login routes
+            link: [{rel: "icon", type: "image/svg+xml", href: "/favicon.svg"}]
         }
     },
 

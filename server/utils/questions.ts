@@ -87,6 +87,13 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 
     // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)
     void sendEscalationWebhook(project, session, question)
+    void notifyProject(project._id, "escalations", {
+        title: `Escalated question · ${project.title}`,
+        body: `${session.visitorName || "A visitor"}: ${question.question || "Asked to contact support"}`,
+        url: `/admin/projects/${project._id}/questions?q=${question._id}`,
+        tag: `question-${question._id}`,
+        priority: true
+    })
     if (classify) {
         const classification = tagUserSpecific(project, question).finally(() => pendingClassifications.delete(question._id))
         pendingClassifications.set(question._id, classification)

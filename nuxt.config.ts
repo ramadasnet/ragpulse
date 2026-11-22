@@ -16,6 +16,7 @@ const adminOnly = [
     "server/api/*.ts",
     "server/api/models/**",
     "server/api/projects/**",
+    "server/api/push/**",
     "server/api/system/**",
     "server/api/tokens/**",
     "server/api/users/**",
@@ -69,6 +70,7 @@ export default defineNuxtConfig({
                 {name: "color-scheme", content: "dark light"},
                 {name: "theme-color", content: "#0a0b0e"}
             ],
+            // The PWA manifest links are added from app/app.vue, only on dashboard and login routes
             link: [{rel: "icon", type: "image/svg+xml", href: "/favicon.svg"}]
         }
     },

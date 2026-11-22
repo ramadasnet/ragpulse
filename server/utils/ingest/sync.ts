@@ -1,5 +1,5 @@
 // Source synchronisation: fetch → markdown → chunks → embeddings → MongoDB.
-import {DEFAULT_REFRESH_HOURS, projectIngestDetail, type Chunk, type DocumentRecord, type IngestDetail, type Source, type SyncRun} from "#shared/types"
+import {DEFAULT_REFRESH_HOURS, projectIngestDetail, type Chunk, type DocumentRecord, type IngestDetail, type Project, type Source, type SyncRun} from "#shared/types"
 import {chunkMarkdown, type MarkdownChunk} from "./chunker"
 import {createCodeSummarizer} from "./code-summary"
 import {CHUNK_PRESETS, createStreamingDeduper, dedupeAcrossDocuments, refineMarkdown} from "./detail"
@@ -68,13 +68,22 @@ function errorText(err: any, source: Source): string {
 }
 
 /** Records a sync run in the source's history. History must never break a sync. */
-async function recordSyncRun(run: Omit<SyncRun, "_id">): Promise<void> {
+async function recordSyncRun(run: Omit<SyncRun, "_id">, source: Source, project: Project | null): Promise<void> {
     try {
         const {syncRuns} = await useCollections()
         await syncRuns.insertOne({...run, _id: newId()})
     } catch (err: any) {
         logger.warn("Ingest.recordSyncRun", "Could not record the sync run", err)
     }
+    if (!project) return
+    const title = {success: "Sync finished", partial: "Sync finished with warnings", failed: "Sync failed"}[run.status]
+    const summary = `${run.documents ?? 0} documents, ${run.changed} changed, ${run.removed} removed`
+    void notifyProject(project._id, "syncs", {
+        title: `${title} · ${project.title}`,
+        body: `${source.title}: ${run.status === "failed" ? run.message || "Unknown error" : summary}`,
+        url: `/admin/projects/${project._id}/knowledge/sources/${source._id}`,
+        tag: `sync-${source._id}`
+    })
 }
 
 /** Removes all documents, chunks and history of a source. */
@@ -359,21 +368,25 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                 $unset: unset
             }
         )
-        await recordSyncRun({
-            projectId: source.projectId,
-            sourceId,
-            status: message ? "partial" : "success",
-            startedAt: new Date(startedAt),
-            finishedAt: new Date(),
-            durationMs,
-            documents: documentCount,
-            bytes: totals.bytes,
-            chunks: chunkCount,
-            changed: result.changed,
-            removed: result.removed,
-            embedded: result.embedded,
-            ...(message ? {message} : {})
-        })
+        await recordSyncRun(
+            {
+                projectId: source.projectId,
+                sourceId,
+                status: message ? "partial" : "success",
+                startedAt: new Date(startedAt),
+                finishedAt: new Date(),
+                durationMs,
+                documents: documentCount,
+                bytes: totals.bytes,
+                chunks: chunkCount,
+                changed: result.changed,
+                removed: result.removed,
+                embedded: result.embedded,
+                ...(message ? {message} : {})
+            },
+            source,
+            project
+        )
         Object.assign(result, {ok: true, documents: documentCount, chunks: chunkCount})
         if (outcome.upToDate) logger.info("Ingest.sync", label, `Unchanged since the last sync, ${documentCount} docs kept`)
         else logger.info("Ingest.sync", label, `Synced in ${(durationMs / 1000).toFixed(1)}s: ${documentCount} docs (${result.changed} changed, ${result.removed} removed), ${chunkCount} chunks, ${result.embedded} embedded`)
@@ -417,19 +430,23 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
                 }
             )
             .catch(() => {})
-        await recordSyncRun({
-            projectId: source.projectId,
-            sourceId,
-            status: "failed",
-            startedAt: new Date(startedAt),
-            finishedAt: new Date(),
-            durationMs: Date.now() - startedAt,
-            ...(counts ? {documents: counts.documents, bytes: counts.bytes, chunks: counts.chunks} : {}),
-            changed: result.changed,
-            removed: result.removed,
-            embedded: result.embedded,
-            message
-        })
+        await recordSyncRun(
+            {
+                projectId: source.projectId,
+                sourceId,
+                status: "failed",
+                startedAt: new Date(startedAt),
+                finishedAt: new Date(),
+                durationMs: Date.now() - startedAt,
+                ...(counts ? {documents: counts.documents, bytes: counts.bytes, chunks: counts.chunks} : {}),
+                changed: result.changed,
+                removed: result.removed,
+                embedded: result.embedded,
+                message
+            },
+            source,
+            project
+        )
         return result
     }
 }

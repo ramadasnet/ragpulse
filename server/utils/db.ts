@@ -1,6 +1,6 @@
 import {MongoClient, type Db, type Collection} from "mongodb"
 import {randomBytes} from "node:crypto"
-import type {ApiToken, ChatMessage, ChatSession, Chunk, DocumentRecord, Faq, Project, Question, Source, SyncRun, User} from "#shared/types"
+import type {ApiToken, ChatMessage, ChatSession, Chunk, DocumentRecord, Faq, Project, PushDevice, Question, Source, SyncRun, User} from "#shared/types"
 import type {SettingsDoc} from "./settings"
 import logger from "./logger"
 
@@ -35,6 +35,7 @@ export interface Collections {
     locks: Collection<LockDoc>
     extractions: Collection<ExtractionDoc>
     settings: Collection<SettingsDoc>
+    pushDevices: Collection<PushDevice>
 }
 
 export const VECTOR_INDEX_NAME = "chunk_embeddings"
@@ -91,7 +92,8 @@ async function connect(): Promise<DbState> {
         syncRuns: db.collection<SyncRun>("syncRuns"),
         locks: db.collection<LockDoc>("locks"),
         extractions: db.collection<ExtractionDoc>("extractions"),
-        settings: db.collection<SettingsDoc>("settings")
+        settings: db.collection<SettingsDoc>("settings"),
+        pushDevices: db.collection<PushDevice>("pushDevices")
     }
     await ensureIndexes(collections)
     await migrateEmbeddingKeys(collections)
@@ -135,6 +137,8 @@ async function ensureIndexes(c: Collections) {
         // Sync history retention cleanup
         c.syncRuns.createIndex({startedAt: 1}),
         c.locks.createIndex({expiresAt: 1}, {expireAfterSeconds: 0}),
+        c.pushDevices.createIndex({events: 1}),
+        c.pushDevices.createIndex({userId: 1}),
         // Refreshed on every sync that still uses the entry
         c.extractions.createIndex({usedAt: 1}, {expireAfterSeconds: 90 * 24 * 3600})
     ])

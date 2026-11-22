@@ -101,17 +101,22 @@ Reply with strict JSON only, no markdown fences: {"userSpecific": true} or {"use
 /** Asks the AI whether an escalated question only concerns the visitor who asked it. Undefined when no decision could be made. */
 export async function classifyUserSpecific(project: Project, question: string, questionId?: string): Promise<boolean | undefined> {
     if (!question.trim() || !(await hasAiProvider())) return undefined
-    const res = await chatCompletion({
-        model: await projectModel(project),
-        temperature: 0,
-        maxTokens: 20,
-        signal: AbortSignal.timeout(30_000),
-        log: {action: "Questions.classify", context: [`Question ${questionId ?? "new"}`, `Project ${project._id}`]},
-        messages: [
-            {role: "system", content: USER_SPECIFIC_PROMPT},
-            {role: "user", content: question.slice(0, 4000)}
-        ]
-    })
+    const chatModel = await projectModel(project)
+    const model = (await getAppSettings()).decisionModel || chatModel
+    const decide = (id: string) =>
+        chatCompletion({
+            model: id,
+            temperature: 0,
+            maxTokens: 20,
+            signal: AbortSignal.timeout(30_000),
+            log: {action: "Questions.classify", context: [`Question ${questionId ?? "new"}`, `Project ${project._id}`]},
+            messages: [
+                {role: "system", content: USER_SPECIFIC_PROMPT},
+                {role: "user", content: question.slice(0, 4000)}
+            ]
+        })
+    // The decision model may not exist on a custom provider: the project's model decides then
+    const res = await decide(model).catch((err) => (model === chatModel ? Promise.reject(err) : decide(chatModel)))
     const text = res.content
         .trim()
         .replace(/^```(?:json)?\s*/i, "")

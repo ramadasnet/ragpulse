@@ -201,7 +201,7 @@ test("a new question after the conversation was given back to the agent is escal
 })
 
 describe("user-specific questions", () => {
-    const decide = (content: string) => ({hasAiProvider: async () => true, projectModel: async () => "test", chatCompletion: async () => ({content})})
+    const decide = (content: string) => ({hasAiProvider: async () => true, projectModel: async () => "test", getAppSettings: async () => ({decisionModel: "jev"}), chatCompletion: async () => ({content})})
 
     test.each([
         ['{"userSpecific": true}', true],
@@ -210,6 +210,24 @@ describe("user-specific questions", () => {
     ])("reads the decision from %p", async (content, expected) => {
         Object.assign(globalThis, decide(content))
         expect(await classifyUserSpecific(project, "Why was my account suspended?")).toBe(expected as boolean | undefined)
+    })
+
+    test("asks the decision model, or the project's model when it fails or is not set", async () => {
+        const models: string[] = []
+        Object.assign(globalThis, {
+            ...decide(""),
+            chatCompletion: async ({model}: any) => {
+                models.push(model)
+                if (model === "jev") throw new Error("model not found")
+                return {content: '{"userSpecific": true}'}
+            }
+        })
+        expect(await classifyUserSpecific(project, "Why was my account suspended?")).toBe(true)
+        expect(models).toEqual(["jev", "test"])
+        models.length = 0
+        Object.assign(globalThis, {getAppSettings: async () => ({decisionModel: ""})})
+        expect(await classifyUserSpecific(project, "Why was my account suspended?")).toBe(true)
+        expect(models).toEqual(["test"])
     })
 
     test("makes no decision without an AI provider", async () => {

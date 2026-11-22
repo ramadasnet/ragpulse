@@ -358,6 +358,8 @@ export interface AppSettings {
     defaultModel: string
     /** Chat model used when a request to the project's (or task's) model fails. Empty = no fallback. */
     fallbackModel: string
+    /** Small, cheap model for yes / no decisions, e.g. whether an escalated question is user specific. Empty = the project's chat model. */
+    decisionModel: string
     /** Model that summarizes source code of git repositories. Empty disables summaries. */
     codeSummaryModel: string
     /** User-Agent of the website crawler. Empty = default `RAGPulseBot/1.0 (+url)`. */

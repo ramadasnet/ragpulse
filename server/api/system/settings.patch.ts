@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
     else if (input.aiProviderApiKey !== undefined) unset.push("aiProviderApiKey")
     if (input.defaultModel !== undefined) patch.defaultModel = input.defaultModel
     if (input.fallbackModel !== undefined) patch.fallbackModel = input.fallbackModel
+    if (input.decisionModel !== undefined) patch.decisionModel = input.decisionModel
     if (input.codeSummaryModel !== undefined) patch.codeSummaryModel = input.codeSummaryModel
     if (input.userAgent !== undefined) patch.userAgent = input.userAgent
     if (input.requestIntervalMs !== undefined) patch.requestIntervalMs = input.requestIntervalMs

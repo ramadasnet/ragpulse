@@ -46,11 +46,11 @@ export function providerVerified(app: AppSettings, id: AiProviderId): boolean {
 }
 
 /**
- * The global models (default, fallback, summary, embedding) must belong to an enabled provider: a model that was changed,
+ * The global models (default, fallback, decision, summary, embedding) must belong to an enabled provider: a model that was changed,
  * or whose provider is disabled by this change. Throws a 400 otherwise.
  */
 export function assertGlobalModelProviders(current: AppSettings, candidate: AppSettings) {
-    const models = {defaultModel: "default model", fallbackModel: "fallback model", codeSummaryModel: "summary model", embeddingModel: "embedding model"} as const
+    const models = {defaultModel: "default model", fallbackModel: "fallback model", decisionModel: "decision model", codeSummaryModel: "summary model", embeddingModel: "embedding model"} as const
     for (const [key, label] of Object.entries(models) as [keyof typeof models, string][]) {
         const id = candidate[key]
         if (!id) continue
@@ -82,6 +82,7 @@ export function defaultAppSettings(): AppSettings {
         embeddingDimensionsParam: true,
         defaultModel: String(config.defaultChatModel || "openrouter/free").trim(),
         fallbackModel: String(config.fallbackModel ?? "").trim(),
+        decisionModel: String(config.decisionModel ?? "").trim(),
         codeSummaryModel: String(config.codeSummaryModel ?? "").trim(),
         userAgent: String(config.crawlerUserAgent || "").trim(),
         requestIntervalMs: Math.max(0, Number(config.crawlerRequestIntervalMs ?? 500) || 0),
@@ -178,6 +179,7 @@ export const settingsPatchSchema = z
         embeddingDimensions: z.number().int().min(32).max(8192).nullable(),
         defaultModel: modelId,
         fallbackModel: z.union([z.literal(""), modelId]),
+        decisionModel: z.union([z.literal(""), modelId]),
         codeSummaryModel: z.union([z.literal(""), modelId]),
         userAgent: z
             .string()

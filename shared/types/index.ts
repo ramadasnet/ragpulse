@@ -280,6 +280,10 @@ export interface Question {
     visitorEmailDueAt?: Date
     /** FAQ entry created from the answer */
     faqId?: string
+    /** The AI decided the question only concerns this visitor (their account, order, data): its answer is not added to the FAQ by default */
+    userSpecific?: boolean
+    /** Set while the user-specific classification runs (cleared when it ends), so a reply on any server waits for its decision */
+    classifyingAt?: Date
     createdAt: Date
     updatedAt: Date
 }
@@ -359,6 +363,8 @@ export interface AppSettings {
     defaultModel: string
     /** Chat model used when a request to the project's (or task's) model fails. Empty = no fallback. */
     fallbackModel: string
+    /** Small, cheap model for yes / no decisions, e.g. whether an escalated question is user specific. Empty = the project's chat model. */
+    decisionModel: string
     /** Model that summarizes source code of git repositories. Empty disables summaries. */
     codeSummaryModel: string
     /** User-Agent of the website crawler. Empty = default `RAGPulseBot/1.0 (+url)`. */

@@ -51,7 +51,12 @@ export function usePush() {
         // Always replace an existing subscription so a stale or expired endpoint (or regenerated VAPID key) isn't reused
         if (existing) await existing.unsubscribe().catch(() => {})
         const subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: decodeBase64Url(publicKey)})
-        await save(subscription, events)
+        try {
+            await save(subscription, events)
+        } catch (err) {
+            await subscription.unsubscribe().catch(() => {})
+            throw err
+        }
         return subscription
     }
 
@@ -84,19 +89,32 @@ export function usePush() {
         await $fetch(`/api/push/devices/${id}`, {method: "DELETE"}).catch(() => {})
     }
 
-    /** Sends a test notification; if the push service reports an expired subscription (410), renews it and retries once. */
-    async function test(events: PushEvent[]): Promise<void> {
+    /** Sends a test notification; if the push service reports an expired subscription (410), renews it and retries once.
+     *  Calls `onDisconnected` when the failure leaves this device without an active server registration. */
+    async function test(events: PushEvent[], onDisconnected?: () => void): Promise<void> {
         const subscription = await currentSubscription()
-        if (!subscription) throw new Error("Notifications are off on this device")
+        if (!subscription) {
+            onDisconnected?.()
+            throw new Error("Notifications are off on this device")
+        }
         try {
             await $fetch(`/api/push/devices/${await deviceId(subscription)}/test`, {method: "POST"})
         } catch (err: any) {
             if ((err?.statusCode ?? err?.data?.statusCode) !== 410) throw err
-            const renewed = await subscribeFresh(events)
+            let renewed: PushSubscription
+            try {
+                renewed = await subscribeFresh(events)
+            } catch (renewErr) {
+                onDisconnected?.()
+                throw renewErr
+            }
             try {
                 await $fetch(`/api/push/devices/${await deviceId(renewed)}/test`, {method: "POST"})
             } catch (retryErr: any) {
-                if ((retryErr?.statusCode ?? retryErr?.data?.statusCode) === 410) await renewed.unsubscribe().catch(() => {})
+                if ((retryErr?.statusCode ?? retryErr?.data?.statusCode) === 410) {
+                    await renewed.unsubscribe().catch(() => {})
+                    onDisconnected?.()
+                }
                 throw retryErr
             }
         }

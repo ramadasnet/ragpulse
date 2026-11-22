@@ -65,15 +65,13 @@ async function toggleEvent(event: PushEvent, on: boolean) {
 }
 
 async function sendTest() {
-    if (!events.value) return
-    await runTest(async () => {
-        try {
-            await push.test(events.value!)
-        } catch (err: any) {
-            if ((err?.statusCode ?? err?.data?.statusCode) === 410) events.value = null
-            throw err
-        }
-    }, "Test notification sent")
+    if (!events.value || busy.value) return
+    busy.value = true
+    try {
+        await runTest(() => push.test(events.value!, () => (events.value = null)), "Test notification sent")
+    } finally {
+        busy.value = false
+    }
 }
 </script>
 
@@ -128,7 +126,7 @@ async function sendTest() {
             </div>
 
             <template v-if="events" #footer>
-                <UiButton size="sm" variant="secondary" :loading="testing" @click="sendTest"><Send :size="14" aria-hidden="true" /> Send test notification</UiButton>
+                <UiButton size="sm" variant="secondary" :disabled="busy" :loading="testing" @click="sendTest"><Send :size="14" aria-hidden="true" /> Send test notification</UiButton>
             </template>
         </UiCard>
     </div>

@@ -40,12 +40,16 @@ export function usePush() {
         if (permission !== "granted") throw new Error(permission === "denied" ? "Notifications are blocked. Allow them in the browser or system settings." : "Notifications were not allowed")
         await navigator.serviceWorker.register("/sw.js", {scope: "/"})
         const registration = await navigator.serviceWorker.ready
+        const {publicKey} = await $fetch<{publicKey: string}>("/api/push/key")
+        const key = Uint8Array.from(atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
         let subscription = await registration.pushManager.getSubscription()
-        if (!subscription) {
-            const {publicKey} = await $fetch<{publicKey: string}>("/api/push/key")
-            const key = Uint8Array.from(atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
-            subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: key})
+        // A subscription made with an earlier server key (keys regenerated) gets every push rejected: replace it
+        const current = subscription?.options.applicationServerKey
+        if (subscription && (!current || new Uint8Array(current).toString() !== key.toString())) {
+            await subscription.unsubscribe().catch(() => {})
+            subscription = null
         }
+        subscription ??= await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: key})
         await save(subscription, events)
     }
 

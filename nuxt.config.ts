@@ -16,6 +16,7 @@ const adminOnly = [
     "server/api/*.ts",
     "server/api/models/**",
     "server/api/projects/**",
+    "server/api/push/**",
     "server/api/system/**",
     "server/api/tokens/**",
     "server/api/users/**",

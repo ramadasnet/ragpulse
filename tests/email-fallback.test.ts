@@ -23,6 +23,8 @@ const names = [
     "getChatProject"
 ] as const
 const original = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]))
+// Push notifications of escalations are fire-and-forget and never throw
+Object.assign(globalThis, {notifyProject: async () => {}})
 
 afterEach(() => {
     for (const name of names) {

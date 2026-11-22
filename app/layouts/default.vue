@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {BarChart3, BookOpen, ChevronsUpDown, Code2, Database, FolderKanban, LogOut, Menu, MessagesSquare, Palette, Plus, Settings, SlidersHorizontal, Users, Inbox, Plug, X} from "lucide-vue-next"
+import {BarChart3, Bell, BookOpen, ChevronsUpDown, Code2, Database, FolderKanban, LogOut, Menu, MessagesSquare, Palette, Plus, Settings, SlidersHorizontal, Users, Inbox, Plug, X} from "lucide-vue-next"
 import type {ProjectPermission} from "#shared/types"
 
 const {me, isAdmin, can} = useMe()
@@ -73,16 +73,28 @@ function syncOpenQuestions() {
     refreshOpenQuestions(id).catch(() => {})
 }
 watch(projectId, syncOpenQuestions)
+
+// A tapped push notification asks the open dashboard to show its view (public/sw.js)
+function onWorkerMessage(e: MessageEvent) {
+    if (e.data?.type === "navigate" && typeof e.data.path === "string" && e.data.path.startsWith("/admin")) navigateTo(e.data.path)
+}
+
 onMounted(() => {
     openQuestionsPoll = setInterval(syncOpenQuestions, OPEN_QUESTIONS_POLL_MS)
     document.addEventListener("visibilitychange", syncOpenQuestions)
+    if (pushSupported()) navigator.serviceWorker.addEventListener("message", onWorkerMessage)
 })
 onBeforeUnmount(() => {
     clearInterval(openQuestionsPoll)
     document.removeEventListener("visibilitychange", syncOpenQuestions)
+    if (pushSupported()) navigator.serviceWorker.removeEventListener("message", onWorkerMessage)
 })
 
+const push = usePush()
+
 async function logout() {
+    // The next user of this device must not receive this user's notifications
+    await push.disable().catch(() => {})
     await $fetch("/auth/logout", {method: "POST"})
     await clear()
     me.value = null
@@ -127,6 +139,7 @@ async function logout() {
                 <p class="nav-label">Workspace</p>
                 <NuxtLink to="/admin" class="nav-item" :class="{active: route.path === '/admin' || route.path === '/admin/projects/new'}"> <FolderKanban :size="16" /> <span>Projects</span> </NuxtLink>
                 <NuxtLink v-if="isAdmin" to="/admin/users" class="nav-item" :class="{active: isActive('/admin/users')}"> <Users :size="16" /> <span>Users</span> </NuxtLink>
+                <NuxtLink to="/admin/notifications" class="nav-item" :class="{active: isActive('/admin/notifications')}"> <Bell :size="16" /> <span>Notifications</span> </NuxtLink>
                 <NuxtLink to="/admin/mcp" class="nav-item" :class="{active: isActive('/admin/mcp')}"> <Plug :size="16" /> <span>MCP &amp; API</span> </NuxtLink>
                 <NuxtLink v-if="isAdmin" to="/admin/system" class="nav-item" :class="{active: isActive('/admin/system')}"> <Database :size="16" /> <span>System</span> </NuxtLink>
                 <NuxtLink v-if="isAdmin" to="/admin/settings" class="nav-item" :class="{active: isActive('/admin/settings')}"> <SlidersHorizontal :size="16" /> <span>Global Settings</span> </NuxtLink>

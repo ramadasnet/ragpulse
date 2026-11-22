@@ -333,6 +333,32 @@ export interface SyncRun {
     message?: string
 }
 
+/** Push notifications a device can subscribe to */
+export const PUSH_EVENTS = ["conversations", "escalations", "syncs"] as const
+
+export type PushEvent = (typeof PUSH_EVENTS)[number]
+
+/** Each notification goes only to users with this permission on the project */
+export const PUSH_EVENT_INFO: Record<PushEvent, {label: string; description: string; permission: ProjectPermission}> = {
+    conversations: {label: "New conversations", description: "A visitor started a conversation", permission: "sessions:read"},
+    escalations: {label: "Escalated questions", description: "A visitor escalated a question. Priority: stays on screen until dismissed", permission: "questions:reply"},
+    syncs: {label: "Knowledge syncs", description: "A knowledge source finished syncing", permission: "sources:manage"}
+}
+
+/** A browser / installed app subscribed to Web Push notifications of a user */
+export interface PushDevice {
+    /** sha256 (hex) of the endpoint */
+    _id: string
+    userId: string
+    /** Push service URL of the subscription, unique per device and browser */
+    endpoint: string
+    keys: {p256dh: string; auth: string}
+    events: PushEvent[]
+    userAgent?: string
+    createdAt: Date
+    updatedAt: Date
+}
+
 /** Session payload stored in the sealed cookie (nuxt-auth-utils) */
 export interface SessionUser {
     id: string

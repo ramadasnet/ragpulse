@@ -82,6 +82,15 @@ export default defineEventHandler(async (event) => {
         await sessions.updateOne({_id: session._id}, {$inc: inc, $set: {lastMessageAt: now, visitorSeenAt: now}, $unset: {finishedAt: "", finishedBy: ""}})
         if (!human) session.userMessageCount++
         logger.info("Chat.messages", `Session ${session._id}`, `Project ${project._id}`, `Visitor message ${human ? "(human handling)" : `#${session.userMessageCount}`}`)
+        // The first visitor message starts the conversation (sessions are created when the chat opens)
+        if (!session.messageCount) {
+            void notifyProject(project._id, "conversations", {
+                title: `New conversation · ${project.title}`,
+                body: `${session.visitorName || "Visitor"}: ${content}`,
+                url: `/admin/projects/${project._id}/conversations/${session._id}`,
+                tag: `session-${session._id}`
+            })
+        }
         send("meta", {userMessageId: userMessage._id})
         if (human) {
             send("human", {})

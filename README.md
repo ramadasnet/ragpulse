@@ -293,6 +293,15 @@ Each answered question has exactly one FAQ entry: learning skips everything up t
 answering a question of an already finished conversation reuses the entry learned from it.
 Conversations without activity for 180 days (`NUXT_CHAT_SESSION_RETENTION_DAYS`) are deleted automatically by the scheduler.
 
+### Notifications
+
+The admin dashboard is installable as an app (PWA). **Notifications** turns on Web Push for the current device, with separate
+switches for new conversations, escalated questions (priority: they stay on screen until dismissed) and finished knowledge syncs.
+Each device has its own settings, notifications only cover projects where the user has the matching permission, and tapping one
+opens its conversation, question or source. Signing out turns them off on that device. On iPhone and iPad, notifications need
+the app added to the Home Screen (iOS 16.4+). The Web Push (VAPID) keys are generated on first use and stored in MongoDB, so no
+configuration is needed, but browsers only allow push on HTTPS (or localhost).
+
 ### Roles
 
 - **Admin** — full access, manages projects, users and system.

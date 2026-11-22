@@ -14,7 +14,7 @@ const route = useRoute()
 const installable = computed(() => {
     // The router also matches these routes with a trailing slash
     const path = route.path.replace(/\/+$/, "")
-    return !path.startsWith("/chat/") && path !== "/landing"
+    return !(path === "/chat" || path.startsWith("/chat/")) && path !== "/landing"
 })
 
 useHead({

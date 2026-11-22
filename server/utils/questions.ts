@@ -82,8 +82,48 @@ export async function createQuestion(params: {project: Project; session: ChatSes
 
     // Fire and forget: an optional third-party POST must not delay the escalation response (it never throws)
     void sendEscalationWebhook(project, session, question)
+    void tagUserSpecific(project, question)
 
     return question
+}
+
+const USER_SPECIFIC_PROMPT = `You decide whether a support question escalated from a chat only concerns the one visitor who asked it, or is a general question other visitors could ask too.
+
+- User specific: about the visitor's own account, order, subscription, billing, data or situation, so only the support team can answer it by looking at that visitor's details. Examples: "Why was my account suspended?", "Where is my order 1234?", "Why was I charged twice this month?".
+- General: the answer helps other visitors too (how something works, policies, pricing, setup steps, limits), even when phrased with "I" or "my". Examples: "How do I reset my password?", "Can I run it on AWS for free?".
+
+Reply with strict JSON only, no markdown fences: {"userSpecific": true} or {"userSpecific": false}`
+
+/** Asks the AI whether an escalated question only concerns the visitor who asked it. Undefined when no decision could be made. */
+export async function classifyUserSpecific(project: Project, question: string, questionId?: string): Promise<boolean | undefined> {
+    if (!question.trim() || !(await hasAiProvider())) return undefined
+    const res = await chatCompletion({
+        model: await projectModel(project),
+        temperature: 0,
+        maxTokens: 20,
+        signal: AbortSignal.timeout(30_000),
+        log: {action: "Questions.classify", context: [`Question ${questionId ?? "new"}`, `Project ${project._id}`]},
+        messages: [
+            {role: "system", content: USER_SPECIFIC_PROMPT},
+            {role: "user", content: question.slice(0, 4000)}
+        ]
+    })
+    const match = res.content.match(/"userSpecific"\s*:\s*(true|false)/)
+    return match ? match[1] === "true" : undefined
+}
+
+/** Stores the `classifyUserSpecific` decision on a new question. Runs in the background and never throws. */
+async function tagUserSpecific(project: Project, question: Question): Promise<void> {
+    try {
+        const userSpecific = await classifyUserSpecific(project, question.question, question._id)
+        if (userSpecific === undefined) return
+        const {questions} = await useCollections()
+        await questions.updateOne({_id: question._id}, {$set: {userSpecific}})
+        question.userSpecific = userSpecific
+        if (userSpecific) logger.info("Questions.classify", `Question ${question._id}`, "User specific")
+    } catch (err) {
+        logger.warn("Questions.classify", `Could not classify question ${question._id}`, err)
+    }
 }
 
 /**
@@ -147,7 +187,7 @@ async function sendAnswerEmail(question: Question, project: Project): Promise<bo
 /**
  * Answers an open question: stores the answer, posts it into the chat session as an `agent` message
  * (unless `postToChat` is false, e.g. when it was already answered in the chat, or the conversation ended), adds the Q&A to the
- * project's FAQ (default, one entry per question, reusing the one learned from its finished conversation) and emails the visitor when they are not in the chat:
+ * project's FAQ (default unless the question is user specific, one entry per question, reusing the one learned from its finished conversation) and emails the visitor when they are not in the chat:
  * right away, or after the `answerEmailDelayMinutes` setting unless they open the chat meanwhile.
  */
 export async function replyToQuestion(params: {
@@ -241,8 +281,10 @@ export async function replyToQuestion(params: {
     }
 
     let faq: Faq | undefined
+    // User-specific questions are only added when asked explicitly
+    const addToFaq = params.addToFaq ?? !question.userSpecific
     // When sanitizing removes everything the answer was only personal data, so no FAQ entry is created
-    const faqAnswer = params.addToFaq !== false && !question.faqId ? cleanFaqText(answer, question, project.supportEmail, 8000) : ""
+    const faqAnswer = addToFaq && !question.faqId ? cleanFaqText(answer, question, project.supportEmail, 8000) : ""
     if (faqAnswer) {
         try {
             // The conversation was finished after the question was asked: its learned FAQ already covers it, so it becomes this question's entry

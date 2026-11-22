@@ -144,7 +144,7 @@ const composerHint = computed(() => {
     const parts: string[] = []
     if (setMode.value) parts.push(`${chatReplies.value === 1 ? "Taken from your reply" : `Composed from ${chatReplies.value} replies`} in the conversation, posted to the chat (if the conversation is still open) and saved as the answer.`)
     else parts.push("Posted in the visitor's chat if the conversation is still open.")
-    if (!q.faqId && q.status === "open") parts.push("Added to the FAQ.")
+    if (!q.faqId && q.status === "open") parts.push(q.userSpecific ? "Not added to the FAQ: the question is specific to this visitor." : "Added to the FAQ.")
     if (q.visitorEmail) parts.push(`Emailed to ${q.visitorEmail} only if they don't see it in the chat.`)
     return parts.join(" ")
 })
@@ -212,7 +212,7 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
             <div>
                 <p class="eyebrow">Inbox</p>
                 <h1>Escalated questions</h1>
-                <p>Questions the assistant couldn't answer or that visitors escalated. Your answer appears in their chat, is saved to the FAQ and is emailed when they aren't in the chat.</p>
+                <p>Questions the assistant couldn't answer or that visitors escalated. Your answer appears in their chat, is saved to the FAQ (unless the question is user specific) and is emailed when they aren't in the chat.</p>
             </div>
         </header>
 
@@ -261,6 +261,7 @@ const statusTone = {open: "warning", answered: "success", dismissed: "neutral"} 
                         <div class="row wrap" style="--gap: 6px">
                             <UiBadge :tone="statusTone[selected.status]">{{ selected.status }}</UiBadge>
                             <UiBadge :tone="reasonInfo[selected.reason]?.tone">{{ reasonInfo[selected.reason]?.label }}</UiBadge>
+                            <UiBadge v-if="selected.userSpecific" tone="violet" title="Only concerns this visitor: the answer is not added to the FAQ">User specific</UiBadge>
                             <span class="tiny dim">{{ formatDate(selected.createdAt, true) }}</span>
                         </div>
                         <div class="row wrap" style="--gap: 6px">

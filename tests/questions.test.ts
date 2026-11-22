@@ -1,8 +1,26 @@
 import {afterEach, describe, expect, test} from "bun:test"
-import {createQuestion, extractEscalatedQuestion} from "../server/utils/questions"
+import {classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion} from "../server/utils/questions"
+import {cleanFaqText} from "../server/utils/session-learning"
 import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
 
-const names = ["useCollections", "newId", "publicUrl", "escapeHtml", "sendMail", "sendEscalationWebhook", "hasAiProvider", "searchKnowledge", "getAppSettings", "streamChatCompletion", "extractEscalatedQuestion"] as const
+const names = [
+    "useCollections",
+    "newId",
+    "publicUrl",
+    "escapeHtml",
+    "sendMail",
+    "sendEscalationWebhook",
+    "hasAiProvider",
+    "searchKnowledge",
+    "getAppSettings",
+    "streamChatCompletion",
+    "extractEscalatedQuestion",
+    "chatCompletion",
+    "projectModel",
+    "cleanFaqText",
+    "sessionEnded",
+    "indexFaq"
+] as const
 const original = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]))
 
 afterEach(() => {
@@ -33,7 +51,8 @@ test("escalation returns before SMTP completes and records successful delivery a
         publicUrl: () => "https://example.test/question",
         escapeHtml: (value: string) => value,
         sendMail: () => mail,
-        sendEscalationWebhook: async () => {}
+        sendEscalationWebhook: async () => {},
+        hasAiProvider: async () => false
     })
     const pending = createQuestion({project: {_id: "project", title: "Test", supportEmail: "support@example.test"} as any, session: {_id: "session", visitorName: "Visitor"} as any, question: "Help", reason: "user_request"})
     const result = await Promise.race([pending, Bun.sleep(100).then(() => "blocked")])
@@ -65,7 +84,8 @@ test.each([false, "reject", "unconfigured"])("escalation remains available when 
             if (outcome === "reject") throw new Error("SMTP failed")
             return false
         },
-        sendEscalationWebhook: async () => {}
+        sendEscalationWebhook: async () => {},
+        hasAiProvider: async () => false
     })
     const question = await createQuestion({
         project: {_id: "project", title: "Test", supportEmail: outcome === "unconfigured" ? "" : "support@example.test"} as any,
@@ -115,6 +135,7 @@ function mockEscalation(db: ReturnType<typeof fakeDb>, extra: Record<string, unk
         escapeHtml: (value: string) => value,
         sendMail: async () => false,
         sendEscalationWebhook: async () => {},
+        hasAiProvider: async () => false,
         ...extra
     })
 }
@@ -177,4 +198,76 @@ test("a new question after the conversation was given back to the agent is escal
     expect(llmMessages.slice(1).map((m) => m.content)).toEqual(["What's the maximum database size?", ESCALATE_TOKEN, "(Support team) For small projects, 512MB max.", "Can I run it on AWS for free?"])
     expect(events.at(-1)).toMatchObject({type: "escalated", question: {sessionId: "session", messageId: "m2", status: "open", question: "Can I run it on AWS for free?"}})
     expect(db.questions.map((q) => q.messageId)).toEqual(["m1", "m2"])
+})
+
+describe("user-specific questions", () => {
+    const decide = (content: string) => ({hasAiProvider: async () => true, projectModel: async () => "test", chatCompletion: async () => ({content})})
+
+    test.each([
+        ['{"userSpecific": true}', true],
+        ['```json\n{"userSpecific":false}\n```', false],
+        ["I am not sure", undefined]
+    ])("reads the decision from %p", async (content, expected) => {
+        Object.assign(globalThis, decide(content))
+        expect(await classifyUserSpecific(project, "Why was my account suspended?")).toBe(expected as boolean | undefined)
+    })
+
+    test("makes no decision without an AI provider", async () => {
+        Object.assign(globalThis, {hasAiProvider: async () => false})
+        expect(await classifyUserSpecific(project, "Why was my account suspended?")).toBeUndefined()
+    })
+
+    test("a new escalated question is tagged in the background", async () => {
+        const db = fakeDb()
+        const updates: any[] = []
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => {
+            release = resolve
+        })
+        mockEscalation(db, {
+            ...decide('{"userSpecific": true}'),
+            chatCompletion: async () => {
+                await gate
+                return {content: '{"userSpecific": true}'}
+            }
+        })
+        const collections = await db.collections()
+        Object.assign(globalThis, {useCollections: async () => ({...collections, questions: {...collections.questions, updateOne: async (filter: any, update: any) => updates.push([filter, update])}})})
+        const question = await createQuestion({project, session, question: "Why was my account suspended?", reason: "user_request", messageId: "m1"})
+        expect(question.userSpecific).toBeUndefined()
+        release()
+        await Bun.sleep(5)
+        expect(updates).toEqual([[{_id: question._id}, {$set: {userSpecific: true}}]])
+        expect(question.userSpecific).toBe(true)
+    })
+
+    function mockReply(question: any) {
+        const faqs: any[] = []
+        Object.assign(globalThis, {
+            useCollections: async () => ({
+                questions: {findOne: async () => question, updateOne: async () => ({modifiedCount: 1}), countDocuments: async () => 0},
+                sessions: {findOne: async () => null, updateOne: async () => {}},
+                messages: {insertOne: async () => {}},
+                projects: {findOne: async () => project},
+                faqs: {insertOne: async (doc: any) => faqs.push(doc)}
+            }),
+            newId: () => "faq",
+            sessionEnded: async () => false,
+            cleanFaqText,
+            indexFaq: async () => {}
+        })
+        return faqs
+    }
+    const author = {name: "Support", via: "admin"} as const
+
+    test.each([
+        [false, undefined, 1],
+        [true, undefined, 0],
+        [true, true, 1]
+    ])("answering a question with userSpecific=%p and addToFaq=%p adds %p FAQ entries", async (userSpecific, addToFaq, count) => {
+        const faqs = mockReply({_id: "q1", projectId: "project", sessionId: "session", question: "Why was my account suspended?", visitorName: "Visitor", status: "open", userSpecific, createdAt: new Date()})
+        const result = await replyToQuestion({questionId: "q1", answer: "It was flagged for review.", author, addToFaq, notifyVisitor: false})
+        expect(faqs.length).toBe(count)
+        expect(!!result.faq).toBe(count > 0)
+    })
 })

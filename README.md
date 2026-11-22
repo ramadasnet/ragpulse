@@ -258,7 +258,8 @@ the question is emailed to the project's support email and shows up in the admin
 event pushed to an HTTP endpoint: **Settings → Escalation webhook** POSTs the escalation as JSON, with an editable `{{placeholder}}` body template (project, chat URL, visitor,
 question and up to 500 conversation messages) and optional headers. Replies (from the admin UI or an agent via MCP) are posted
 into the visitor's chat and added to the project FAQ (once per question, with a link from the answered question to view or
-delete the entry). Visitors who left an email only get it by email when they don't see it in the chat: the chat reports when it's
+delete the entry). On escalation the AI also decides whether the question only concerns that visitor (their account, order or
+data): those are tagged **User specific** in the inbox and over MCP, and their answers are not added to the FAQ. Visitors who left an email only get it by email when they don't see it in the chat: the chat reports when it's
 open and visible (the embed widget also tells it when it's closed). Visitors in the chat are never emailed; otherwise the email
 waits for the **Answer emails** delay on **Global Settings** and is cancelled if the visitor opens the chat meanwhile.
 

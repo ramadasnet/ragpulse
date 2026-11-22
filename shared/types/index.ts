@@ -278,6 +278,8 @@ export interface Question {
     visitorEmailDueAt?: Date
     /** FAQ entry created from the answer */
     faqId?: string
+    /** The AI decided the question only concerns this visitor (their account, order, data): its answer is not added to the FAQ by default */
+    userSpecific?: boolean
     createdAt: Date
     updatedAt: Date
 }

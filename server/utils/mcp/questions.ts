@@ -105,6 +105,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
                         sessionId: q.sessionId,
                         question: q.question,
                         reason: q.reason,
+                        userSpecific: q.userSpecific,
                         status: q.status,
                         visitorName: q.visitorName,
                         visitorHasEmail: !!q.visitorEmail,
@@ -123,7 +124,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
                 })
 
                 const countLabel = total > items.length ? `${items.length} of ${total}` : `${items.length}`
-                const summary = `${countLabel} ${status === "all" ? "" : `${status} `}question(s):\n${items.map((q) => `- [${q.projectTitle}] ${q.visitorName || "Visitor"}: "${q.question.slice(0, 140)}" (id: ${q.id}, ${q.reason}${q.humanHandledBy ? `, human handling by ${q.humanHandledBy}` : ""}${q.visitorHasEmail ? ", visitor has email" : ""})`).join("\n")}`
+                const summary = `${countLabel} ${status === "all" ? "" : `${status} `}question(s):\n${items.map((q) => `- [${q.projectTitle}] ${q.visitorName || "Visitor"}: "${q.question.slice(0, 140)}" (id: ${q.id}, ${q.reason}${q.userSpecific ? ", user specific" : ""}${q.humanHandledBy ? `, human handling by ${q.humanHandledBy}` : ""}${q.visitorHasEmail ? ", visitor has email" : ""})`).join("\n")}`
                 return mcpOk(summary, {total, questions: items})
             })
     )
@@ -133,7 +134,7 @@ export function registerMcpQuestionTools(server: McpServer, ctx: McpContext) {
         {
             title: "Reply to a question",
             description:
-                "Answers an open visitor question: posts the answer into the visitor's chat (unless post_to_chat=false or the conversation ended) and emails it when the visitor left an email and is not currently in the chat. Set add_to_faq=true only when the Q&A is reusable for future visitors. Requires questions:reply.",
+                "Answers an open visitor question: posts the answer into the visitor's chat (unless post_to_chat=false or the conversation ended) and emails it when the visitor left an email and is not currently in the chat. Set add_to_faq=true only when the Q&A is reusable for future visitors (never for user-specific questions). Requires questions:reply.",
             inputSchema: {
                 question_id: z.string().min(1).describe("Question id (see list_unanswered_questions)"),
                 answer: z.string().trim().min(1).max(8000).describe("The answer to send to the visitor (markdown). Write it directly to the visitor."),

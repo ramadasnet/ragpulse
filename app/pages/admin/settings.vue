@@ -334,7 +334,8 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                     <AdminModelPicker
                         v-model="form.decisionModel"
                         label="Decision model"
-                        hint="A small, cheap model for quick yes / no decisions, like tagging escalated questions as user specific. Empty = the project's model. Prices are USD per 1M input / output tokens."
+                        :default-model="form.defaultModel"
+                        hint="A small, cheap model for quick yes / no decisions, like tagging escalated questions as user specific. Pick the default model to use each project's own model. Prices are USD per 1M input / output tokens."
                     />
                 </div>
             </UiCard>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {AlertTriangle, Globe, ImageUp, RotateCcw, Send, Trash2} from "lucide-vue-next"
 import type {IngestDetail, Project, ProjectPermission} from "#shared/types"
-import {INGEST_DETAIL_INFO, INGEST_DETAILS, MANUAL_REFRESH, projectIngestDetail, REFRESH_PRESETS} from "#shared/types"
+import {DEFAULT_SUPPORT_DISPLAY_NAME, INGEST_DETAIL_INFO, INGEST_DETAILS, MANUAL_REFRESH, projectIngestDetail, REFRESH_PRESETS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
 import {DEFAULT_ESCALATION_WEBHOOK_BODY, ESCALATION_WEBHOOK_PLACEHOLDERS} from "#shared/utils/webhook"
 
@@ -31,6 +31,7 @@ interface Form {
     showCodeSources: boolean
     rateLimit: number
     supportEmail: string
+    supportDisplayName: NonNullable<Project["supportDisplayName"]>
     refreshIntervalHours: number
     ingestDetail: IngestDetail
     webhookUrl: string
@@ -49,6 +50,7 @@ function toForm(p: Project): Form {
         showCodeSources: p.showCodeSources,
         rateLimit: p.rateLimit,
         supportEmail: p.supportEmail || "",
+        supportDisplayName: {useAdminName: p.supportDisplayName?.useAdminName ?? false, customName: p.supportDisplayName?.customName || DEFAULT_SUPPORT_DISPLAY_NAME},
         refreshIntervalHours: p.refreshIntervalHours,
         ingestDetail: projectIngestDetail(p),
         webhookUrl: p.escalationWebhook?.url || "",
@@ -175,6 +177,7 @@ async function save() {
                     showCodeSources: f.showCodeSources,
                     rateLimit: Number(f.rateLimit),
                     supportEmail: f.supportEmail.trim(),
+                    supportDisplayName: f.supportDisplayName,
                     refreshIntervalHours: Number(f.refreshIntervalHours),
                     ingestDetail: f.ingestDetail,
                     escalationWebhook: {url: f.webhookUrl.trim(), headers: parseHeaders(f.webhookHeaders), bodyTemplate: f.webhookBody}
@@ -378,9 +381,21 @@ async function deleteProject() {
             </UiCard>
 
             <UiCard title="Limits & support" description="Protect your budget and route hard questions to humans.">
-                <div class="grid-2">
-                    <UiInput v-model.number="form.rateLimit" type="number" min="0" max="1000" label="Messages per conversation" :error="errors.rateLimit" hint="Visitor messages before the chat offers to contact support. 0 = unlimited." />
-                    <UiInput v-model="form.supportEmail" type="email" label="Support email" optional placeholder="support@example.com" :error="errors.supportEmail" hint="Receives escalated questions. Leave empty to disable email escalation." />
+                <div class="stack" style="--gap: 18px">
+                    <div class="grid-2">
+                        <UiInput v-model.number="form.rateLimit" type="number" min="0" max="1000" label="Messages per conversation" :error="errors.rateLimit" hint="Visitor messages before the chat offers to contact support. 0 = unlimited." />
+                        <UiInput v-model="form.supportEmail" type="email" label="Support email" optional placeholder="support@example.com" :error="errors.supportEmail" hint="Receives escalated questions. Leave empty to disable email escalation." />
+                    </div>
+                    <UiToggle v-model="form.supportDisplayName.useAdminName" label="Show the replying admin’s name" description="Visitors see the admin’s name on current and past replies. Other support replies still use the support display name." />
+                    <UiInput
+                        v-if="!form.supportDisplayName.useAdminName"
+                        v-model="form.supportDisplayName.customName"
+                        label="Support display name"
+                        :placeholder="DEFAULT_SUPPORT_DISPLAY_NAME"
+                        maxlength="60"
+                        optional
+                        hint="Shown on support replies in the visitor’s chat. Leave empty to use Support Team."
+                    />
                 </div>
             </UiCard>
 

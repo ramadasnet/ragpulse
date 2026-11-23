@@ -161,7 +161,7 @@ function applyServer(list: ChatUiMessage[], s: PublicSession) {
         stored.value = {...stored.value, name: s.visitorName || stored.value.name, email: s.visitorEmail || stored.value.email}
         writeStored(stored.value)
     }
-    if (!streaming.value && list.map((m) => m._id).join() !== messages.value.map((m) => m._id).join()) {
+    if (!streaming.value && (list.length !== messages.value.length || list.some((m, i) => m._id !== messages.value[i]?._id || m.supportName !== messages.value[i]?.supportName))) {
         messages.value = list
     }
     if (s.limitReached && !limit.value) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {CircleAlert, Headset} from "lucide-vue-next"
+import {DEFAULT_SUPPORT_DISPLAY_NAME} from "#shared/types"
 
 const props = defineProps<{message: ChatUiMessage; botInitial: string; botIcon?: string; grouped?: boolean}>()
 
@@ -17,7 +18,9 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
             </span>
         </div>
         <div class="body">
-            <p v-if="message.role === 'agent'" class="agent-label"><span class="agent-dot" />Support team</p>
+            <p v-if="message.role === 'agent'" class="agent-label">
+                <span class="agent-dot" /> <span class="agent-name">{{ message.supportName || DEFAULT_SUPPORT_DISPLAY_NAME }}</span>
+            </p>
             <div class="bubble" :class="{error: !!message.error}">
                 <span v-if="typing" class="typing" role="status" aria-label="Assistant is typing"><i /><i /><i /></span>
                 <p v-else-if="message.error" class="err"><CircleAlert :size="15" /> {{ message.error }}</p>
@@ -147,8 +150,12 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 .agent-dot {
     width: 6px;
     height: 6px;
+    flex-shrink: 0;
     border-radius: 50%;
     background: var(--c-highlight);
+}
+.agent-name {
+    overflow-wrap: anywhere;
 }
 
 .typing {

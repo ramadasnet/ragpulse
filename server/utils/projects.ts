@@ -166,6 +166,7 @@ export const projectUpdateSchema = z
         temperature: z.number().min(0).max(2),
         rateLimit: z.number().int().min(0).max(1000),
         supportEmail: z.string().trim().toLowerCase().pipe(supportEmailSchema),
+        supportDisplayName: z.object({useAdminName: z.boolean(), customName: z.string().trim().max(60)}),
         allowedDomains: z.array(z.string().max(300)).max(50, "At most 50 allowed domains"),
         /** Image data URI; empty string resets the icon to the two-letter mark */
         icon: z.union([z.literal(""), iconSchema]),
@@ -210,7 +211,7 @@ export function buildProject(input: ProjectCreateInput): Project {
 export function buildProjectUpdate(project: Project, patch: ProjectUpdateInput): {$set: Partial<Project>; $unset: Record<string, "">} {
     const $set: Partial<Project> = {updatedAt: new Date()}
     const $unset: Record<string, ""> = {}
-    const simple = ["title", "website", "systemInstructions", "model", "temperature", "rateLimit", "refreshIntervalHours", "ingestDetail", "showCodeSources", "enabled"] as const
+    const simple = ["title", "website", "systemInstructions", "model", "temperature", "rateLimit", "refreshIntervalHours", "ingestDetail", "showCodeSources", "supportDisplayName", "enabled"] as const
     for (const key of simple) {
         if (patch[key] !== undefined) ($set as any)[key] = patch[key]
     }

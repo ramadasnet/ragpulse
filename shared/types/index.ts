@@ -75,6 +75,7 @@ export interface Project {
     /** Max user messages per chat session before redirecting to support. 0 = unlimited. */
     rateLimit: number
     supportEmail?: string
+    supportDisplayName?: {useAdminName: boolean; customName: string}
     /** Domains allowed to embed the chat. Supports wildcards like `*.example.com`. The website domain is always allowed. */
     allowedDomains: string[]
     /** Default refresh interval for sources, in hours (1..336), or 0 for manual only. Default 168 (7 days). */
@@ -496,6 +497,8 @@ export const QUESTION_RETENTION_MAX_DAYS = 3650
 
 export const DEFAULT_CHAT_AUTO_CLOSE_DAYS = 7
 export const CHAT_AUTO_CLOSE_MAX_DAYS = 365
+
+export const DEFAULT_SUPPORT_DISPLAY_NAME = "Support Team"
 
 export const DEFAULT_THEME: ChatTheme = {
     mode: "dark",

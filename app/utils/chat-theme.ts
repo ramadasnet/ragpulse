@@ -102,6 +102,7 @@ export interface ChatUiMessage {
     _id: string
     role: "user" | "assistant" | "agent"
     content: string
+    supportName?: string
     sources?: Array<{title: string; url?: string; kind: "docs" | "code"}>
     escalated?: boolean
     /** Nobody took over the escalated chat in time: the "answer comes by email" notice */

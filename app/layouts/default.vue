@@ -2,7 +2,7 @@
 import {BarChart3, Bell, BookOpen, ChevronsUpDown, Code2, Database, FolderKanban, LogOut, Menu, MessagesSquare, Palette, Plus, Settings, SlidersHorizontal, Users, Inbox, Plug, X} from "lucide-vue-next"
 import type {ProjectPermission} from "#shared/types"
 
-const {me, isAdmin, can, refresh} = useMe()
+const {me, isAdmin, can, refresh, signOut} = useMe()
 const {projects, ensure, refreshOpenQuestions} = useProjects()
 const projectId = useProjectId()
 const route = useRoute()
@@ -99,6 +99,8 @@ onMounted(() => {
     document.addEventListener("visibilitychange", refreshForegroundSession)
     window.addEventListener("focus", refreshForegroundSession)
     window.addEventListener("online", refreshForegroundSession)
+    // The server-side render cannot pass its renewed cookie on, so a launch renews from the browser
+    refreshForegroundSession()
     if (pushSupported()) navigator.serviceWorker.addEventListener("message", onWorkerMessage)
 })
 onBeforeUnmount(() => {
@@ -114,10 +116,8 @@ const push = usePush()
 
 async function logout() {
     // The next user of this device must not receive this user's notifications
-    await push.disable().catch(() => {})
-    await $fetch("/auth/logout", {method: "POST"})
+    await signOut(() => push.disable().catch(() => {}))
     await clear()
-    me.value = null
     await navigateTo("/login")
 }
 </script>

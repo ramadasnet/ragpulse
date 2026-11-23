@@ -84,6 +84,8 @@ const emailError = ref("")
 const composer = ref<{focus: () => void} | null>(null)
 const confirmDialog = ref<HTMLDialogElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
+const viewportStyle = ref<{"--viewport-top": string; "--viewport-height": string}>()
+let viewport: VisualViewport | null = null
 let localId = 0
 let bannerTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -501,6 +503,12 @@ function onResize() {
     scrollToBottom()
 }
 
+function fitViewport() {
+    if (!viewport) return
+    viewportStyle.value = viewport.scale === 1 ? {"--viewport-top": `${viewport.offsetTop}px`, "--viewport-height": `${viewport.height}px`} : undefined
+    scrollToBottom()
+}
+
 function onVisible() {
     if (document.visibilityState === "visible" && phase.value === "chat" && Date.now() - lastPoll > 3000) loadSession(true)
 }
@@ -509,6 +517,13 @@ let pollTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
     window.addEventListener("keydown", onKeydown)
     window.addEventListener("resize", onResize, {passive: true})
+    // In an iframe the embed script sizes the panel from the host page's viewport.
+    if (window.parent === window) {
+        viewport = window.visualViewport
+        fitViewport()
+        viewport?.addEventListener("resize", fitViewport)
+        viewport?.addEventListener("scroll", fitViewport)
+    }
     if (preview) {
         window.addEventListener("message", onMessage)
         stored.value = {sessionId: "preview", token: "", name: "Alex"}
@@ -550,6 +565,8 @@ onBeforeUnmount(() => {
     clearTimeout(bannerTimer)
     window.removeEventListener("keydown", onKeydown)
     window.removeEventListener("resize", onResize)
+    viewport?.removeEventListener("resize", fitViewport)
+    viewport?.removeEventListener("scroll", fitViewport)
     window.removeEventListener("message", onMessage)
     window.removeEventListener("message", onEmbedMessage)
     window.removeEventListener("focus", onVisible)
@@ -558,7 +575,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="rp" :class="[`rp-${theme.mode}`, {'rp-embed': embed}]" :style="vars">
+    <div class="rp" :class="[`rp-${theme.mode}`, {'rp-embed': embed}]" :style="[vars, viewportStyle]">
         <header class="rp-head">
             <div class="rp-avatar" :class="{'rp-avatar-icon': botIcon}" aria-hidden="true">
                 <img v-if="botIcon" :src="botIcon" alt="" />
@@ -795,7 +812,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .rp {
     position: fixed;
-    inset: 0;
+    inset: var(--viewport-top, 0px) 0 auto;
+    height: var(--viewport-height, 100%);
     display: flex;
     flex-direction: column;
     background: var(--c-bg);

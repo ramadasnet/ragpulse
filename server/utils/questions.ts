@@ -187,12 +187,12 @@ async function tagUserSpecific(project: Project, question: Question): Promise<bo
 }
 
 /**
- * Flags a session as handled by a human when a team member replies in it while a question is open:
- * the assistant stops answering until `releaseHumanHandling` finds no open question.
+ * Pauses the assistant when a team member replies, without replacing an existing human handler.
+ * The assistant resumes when the chat is given back to the agent or the last open question is resolved.
  */
-export async function claimHumanHandling(sessionId: string, author: ReplyAuthor): Promise<void> {
+export async function claimHumanHandling(sessionId: string, author: ReplyAuthor, options?: {requireOpenQuestion?: boolean}): Promise<void> {
     const {sessions} = await useCollections()
-    await sessions.updateOne({_id: sessionId, unansweredCount: {$gt: 0}, humanHandledAt: {$exists: false}}, {$set: {humanHandledAt: new Date(), humanHandledBy: {userId: author.userId, name: author.name}}})
+    await sessions.updateOne({_id: sessionId, humanHandledAt: {$exists: false}, ...(options?.requireOpenQuestion ? {unansweredCount: {$gt: 0}} : {})}, {$set: {humanHandledAt: new Date(), humanHandledBy: {userId: author.userId, name: author.name}}})
 }
 
 /** Hands the session back to the assistant once none of its questions is open. */
@@ -375,7 +375,7 @@ export async function replyToQuestion(params: {
 
     // Conditional so a concurrent dismiss or reopen is never overwritten
     await questions.updateOne({_id: question._id, status: "answered"}, Object.keys($unset).length ? {$set: update, $unset} : {$set: update})
-    await releaseHumanHandling(question.sessionId)
+    if (claimed) await releaseHumanHandling(question.sessionId)
     logger.info("Questions.reply", `Question ${question._id}`, `Project ${project._id}`, `By ${params.author.name} (${params.author.via})`, `Email: ${email}${faq ? `, FAQ ${faq._id}` : ""}`)
 
     const {visitorEmailDueAt, ...rest} = question

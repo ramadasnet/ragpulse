@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, test} from "bun:test"
-import {classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion} from "../server/utils/questions"
+import type {ChatSession} from "../shared/types"
+import {claimHumanHandling, classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion} from "../server/utils/questions"
 import {cleanFaqText} from "../server/utils/session-learning"
 import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
 
@@ -145,6 +146,39 @@ function mockEscalation(db: ReturnType<typeof fakeDb>, extra: Record<string, unk
 const project = {_id: "project", title: "Test", supportEmail: "support@example.test", model: "test"} as any
 const session = {_id: "session", visitorName: "Visitor"} as any
 
+test.each([
+    ["admin", 0, undefined, true],
+    ["admin", 1, undefined, true],
+    ["mcp", 0, {requireOpenQuestion: true}, false],
+    ["mcp", 1, {requireOpenQuestion: true}, true]
+] as const)("%s takes over a chat with %i open questions according to its claim policy", async (via, unansweredCount, options, claimed) => {
+    const chat: Pick<ChatSession, "_id" | "unansweredCount" | "humanHandledAt" | "humanHandledBy"> = {_id: "session", unansweredCount}
+    Object.assign(globalThis, {
+        useCollections: async () => ({
+            sessions: {
+                updateOne: async (filter: {_id: string; unansweredCount?: {$gt: number}; humanHandledAt: {$exists: boolean}}, update: {$set: typeof chat}) => {
+                    if (filter._id !== chat._id || filter.humanHandledAt.$exists !== (chat.humanHandledAt !== undefined)) return
+                    if (filter.unansweredCount && !(chat.unansweredCount > filter.unansweredCount.$gt)) return
+                    Object.assign(chat, update.$set)
+                }
+            }
+        })
+    })
+    const author = {userId: "user1", name: "First responder", via}
+
+    await claimHumanHandling(chat._id, author, options)
+    if (!claimed) {
+        expect(chat.humanHandledAt).toBeUndefined()
+        expect(chat.humanHandledBy).toBeUndefined()
+        return
+    }
+    const handledAt = chat.humanHandledAt
+    expect(handledAt).toBeInstanceOf(Date)
+    await claimHumanHandling(chat._id, {userId: "user2", name: "Second responder", via}, options)
+    expect(chat.humanHandledAt).toBe(handledAt)
+    expect(chat.humanHandledBy).toEqual({userId: author.userId, name: author.name})
+})
+
 test("a second escalation while the first question is still open gets its own question in the same conversation", async () => {
     const db = fakeDb()
     mockEscalation(db)
@@ -279,6 +313,31 @@ describe("user-specific questions", () => {
         return faqs
     }
     const author = {name: "Support", via: "admin"} as const
+
+    test.each([
+        ["open", true],
+        ["answered", false]
+    ] as const)("replying to a %s question releases human handling: %s", async (status, released) => {
+        mockReply({_id: "q1", projectId: "project", sessionId: "session", question: "How do I reset my password?", status, createdAt: new Date()})
+        const collections = await (globalThis as any).useCollections()
+        const chat: Pick<ChatSession, "humanHandledAt" | "humanHandledBy"> = {humanHandledAt: new Date(), humanHandledBy: {name: author.name}}
+        const before = {...chat}
+        Object.assign(globalThis, {
+            useCollections: async () => ({
+                ...collections,
+                sessions: {
+                    ...collections.sessions,
+                    updateOne: async (_: unknown, update: {$unset?: Partial<Record<keyof typeof chat, "">>}) => {
+                        if (update.$unset?.humanHandledAt === "") delete chat.humanHandledAt
+                        if (update.$unset?.humanHandledBy === "") delete chat.humanHandledBy
+                    }
+                }
+            })
+        })
+        const result = await replyToQuestion({questionId: "q1", answer: "Use the reset link.", author, addToFaq: false, notifyVisitor: false})
+        expect(result.message?.content).toBe("Use the reset link.")
+        expect(chat).toEqual(released ? {} : before)
+    })
 
     test.each([
         [false, undefined, 1],

@@ -90,6 +90,14 @@ export default defineEventHandler(async (event) => {
                 url: `/admin/projects/${project._id}/conversations/${session._id}`,
                 tag: `session-${session._id}`
             })
+        } else if (human) {
+            // The assistant stays silent and no inbox item is created, so tell the team the visitor wrote back
+            void notifyProject(project._id, "conversations", {
+                title: `Visitor replied · ${project.title}`,
+                body: `${session.visitorName || "Visitor"}: ${content}`,
+                url: `/admin/projects/${project._id}/conversations/${session._id}`,
+                tag: `session-${session._id}`
+            })
         }
         send("meta", {userMessageId: userMessage._id})
         if (human) {

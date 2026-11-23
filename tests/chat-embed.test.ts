@@ -1,7 +1,7 @@
 import {expect, test} from "bun:test"
 import {runInNewContext} from "node:vm"
 
-test("an open mobile chat panel follows the visual viewport", async () => {
+test("the open embed tracks viewport bounds and clears them while zoomed", async () => {
     const globals = globalThis as typeof globalThis & Record<string, unknown>
     const {defineEventHandler, setResponseHeaders} = globals
     let script: string
@@ -78,4 +78,11 @@ test("an open mobile chat panel follows the visual viewport", async () => {
     window.RAGPulse.open()
     expect(style.get("--viewport-height")).toBe("700px")
     expect(style.get("--viewport-top")).toBe("0px")
+
+    viewport.scale = 2
+    viewport.dispatchEvent(new Event("resize"))
+    paint()
+    paint()
+    expect(style.has("--viewport-height")).toBe(false)
+    expect(style.has("--viewport-top")).toBe(false)
 })

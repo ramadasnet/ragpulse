@@ -11,6 +11,15 @@ export function randomToken(bytes = 32): string {
     return randomBytes(bytes).toString("base64url")
 }
 
+/** Revokes a signed-out session, so a renewed cookie from a request that was still running (in any tab) stays invalid. */
+export async function revokeSession(sessionId: string): Promise<void> {
+    const {maxAge} = useRuntimeConfig().session
+    // A renewal can extend the cookie by at most `maxAge` from now
+    const expiresAt = new Date(Date.now() + (maxAge || 0) * 1000)
+    const {revokedSessions} = await useCollections()
+    await revokedSessions.updateOne({_id: sha256(sessionId)}, {$set: {expiresAt}}, {upsert: true})
+}
+
 /** Returns the authenticated, enabled user (fresh from the DB) or throws 401/403. */
 export async function requireUser(event: H3Event): Promise<User> {
     if (event.context.user) return event.context.user as User
@@ -22,8 +31,13 @@ export async function requireUser(event: H3Event): Promise<User> {
         await clearUserSession(event)
         throw createError({statusCode: 401, statusMessage: "Session expired"})
     }
-    const {users} = await useCollections()
-    const user = await users.findOne({_id: session.user.id})
+    const {users, revokedSessions} = await useCollections()
+    const sessionId = session.secure?.sessionId
+    const [user, revoked] = await Promise.all([users.findOne({_id: session.user.id}), sessionId ? revokedSessions.findOne({_id: sha256(sessionId)}) : null])
+    if (revoked) {
+        await clearUserSession(event)
+        throw createError({statusCode: 401, statusMessage: "Signed out"})
+    }
     if (!user) {
         await clearUserSession(event)
         throw createError({statusCode: 401, statusMessage: "Account not found"})

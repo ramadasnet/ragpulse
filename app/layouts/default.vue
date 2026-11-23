@@ -184,7 +184,8 @@ async function logout() {
                 <button class="btn-reset icon-btn" aria-label="Open menu" @click="mobileOpen = true"><Menu :size="18" /></button>
                 <AppLogo />
             </header>
-            <slot />
+            <!-- Remounts the page once the account loads after an outage, so permission-gated pages run their guard and loads again -->
+            <slot :key="me ? 'account' : 'no-account'" />
         </main>
     </div>
 </template>

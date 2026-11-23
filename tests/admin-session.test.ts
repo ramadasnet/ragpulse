@@ -77,3 +77,63 @@ test("opening the admin app extends the cookie and server session by 30 days, bu
         }
     }
 })
+
+test("a renewal that lands after logout, from any tab, cannot sign the user back in", async () => {
+    const globals = globalThis as typeof globalThis & Record<string, unknown>
+    const names = ["defineEventHandler", "createError", "useRuntimeConfig", "useCollections", "getUserSession", "setUserSession", "clearUserSession", "requireUser", "revokeSession", "serializeUser", "setResponseHeader"]
+    const original = names.map((name) => Object.getOwnPropertyDescriptor(globals, name))
+    const user = {_id: "user-1", email: "admin@example.com", name: "Admin", role: "admin"}
+    const revoked = new Map<string, {_id: string; expiresAt: Date}>()
+
+    function request(cookie = "") {
+        return {req: {headers: new Headers({cookie})}, res: {headers: new Headers()}, context: {}}
+    }
+    const cookieOf = (event: ReturnType<typeof request>) => (event.res.headers.get("set-cookie") ?? "").split(";")[0]!
+
+    try {
+        runtimeConfig.session = {maxAge: 30 * 86_400}
+        const {getUserSession, setUserSession, clearUserSession} = await import("../node_modules/nuxt-auth-utils/dist/runtime/server/utils/session.js")
+        const {requireUser, revokeSession, serializeUser} = await import("../server/utils/auth")
+        Object.assign(globals, {
+            defineEventHandler: (handler: unknown) => handler,
+            createError: (error: object) => Object.assign(new Error(), error),
+            useRuntimeConfig: () => runtimeConfig,
+            useCollections: async () => ({
+                users: {findOne: async () => user},
+                revokedSessions: {
+                    findOne: async ({_id}: {_id: string}) => revoked.get(_id) ?? null,
+                    updateOne: async ({_id}: {_id: string}, {$set}: {$set: {expiresAt: Date}}) => revoked.set(_id, {_id, ...$set})
+                }
+            }),
+            getUserSession,
+            setUserSession,
+            clearUserSession,
+            requireUser,
+            revokeSession,
+            serializeUser,
+            setResponseHeader: (event: ReturnType<typeof request>, name: string, value: string) => event.res.headers.set(name, value)
+        })
+        const {default: openAdmin} = await import("../server/api/me.get")
+        const {default: logout} = await import("../server/routes/auth/logout.post")
+        const asEvent = (event: ReturnType<typeof request>) => event as unknown as Parameters<typeof requireUser>[0]
+
+        const login = request()
+        await setUserSession(login, {user: {id: user._id}, loggedInAt: new Date().toISOString(), secure: {sessionId: "sign-in-1"}})
+        const cookie = cookieOf(login)
+
+        // Another tab's /api/me renews the session while this tab signs out
+        const otherTab = request(cookie)
+        await expect(openAdmin(asEvent(otherTab))).resolves.toMatchObject({_id: user._id})
+        await logout(asEvent(request(cookie)))
+        const lateRenewal = cookieOf(otherTab)
+
+        await expect(requireUser(asEvent(request(lateRenewal)))).rejects.toMatchObject({statusCode: 401})
+        await expect(openAdmin(asEvent(request(cookie)))).rejects.toMatchObject({statusCode: 401})
+    } finally {
+        for (const [index, name] of names.entries()) {
+            const descriptor = original[index]
+            if (descriptor) Object.defineProperty(globals, name, descriptor)
+            else delete globals[name]
+        }
+    }
+})

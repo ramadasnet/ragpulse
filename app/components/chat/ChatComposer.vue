@@ -98,6 +98,11 @@ textarea:focus-visible {
     border-radius: 6px;
     box-shadow: none;
 }
+@media (pointer: coarse) {
+    textarea {
+        font-size: 16px;
+    }
+}
 @container (max-height: 240px) {
     textarea {
         max-height: max(38px, 25cqh);

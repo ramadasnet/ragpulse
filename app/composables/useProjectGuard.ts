@@ -9,11 +9,11 @@ const PROJECT_PAGES: Array<{path: string; perm: ProjectPermission}> = [
 ]
 
 /**
- * Ensures the current user has `perm` on the project; otherwise redirects to the first
- * project page they can access (or the projects list). Returns true when allowed.
+ * Checks project permissions and redirects users who lack access, after their account is loaded.
  */
 export async function guardProjectPage(projectId: string, perm: ProjectPermission): Promise<boolean> {
-    const {can} = useMe()
+    const {me, can} = useMe()
+    if (!me.value) return false
     if (can(projectId, perm)) return true
     const first = PROJECT_PAGES.find((p) => can(projectId, p.perm))
     await navigateTo(first ? `/admin/projects/${projectId}${first.path}` : "/admin", {replace: true})

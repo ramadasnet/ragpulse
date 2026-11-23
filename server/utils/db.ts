@@ -10,6 +10,12 @@ export interface LockDoc {
     expiresAt: Date
 }
 
+/** A signed-out session (`sha256(sessionId)`), kept until its cookie could no longer be valid */
+export interface RevokedSessionDoc {
+    _id: string
+    expiresAt: Date
+}
+
 /** Cached LLM output: vision transcriptions (`model:sha256(bytes)`) and code summaries (`code:…`, `overview:…`, `overview-latest:…`) */
 export interface ExtractionDoc {
     _id: string
@@ -36,6 +42,7 @@ export interface Collections {
     extractions: Collection<ExtractionDoc>
     settings: Collection<SettingsDoc>
     pushDevices: Collection<PushDevice>
+    revokedSessions: Collection<RevokedSessionDoc>
 }
 
 export const VECTOR_INDEX_NAME = "chunk_embeddings"
@@ -93,7 +100,8 @@ async function connect(): Promise<DbState> {
         locks: db.collection<LockDoc>("locks"),
         extractions: db.collection<ExtractionDoc>("extractions"),
         settings: db.collection<SettingsDoc>("settings"),
-        pushDevices: db.collection<PushDevice>("pushDevices")
+        pushDevices: db.collection<PushDevice>("pushDevices"),
+        revokedSessions: db.collection<RevokedSessionDoc>("revokedSessions")
     }
     await ensureIndexes(collections)
     await migrateEmbeddingKeys(collections)
@@ -137,6 +145,7 @@ async function ensureIndexes(c: Collections) {
         // Sync history retention cleanup
         c.syncRuns.createIndex({startedAt: 1}),
         c.locks.createIndex({expiresAt: 1}, {expireAfterSeconds: 0}),
+        c.revokedSessions.createIndex({expiresAt: 1}, {expireAfterSeconds: 0}),
         c.pushDevices.createIndex({events: 1}),
         c.pushDevices.createIndex({userId: 1}),
         // Refreshed on every sync that still uses the entry

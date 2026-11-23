@@ -2,7 +2,7 @@
 import {BarChart3, Bell, BookOpen, ChevronsUpDown, Code2, Database, FolderKanban, LogOut, Menu, MessagesSquare, Palette, Plus, Settings, SlidersHorizontal, Users, Inbox, Plug, X} from "lucide-vue-next"
 import type {ProjectPermission} from "#shared/types"
 
-const {me, isAdmin, can} = useMe()
+const {me, isAdmin, can, refresh, signOut} = useMe()
 const {projects, ensure, refreshOpenQuestions} = useProjects()
 const projectId = useProjectId()
 const route = useRoute()
@@ -74,6 +74,20 @@ function syncOpenQuestions() {
 }
 watch(projectId, syncOpenQuestions)
 
+/** Renews the session when the visible dashboard regains focus or connectivity. */
+let refreshingSession = false
+async function refreshForegroundSession() {
+    if (document.visibilityState !== "visible" || refreshingSession) return
+    refreshingSession = true
+    try {
+        if ((await refresh()) === "unauthorized") {
+            await navigateTo({path: "/login", query: route.fullPath === "/admin" ? {} : {redirect: route.fullPath}})
+        }
+    } finally {
+        refreshingSession = false
+    }
+}
+
 // A tapped push notification asks the open dashboard to show its view (public/sw.js)
 function onWorkerMessage(e: MessageEvent) {
     if (e.data?.type === "navigate" && typeof e.data.path === "string" && e.data.path.startsWith("/admin")) navigateTo(e.data.path)
@@ -82,11 +96,19 @@ function onWorkerMessage(e: MessageEvent) {
 onMounted(() => {
     openQuestionsPoll = setInterval(syncOpenQuestions, OPEN_QUESTIONS_POLL_MS)
     document.addEventListener("visibilitychange", syncOpenQuestions)
+    document.addEventListener("visibilitychange", refreshForegroundSession)
+    window.addEventListener("focus", refreshForegroundSession)
+    window.addEventListener("online", refreshForegroundSession)
+    // The server-side render cannot pass its renewed cookie on, so a launch renews from the browser
+    refreshForegroundSession()
     if (pushSupported()) navigator.serviceWorker.addEventListener("message", onWorkerMessage)
 })
 onBeforeUnmount(() => {
     clearInterval(openQuestionsPoll)
     document.removeEventListener("visibilitychange", syncOpenQuestions)
+    document.removeEventListener("visibilitychange", refreshForegroundSession)
+    window.removeEventListener("focus", refreshForegroundSession)
+    window.removeEventListener("online", refreshForegroundSession)
     if (pushSupported()) navigator.serviceWorker.removeEventListener("message", onWorkerMessage)
 })
 
@@ -94,10 +116,8 @@ const push = usePush()
 
 async function logout() {
     // The next user of this device must not receive this user's notifications
-    await push.disable().catch(() => {})
-    await $fetch("/auth/logout", {method: "POST"})
+    await signOut(() => push.disable().catch(() => {}))
     await clear()
-    me.value = null
     await navigateTo("/login")
 }
 </script>
@@ -164,7 +184,8 @@ async function logout() {
                 <button class="btn-reset icon-btn" aria-label="Open menu" @click="mobileOpen = true"><Menu :size="18" /></button>
                 <AppLogo />
             </header>
-            <slot />
+            <!-- Remounts the page once the account loads after an outage, so permission-gated pages run their guard and loads again -->
+            <slot :key="me ? 'account' : 'no-account'" />
         </main>
     </div>
 </template>

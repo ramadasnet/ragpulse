@@ -75,7 +75,8 @@ export async function loginWithProvider(requestEvent: H3Event | RequestEvent, pr
 
     await setUserSession(event, {
         user: {id: user._id, email: user.email, name: user.name, avatar: user.avatar, role: user.role},
-        loggedInAt: now.toISOString()
+        loggedInAt: now.toISOString(),
+        secure: {sessionId: randomToken(16)}
     })
     const redirect = getCookie(event, LOGIN_REDIRECT_COOKIE)
     if (redirect) deleteCookie(event, LOGIN_REDIRECT_COOKIE, {path: "/"})

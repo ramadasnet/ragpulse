@@ -375,7 +375,7 @@ export async function replyToQuestion(params: {
 
     // Conditional so a concurrent dismiss or reopen is never overwritten
     await questions.updateOne({_id: question._id, status: "answered"}, Object.keys($unset).length ? {$set: update, $unset} : {$set: update})
-    await releaseHumanHandling(question.sessionId)
+    if (claimed) await releaseHumanHandling(question.sessionId)
     logger.info("Questions.reply", `Question ${question._id}`, `Project ${project._id}`, `By ${params.author.name} (${params.author.via})`, `Email: ${email}${faq ? `, FAQ ${faq._id}` : ""}`)
 
     const {visitorEmailDueAt, ...rest} = question

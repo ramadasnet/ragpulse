@@ -315,6 +315,31 @@ describe("user-specific questions", () => {
     const author = {name: "Support", via: "admin"} as const
 
     test.each([
+        ["open", true],
+        ["answered", false]
+    ] as const)("replying to a %s question releases human handling: %s", async (status, released) => {
+        mockReply({_id: "q1", projectId: "project", sessionId: "session", question: "How do I reset my password?", status, createdAt: new Date()})
+        const collections = await (globalThis as any).useCollections()
+        const chat: Pick<ChatSession, "humanHandledAt" | "humanHandledBy"> = {humanHandledAt: new Date(), humanHandledBy: {name: author.name}}
+        const before = {...chat}
+        Object.assign(globalThis, {
+            useCollections: async () => ({
+                ...collections,
+                sessions: {
+                    ...collections.sessions,
+                    updateOne: async (_: unknown, update: {$unset?: Partial<Record<keyof typeof chat, "">>}) => {
+                        if (update.$unset?.humanHandledAt === "") delete chat.humanHandledAt
+                        if (update.$unset?.humanHandledBy === "") delete chat.humanHandledBy
+                    }
+                }
+            })
+        })
+        const result = await replyToQuestion({questionId: "q1", answer: "Use the reset link.", author, addToFaq: false, notifyVisitor: false})
+        expect(result.message?.content).toBe("Use the reset link.")
+        expect(chat).toEqual(released ? {} : before)
+    })
+
+    test.each([
         [false, undefined, 1],
         [true, undefined, 0],
         [true, true, 1]

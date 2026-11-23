@@ -17,16 +17,15 @@ export function useMe() {
 
     async function refresh() {
         try {
-            me.value = await $fetch<Me>("/api/me", {
-                onResponseError({response}) {
-                    if (response.status === 401 || response.status === 403) {
-                        me.value = null
-                        session.value = null
-                    }
-                }
-            })
-        } catch {}
-        return me.value
+            me.value = await $fetch<Me>("/api/me")
+            return "authenticated"
+        } catch (error) {
+            const status = (error as {statusCode?: number} | null)?.statusCode
+            if (status !== 401 && status !== 403) return "unavailable"
+            me.value = null
+            session.value = null
+            return "unauthorized"
+        }
     }
 
     const isAdmin = computed(() => me.value?.role === "admin")

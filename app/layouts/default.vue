@@ -74,13 +74,13 @@ function syncOpenQuestions() {
 }
 watch(projectId, syncOpenQuestions)
 
-/** Renews the session when the dashboard is brought back to the foreground. */
+/** Renews the session when the visible dashboard regains focus or connectivity. */
 let refreshingSession = false
 async function refreshForegroundSession() {
-    if (document.visibilityState !== "visible" || refreshingSession || !me.value) return
+    if (document.visibilityState !== "visible" || refreshingSession) return
     refreshingSession = true
     try {
-        if (!(await refresh())) {
+        if ((await refresh()) === "unauthorized") {
             await navigateTo({path: "/login", query: route.fullPath === "/admin" ? {} : {redirect: route.fullPath}})
         }
     } finally {
@@ -98,6 +98,7 @@ onMounted(() => {
     document.addEventListener("visibilitychange", syncOpenQuestions)
     document.addEventListener("visibilitychange", refreshForegroundSession)
     window.addEventListener("focus", refreshForegroundSession)
+    window.addEventListener("online", refreshForegroundSession)
     if (pushSupported()) navigator.serviceWorker.addEventListener("message", onWorkerMessage)
 })
 onBeforeUnmount(() => {
@@ -105,6 +106,7 @@ onBeforeUnmount(() => {
     document.removeEventListener("visibilitychange", syncOpenQuestions)
     document.removeEventListener("visibilitychange", refreshForegroundSession)
     window.removeEventListener("focus", refreshForegroundSession)
+    window.removeEventListener("online", refreshForegroundSession)
     if (pushSupported()) navigator.serviceWorker.removeEventListener("message", onWorkerMessage)
 })
 

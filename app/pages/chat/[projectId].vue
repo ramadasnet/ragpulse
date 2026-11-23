@@ -84,6 +84,9 @@ const emailError = ref("")
 const composer = ref<{focus: () => void} | null>(null)
 const confirmDialog = ref<HTMLDialogElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
+const viewportStyle = ref<{"--viewport-top": string; "--viewport-height": string}>()
+let viewport: VisualViewport | null = null
+let viewportFrame: number | undefined
 let localId = 0
 let bannerTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -501,6 +504,25 @@ function onResize() {
     scrollToBottom()
 }
 
+// Same rule as the embed script: follow the visual viewport only at scale 1. While pinch-zoomed,
+// fixed elements stay on the layout viewport and the browser pans over them.
+function fitViewport() {
+    if (!viewport) return
+    viewportStyle.value = viewport.scale === 1 ? {"--viewport-top": `${viewport.offsetTop}px`, "--viewport-height": `${viewport.height}px`} : undefined
+    scrollToBottom()
+}
+
+// WebKit can update visualViewport after dispatching the event.
+function scheduleViewportFit() {
+    if (viewportFrame !== undefined) return
+    viewportFrame = window.requestAnimationFrame(() => {
+        viewportFrame = window.requestAnimationFrame(() => {
+            viewportFrame = undefined
+            fitViewport()
+        })
+    })
+}
+
 function onVisible() {
     if (document.visibilityState === "visible" && phase.value === "chat" && Date.now() - lastPoll > 3000) loadSession(true)
 }
@@ -509,6 +531,16 @@ let pollTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
     window.addEventListener("keydown", onKeydown)
     window.addEventListener("resize", onResize, {passive: true})
+    // In an iframe the embed script sizes the panel from the host page's viewport.
+    if (window.parent === window) {
+        viewport = window.visualViewport
+        if (viewport) {
+            fitViewport()
+            viewport.addEventListener("resize", scheduleViewportFit)
+            viewport.addEventListener("scroll", scheduleViewportFit)
+            window.addEventListener("scroll", scheduleViewportFit, {passive: true})
+        }
+    }
     if (preview) {
         window.addEventListener("message", onMessage)
         stored.value = {sessionId: "preview", token: "", name: "Alex"}
@@ -550,6 +582,10 @@ onBeforeUnmount(() => {
     clearTimeout(bannerTimer)
     window.removeEventListener("keydown", onKeydown)
     window.removeEventListener("resize", onResize)
+    viewport?.removeEventListener("resize", scheduleViewportFit)
+    viewport?.removeEventListener("scroll", scheduleViewportFit)
+    window.removeEventListener("scroll", scheduleViewportFit)
+    if (viewportFrame !== undefined) window.cancelAnimationFrame(viewportFrame)
     window.removeEventListener("message", onMessage)
     window.removeEventListener("message", onEmbedMessage)
     window.removeEventListener("focus", onVisible)
@@ -558,7 +594,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="rp" :class="[`rp-${theme.mode}`, {'rp-embed': embed}]" :style="vars">
+    <div class="rp" :class="[`rp-${theme.mode}`, {'rp-embed': embed}]" :style="[vars, viewportStyle]">
         <header class="rp-head">
             <div class="rp-avatar" :class="{'rp-avatar-icon': botIcon}" aria-hidden="true">
                 <img v-if="botIcon" :src="botIcon" alt="" />
@@ -795,7 +831,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .rp {
     position: fixed;
-    inset: 0;
+    inset: var(--viewport-top, 0px) 0 auto;
+    height: var(--viewport-height, 100%);
+    container-type: size;
     display: flex;
     flex-direction: column;
     background: var(--c-bg);
@@ -1047,6 +1085,17 @@ onBeforeUnmount(() => {
 }
 .rp-powered a:hover {
     color: var(--c-text);
+}
+
+@container (max-height: 240px) {
+    .rp-head,
+    .rp-scroll,
+    .rp-foot {
+        padding-block: 4px;
+    }
+    .rp-powered {
+        display: none;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

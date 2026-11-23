@@ -57,7 +57,7 @@ const SCRIPT = /* js */ `(function () {
       'transition:opacity .2s,transform .3s ' + e + ',visibility 0s .3s}' +
       '.o .p{opacity:1;visibility:visible;transform:none;transition-delay:0s}' +
       '.p iframe{width:100%;height:100%;border:0;display:block}' +
-      '@media (max-width:519px){.p{inset:0;width:100%;height:100%;max-height:none;border-radius:0}.o .l{transform:scale(0);pointer-events:none}}' +
+      '@media (max-width:519px),(pointer:coarse) and (orientation:landscape) and (max-height:519px){.p{inset:var(--viewport-top,0px) 0 auto;width:100%;height:var(--viewport-height,100%);max-height:none;border-radius:0}.o .l{transform:scale(0);pointer-events:none}}' +
       '@media (prefers-reduced-motion:reduce){.l,.l svg,.p{transition:none}}' +
       '</style><div class="w"><div class="p" role="dialog" aria-label="Chat"></div>' +
       '<button class="l" type="button" aria-label="Open chat" aria-expanded="false">' +
@@ -66,6 +66,32 @@ const SCRIPT = /* js */ `(function () {
       '</button></div>';
     document.body.appendChild(host);
     var w = root.querySelector('.w'), btn = root.querySelector('.l'), panel = root.querySelector('.p'), frame = null, isOpen = false;
+    var viewport = window.visualViewport, viewportFrame;
+
+    // Only follow the visual viewport at scale 1 (keyboard open, no pinch-zoom).
+    // While pinch-zoomed, fixed elements stay laid out against the layout viewport and the
+    // browser pans over them; sizing to the zoomed visual viewport's height without its
+    // width/offsetLeft would leave a panel that is too short and misplaced.
+    function fitViewport() {
+      if (viewport.scale === 1) {
+        panel.style.setProperty('--viewport-top', viewport.offsetTop + 'px');
+        panel.style.setProperty('--viewport-height', viewport.height + 'px');
+      } else {
+        panel.style.removeProperty('--viewport-top');
+        panel.style.removeProperty('--viewport-height');
+      }
+    }
+
+    // WebKit can update visualViewport after dispatching the event.
+    function scheduleViewportFit() {
+      if (viewportFrame !== undefined) return;
+      viewportFrame = window.requestAnimationFrame(function () {
+        viewportFrame = window.requestAnimationFrame(function () {
+          viewportFrame = undefined;
+          fitViewport();
+        });
+      });
+    }
 
     function open() {
       if (isOpen) return;
@@ -77,6 +103,12 @@ const SCRIPT = /* js */ `(function () {
         panel.appendChild(frame);
       }
       isOpen = true;
+      if (viewport) {
+        fitViewport();
+        viewport.addEventListener('resize', scheduleViewportFit);
+        viewport.addEventListener('scroll', scheduleViewportFit);
+        window.addEventListener('scroll', scheduleViewportFit, { passive: true });
+      }
       visibility(true);
       w.classList.add('o');
       btn.setAttribute('aria-expanded', 'true');
@@ -86,6 +118,15 @@ const SCRIPT = /* js */ `(function () {
     function close() {
       if (!isOpen) return;
       isOpen = false;
+      if (viewport) {
+        viewport.removeEventListener('resize', scheduleViewportFit);
+        viewport.removeEventListener('scroll', scheduleViewportFit);
+        window.removeEventListener('scroll', scheduleViewportFit);
+      }
+      if (viewportFrame !== undefined) {
+        window.cancelAnimationFrame(viewportFrame);
+        viewportFrame = undefined;
+      }
       visibility(false);
       w.classList.remove('o');
       btn.setAttribute('aria-expanded', 'false');

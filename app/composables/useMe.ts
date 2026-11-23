@@ -13,13 +13,19 @@ export interface Me {
 /** Current admin user (fresh from /api/me) with permission helpers. */
 export function useMe() {
     const me = useState<Me | null>("me", () => null)
+    const {session} = useUserSession()
 
     async function refresh() {
         try {
-            me.value = await $fetch<Me>("/api/me")
-        } catch {
-            me.value = null
-        }
+            me.value = await $fetch<Me>("/api/me", {
+                onResponseError({response}) {
+                    if (response.status === 401 || response.status === 403) {
+                        me.value = null
+                        session.value = null
+                    }
+                }
+            })
+        } catch {}
         return me.value
     }
 

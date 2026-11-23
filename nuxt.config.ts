@@ -76,6 +76,7 @@ export default defineNuxtConfig({
     },
 
     runtimeConfig: {
+        session: {maxAge: 30 * 24 * 60 * 60},
         // Build target (RAGPULSE_APP): empty when one server serves both the admin and the chat
         appTarget: target,
         mongodbUri: "mongodb://127.0.0.1:27017/ragpulse?directConnection=true",

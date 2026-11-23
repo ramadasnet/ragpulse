@@ -2,7 +2,7 @@
 import {BarChart3, Bell, BookOpen, ChevronsUpDown, Code2, Database, FolderKanban, LogOut, Menu, MessagesSquare, Palette, Plus, Settings, SlidersHorizontal, Users, Inbox, Plug, X} from "lucide-vue-next"
 import type {ProjectPermission} from "#shared/types"
 
-const {me, isAdmin, can} = useMe()
+const {me, isAdmin, can, refresh} = useMe()
 const {projects, ensure, refreshOpenQuestions} = useProjects()
 const projectId = useProjectId()
 const route = useRoute()
@@ -74,6 +74,20 @@ function syncOpenQuestions() {
 }
 watch(projectId, syncOpenQuestions)
 
+/** Renews the session when the dashboard is brought back to the foreground. */
+let refreshingSession = false
+async function refreshForegroundSession() {
+    if (document.visibilityState !== "visible" || refreshingSession || !me.value) return
+    refreshingSession = true
+    try {
+        if (!(await refresh())) {
+            await navigateTo({path: "/login", query: route.fullPath === "/admin" ? {} : {redirect: route.fullPath}})
+        }
+    } finally {
+        refreshingSession = false
+    }
+}
+
 // A tapped push notification asks the open dashboard to show its view (public/sw.js)
 function onWorkerMessage(e: MessageEvent) {
     if (e.data?.type === "navigate" && typeof e.data.path === "string" && e.data.path.startsWith("/admin")) navigateTo(e.data.path)
@@ -82,11 +96,15 @@ function onWorkerMessage(e: MessageEvent) {
 onMounted(() => {
     openQuestionsPoll = setInterval(syncOpenQuestions, OPEN_QUESTIONS_POLL_MS)
     document.addEventListener("visibilitychange", syncOpenQuestions)
+    document.addEventListener("visibilitychange", refreshForegroundSession)
+    window.addEventListener("focus", refreshForegroundSession)
     if (pushSupported()) navigator.serviceWorker.addEventListener("message", onWorkerMessage)
 })
 onBeforeUnmount(() => {
     clearInterval(openQuestionsPoll)
     document.removeEventListener("visibilitychange", syncOpenQuestions)
+    document.removeEventListener("visibilitychange", refreshForegroundSession)
+    window.removeEventListener("focus", refreshForegroundSession)
     if (pushSupported()) navigator.serviceWorker.removeEventListener("message", onWorkerMessage)
 })
 

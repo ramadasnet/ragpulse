@@ -1,6 +1,10 @@
 import type {Role} from "./index"
 
 declare module "#auth-utils" {
+    interface SecureSessionData {
+        lastActiveAt?: number
+    }
+
     interface User {
         id: string
         email: string

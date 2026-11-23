@@ -16,6 +16,12 @@ export async function requireUser(event: H3Event): Promise<User> {
     if (event.context.user) return event.context.user as User
     const session = await getUserSession(event)
     if (!session.user?.id) throw createError({statusCode: 401, statusMessage: "Not authenticated"})
+    const lastActiveAt = session.secure?.lastActiveAt ?? (typeof session.loggedInAt === "string" ? Date.parse(session.loggedInAt) : NaN)
+    const {maxAge} = useRuntimeConfig().session
+    if (!Number.isFinite(lastActiveAt) || !maxAge || Date.now() - lastActiveAt >= maxAge * 1000) {
+        await clearUserSession(event)
+        throw createError({statusCode: 401, statusMessage: "Session expired"})
+    }
     const {users} = await useCollections()
     const user = await users.findOne({_id: session.user.id})
     if (!user) {

@@ -6,6 +6,15 @@ async function deviceId(subscription: PushSubscription): Promise<string> {
     return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
+/** Decodes a base64url VAPID public key into bytes for `pushManager.subscribe`. */
+function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
+    const base64 = value.replace(/-/g, "+").replace(/_/g, "/")
+    const raw = atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4))
+    const bytes = new Uint8Array(raw.length)
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+    return bytes
+}
+
 /** Push subscription of this browser / installed app, if notifications were turned on. */
 async function currentSubscription(): Promise<PushSubscription | null> {
     if (!pushSupported()) return null
@@ -33,24 +42,30 @@ export function usePush() {
         }
     }
 
+    /** Creates a fresh browser subscription (replacing any stale one) and saves it on the server. */
+    async function subscribeFresh(events: PushEvent[]): Promise<PushSubscription> {
+        await navigator.serviceWorker.register("/sw.js", {scope: "/"})
+        const registration = await navigator.serviceWorker.ready
+        const {publicKey} = await $fetch<{publicKey: string}>("/api/push/key")
+        const existing = await registration.pushManager.getSubscription()
+        // Always replace an existing subscription so a stale or expired endpoint (or regenerated VAPID key) isn't reused
+        if (existing) await existing.unsubscribe().catch(() => {})
+        const subscription = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: decodeBase64Url(publicKey)})
+        try {
+            await save(subscription, events)
+        } catch (err) {
+            await subscription.unsubscribe().catch(() => {})
+            throw err
+        }
+        return subscription
+    }
+
     /** Asks for permission (call it straight from a click), subscribes and saves the device with `events`. */
     async function enable(events: PushEvent[]): Promise<void> {
         // Must be the first call: browsers only show the prompt during the user's click
         const permission = await Notification.requestPermission()
         if (permission !== "granted") throw new Error(permission === "denied" ? "Notifications are blocked. Allow them in the browser or system settings." : "Notifications were not allowed")
-        await navigator.serviceWorker.register("/sw.js", {scope: "/"})
-        const registration = await navigator.serviceWorker.ready
-        const {publicKey} = await $fetch<{publicKey: string}>("/api/push/key")
-        const key = Uint8Array.from(atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))
-        let subscription = await registration.pushManager.getSubscription()
-        // A subscription made with an earlier server key (keys regenerated) gets every push rejected: replace it
-        const current = subscription?.options.applicationServerKey
-        if (subscription && (!current || new Uint8Array(current).toString() !== key.toString())) {
-            await subscription.unsubscribe().catch(() => {})
-            subscription = null
-        }
-        subscription ??= await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: key})
-        await save(subscription, events)
+        await subscribeFresh(events)
     }
 
     async function save(subscription: PushSubscription, events: PushEvent[]): Promise<void> {
@@ -74,10 +89,35 @@ export function usePush() {
         await $fetch(`/api/push/devices/${id}`, {method: "DELETE"}).catch(() => {})
     }
 
-    async function test(): Promise<void> {
+    /** Sends a test notification; if the push service reports an expired subscription (410), renews it and retries once.
+     *  Calls `onDisconnected` when the failure leaves this device without an active server registration. */
+    async function test(events: PushEvent[], onDisconnected?: () => void): Promise<void> {
         const subscription = await currentSubscription()
-        if (!subscription) throw new Error("Notifications are off on this device")
-        await $fetch(`/api/push/devices/${await deviceId(subscription)}/test`, {method: "POST"})
+        if (!subscription) {
+            onDisconnected?.()
+            throw new Error("Notifications are off on this device")
+        }
+        try {
+            await $fetch(`/api/push/devices/${await deviceId(subscription)}/test`, {method: "POST"})
+        } catch (err: any) {
+            if ((err?.statusCode ?? err?.data?.statusCode) !== 410) throw err
+            let renewed: PushSubscription
+            try {
+                renewed = await subscribeFresh(events)
+            } catch (renewErr) {
+                onDisconnected?.()
+                throw renewErr
+            }
+            try {
+                await $fetch(`/api/push/devices/${await deviceId(renewed)}/test`, {method: "POST"})
+            } catch (retryErr: any) {
+                if ((retryErr?.statusCode ?? retryErr?.data?.statusCode) === 410) {
+                    await renewed.unsubscribe().catch(() => {})
+                    onDisconnected?.()
+                }
+                throw retryErr
+            }
+        }
     }
 
     return {load, enable, update, disable, test}

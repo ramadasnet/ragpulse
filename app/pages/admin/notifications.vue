@@ -63,6 +63,16 @@ async function toggleEvent(event: PushEvent, on: boolean) {
         busy.value = false
     }
 }
+
+async function sendTest() {
+    if (!events.value || busy.value) return
+    busy.value = true
+    try {
+        await runTest(() => push.test(events.value!, () => (events.value = null)), "Test notification sent")
+    } finally {
+        busy.value = false
+    }
+}
 </script>
 
 <template>
@@ -116,7 +126,7 @@ async function toggleEvent(event: PushEvent, on: boolean) {
             </div>
 
             <template v-if="events" #footer>
-                <UiButton size="sm" variant="secondary" :loading="testing" @click="runTest(() => push.test(), 'Test notification sent')"><Send :size="14" aria-hidden="true" /> Send test notification</UiButton>
+                <UiButton size="sm" variant="secondary" :disabled="busy" :loading="testing" @click="sendTest"><Send :size="14" aria-hidden="true" /> Send test notification</UiButton>
             </template>
         </UiCard>
     </div>

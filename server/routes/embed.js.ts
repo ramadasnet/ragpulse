@@ -57,7 +57,7 @@ const SCRIPT = /* js */ `(function () {
       'transition:opacity .2s,transform .3s ' + e + ',visibility 0s .3s}' +
       '.o .p{opacity:1;visibility:visible;transform:none;transition-delay:0s}' +
       '.p iframe{width:100%;height:100%;border:0;display:block}' +
-      '@media (max-width:519px){.p{inset:var(--viewport-top,0px) 0 auto;width:100%;height:var(--viewport-height,100%);max-height:none;border-radius:0}.o .l{transform:scale(0);pointer-events:none}}' +
+      '@media (max-width:519px),(pointer:coarse) and (orientation:landscape) and (max-height:519px){.p{inset:var(--viewport-top,0px) 0 auto;width:100%;height:var(--viewport-height,100%);max-height:none;border-radius:0}.o .l{transform:scale(0);pointer-events:none}}' +
       '@media (prefers-reduced-motion:reduce){.l,.l svg,.p{transition:none}}' +
       '</style><div class="w"><div class="p" role="dialog" aria-label="Chat"></div>' +
       '<button class="l" type="button" aria-label="Open chat" aria-expanded="false">' +

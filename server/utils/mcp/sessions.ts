@@ -173,7 +173,7 @@ export function registerMcpSessionTools(server: McpServer, ctx: McpContext) {
                     createdAt: new Date()
                 }
                 await commitSessionMessage(message)
-                if (claim_handling) await claimHumanHandling(session._id, author)
+                if (claim_handling) await claimHumanHandling(session._id, author, {requireOpenQuestion: true})
                 return mcpOk(`Message posted to session ${session._id} (${session.visitorName || "visitor"}).`, {message: mcpMessageView(message)})
             })
     )

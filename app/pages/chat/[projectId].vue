@@ -816,6 +816,7 @@ onBeforeUnmount(() => {
     position: fixed;
     inset: var(--viewport-top, 0px) 0 auto;
     height: var(--viewport-height, 100%);
+    container-type: size;
     display: flex;
     flex-direction: column;
     background: var(--c-bg);
@@ -1067,6 +1068,17 @@ onBeforeUnmount(() => {
 }
 .rp-powered a:hover {
     color: var(--c-text);
+}
+
+@container (max-height: 240px) {
+    .rp-head,
+    .rp-scroll,
+    .rp-foot {
+        padding-block: 4px;
+    }
+    .rp-powered {
+        display: none;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

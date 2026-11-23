@@ -66,7 +66,7 @@ const SCRIPT = /* js */ `(function () {
       '</button></div>';
     document.body.appendChild(host);
     var w = root.querySelector('.w'), btn = root.querySelector('.l'), panel = root.querySelector('.p'), frame = null, isOpen = false;
-    var viewport = window.visualViewport;
+    var viewport = window.visualViewport, viewportFrame;
 
     // Only follow the visual viewport at scale 1 (keyboard open, no pinch-zoom).
     // While pinch-zoomed, fixed elements stay laid out against the layout viewport and the
@@ -82,6 +82,17 @@ const SCRIPT = /* js */ `(function () {
       }
     }
 
+    // WebKit can update visualViewport after dispatching the event.
+    function scheduleViewportFit() {
+      if (viewportFrame !== undefined) return;
+      viewportFrame = window.requestAnimationFrame(function () {
+        viewportFrame = window.requestAnimationFrame(function () {
+          viewportFrame = undefined;
+          fitViewport();
+        });
+      });
+    }
+
     function open() {
       if (isOpen) return;
       if (!frame) {
@@ -94,8 +105,9 @@ const SCRIPT = /* js */ `(function () {
       isOpen = true;
       if (viewport) {
         fitViewport();
-        viewport.addEventListener('resize', fitViewport);
-        viewport.addEventListener('scroll', fitViewport);
+        viewport.addEventListener('resize', scheduleViewportFit);
+        viewport.addEventListener('scroll', scheduleViewportFit);
+        window.addEventListener('scroll', scheduleViewportFit, { passive: true });
       }
       visibility(true);
       w.classList.add('o');
@@ -107,8 +119,13 @@ const SCRIPT = /* js */ `(function () {
       if (!isOpen) return;
       isOpen = false;
       if (viewport) {
-        viewport.removeEventListener('resize', fitViewport);
-        viewport.removeEventListener('scroll', fitViewport);
+        viewport.removeEventListener('resize', scheduleViewportFit);
+        viewport.removeEventListener('scroll', scheduleViewportFit);
+        window.removeEventListener('scroll', scheduleViewportFit);
+      }
+      if (viewportFrame !== undefined) {
+        window.cancelAnimationFrame(viewportFrame);
+        viewportFrame = undefined;
       }
       visibility(false);
       w.classList.remove('o');

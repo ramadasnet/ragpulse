@@ -86,6 +86,7 @@ const confirmDialog = ref<HTMLDialogElement | null>(null)
 const scroller = ref<HTMLElement | null>(null)
 const viewportStyle = ref<{"--viewport-top": string; "--viewport-height": string}>()
 let viewport: VisualViewport | null = null
+let viewportFrame: number | undefined
 let localId = 0
 let bannerTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -511,6 +512,17 @@ function fitViewport() {
     scrollToBottom()
 }
 
+// WebKit can update visualViewport after dispatching the event.
+function scheduleViewportFit() {
+    if (viewportFrame !== undefined) return
+    viewportFrame = window.requestAnimationFrame(() => {
+        viewportFrame = window.requestAnimationFrame(() => {
+            viewportFrame = undefined
+            fitViewport()
+        })
+    })
+}
+
 function onVisible() {
     if (document.visibilityState === "visible" && phase.value === "chat" && Date.now() - lastPoll > 3000) loadSession(true)
 }
@@ -522,9 +534,12 @@ onMounted(() => {
     // In an iframe the embed script sizes the panel from the host page's viewport.
     if (window.parent === window) {
         viewport = window.visualViewport
-        fitViewport()
-        viewport?.addEventListener("resize", fitViewport)
-        viewport?.addEventListener("scroll", fitViewport)
+        if (viewport) {
+            fitViewport()
+            viewport.addEventListener("resize", scheduleViewportFit)
+            viewport.addEventListener("scroll", scheduleViewportFit)
+            window.addEventListener("scroll", scheduleViewportFit, {passive: true})
+        }
     }
     if (preview) {
         window.addEventListener("message", onMessage)
@@ -567,8 +582,10 @@ onBeforeUnmount(() => {
     clearTimeout(bannerTimer)
     window.removeEventListener("keydown", onKeydown)
     window.removeEventListener("resize", onResize)
-    viewport?.removeEventListener("resize", fitViewport)
-    viewport?.removeEventListener("scroll", fitViewport)
+    viewport?.removeEventListener("resize", scheduleViewportFit)
+    viewport?.removeEventListener("scroll", scheduleViewportFit)
+    window.removeEventListener("scroll", scheduleViewportFit)
+    if (viewportFrame !== undefined) window.cancelAnimationFrame(viewportFrame)
     window.removeEventListener("message", onMessage)
     window.removeEventListener("message", onEmbedMessage)
     window.removeEventListener("focus", onVisible)

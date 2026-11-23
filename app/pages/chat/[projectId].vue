@@ -503,6 +503,8 @@ function onResize() {
     scrollToBottom()
 }
 
+// Same rule as the embed script: follow the visual viewport only at scale 1. While pinch-zoomed,
+// fixed elements stay on the layout viewport and the browser pans over them.
 function fitViewport() {
     if (!viewport) return
     viewportStyle.value = viewport.scale === 1 ? {"--viewport-top": `${viewport.offsetTop}px`, "--viewport-height": `${viewport.height}px`} : undefined

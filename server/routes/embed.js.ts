@@ -68,6 +68,10 @@ const SCRIPT = /* js */ `(function () {
     var w = root.querySelector('.w'), btn = root.querySelector('.l'), panel = root.querySelector('.p'), frame = null, isOpen = false;
     var viewport = window.visualViewport;
 
+    // Only follow the visual viewport at scale 1 (keyboard open, no pinch-zoom).
+    // While pinch-zoomed, fixed elements stay laid out against the layout viewport and the
+    // browser pans over them; sizing to the zoomed visual viewport's height without its
+    // width/offsetLeft would leave a panel that is too short and misplaced.
     function fitViewport() {
       if (viewport.scale === 1) {
         panel.style.setProperty('--viewport-top', viewport.offsetTop + 'px');

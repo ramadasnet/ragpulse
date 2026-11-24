@@ -145,7 +145,7 @@ onBeforeUnmount(() => {
     color: var(--c-text);
 }
 .src-btn svg {
-    color: var(--c-highlight);
+    color: var(--c-highlight-ink);
 }
 .src-pop {
     position: absolute;
@@ -204,7 +204,7 @@ a.pop-link:hover {
 }
 .pop-link svg {
     flex-shrink: 0;
-    color: var(--c-highlight);
+    color: var(--c-highlight-ink);
 }
 .pop-link.plain {
     color: var(--c-muted);

@@ -1,5 +1,6 @@
 import {afterAll, beforeAll, describe, expect, test} from "bun:test"
 import {analyzeWebsiteStyles, detectWebsiteTheme, parseCssColor, pickThemePreset} from "../server/utils/website-theme"
+import {CHAT_THEME_PRESETS} from "../shared/utils/chat-theme"
 
 const page = (head: string, body = "", htmlAttrs = "") => `<!doctype html><html ${htmlAttrs}><head>${head}</head><body>${body}</body></html>`
 const presetFor = (html: string) => {
@@ -84,6 +85,11 @@ describe("website theme matching", () => {
     test("a brand colour never gets the monochrome preset, and an unknown mode is light", () => {
         expect(pickThemePreset({primary: "#38bdf8", mode: "dark"})).toMatchObject({preset: {name: "Ocean"}, mode: "dark"})
         expect(pickThemePreset({primary: "#533afd"})).toMatchObject({preset: {name: "Aurora"}, mode: "light"})
+    })
+
+    test.each(["Jade", "Dusk", "Marigold", "Terracotta", "Sandstone"])("matches the %s preset to its brand colours", (name) => {
+        const preset = CHAT_THEME_PRESETS.find((p) => p.name === name)!
+        expect(pickThemePreset({primary: preset.accent, secondary: preset.accent2, mode: preset.mode})).toEqual({preset, mode: preset.mode})
     })
 })
 

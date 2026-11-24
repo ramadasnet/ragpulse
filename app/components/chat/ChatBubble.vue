@@ -73,7 +73,7 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 }
 .who-mark.agent {
     background: var(--c-highlight-soft);
-    color: var(--c-highlight);
+    color: var(--c-highlight-ink);
     box-shadow: inset 0 0 0 1px var(--c-highlight-soft);
 }
 .body {
@@ -152,7 +152,7 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
     height: 6px;
     flex-shrink: 0;
     border-radius: 50%;
-    background: var(--c-highlight);
+    background: var(--c-highlight-ink);
 }
 .agent-name {
     overflow-wrap: anywhere;

@@ -3,7 +3,9 @@ import {DEFAULT_THEME} from "#shared/types"
 
 // Chat widget theming and message helpers (used by the public chat page and the appearance editor).
 
-function parseHex(hex: string): [number, number, number] | null {
+type Rgb = [number, number, number]
+
+function parseHex(hex: string): Rgb | null {
     let h = String(hex || "")
         .trim()
         .replace(/^#/, "")
@@ -21,11 +23,11 @@ export function isHexColor(value: string): boolean {
     return !!parseHex(value)
 }
 
-function luminance(rgb: [number, number, number]): number {
+function luminance(rgb: Rgb): number {
     const [r, g, b] = rgb.map((v) => {
         const c = v / 255
         return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-    }) as [number, number, number]
+    }) as Rgb
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
@@ -82,17 +84,41 @@ const PALETTES = {
     }
 } as const
 
+function mixRgb(base: Rgb, overlay: Rgb, opacity: number): Rgb {
+    return base.map((value, i) => Math.round(value * (1 - opacity) + overlay[i]! * opacity)) as Rgb
+}
+
+/** Tints icon ink toward the text colour until it contrasts with plain and highlighted surfaces. */
+function highlightInk(hex: string, palette: (typeof PALETTES)[ChatTheme["mode"]], opacity: number): string {
+    const highlight = parseHex(hex)
+    if (!highlight) return palette["--c-text"]
+    const text = parseHex(palette["--c-text"])!
+    const background = parseHex(palette["--c-bg"])!
+    const surface = parseHex(palette["--c-surface"])!
+    const hovered = parseHex(palette["--c-surface-2"])!
+    const backgrounds = [background, surface, hovered, mixRgb(background, highlight, opacity), mixRgb(surface, highlight, opacity)].map(luminance)
+    for (let step = 0; step < 20; step++) {
+        const ink = mixRgb(highlight, text, step / 20)
+        const light = luminance(ink)
+        if (backgrounds.every((bg) => (Math.max(light, bg) + 0.05) / (Math.min(light, bg) + 0.05) >= 3)) return step ? `rgb(${ink.join(" ")})` : hex
+    }
+    return palette["--c-text"]
+}
+
 /** CSS variables for the chat root element. */
 export function chatThemeVars(theme: ChatTheme): Record<string, string> {
+    const palette = PALETTES[theme.mode === "light" ? "light" : "dark"]
+    const highlightOpacity = theme.mode === "light" ? 0.16 : 0.13
     return {
-        ...PALETTES[theme.mode === "light" ? "light" : "dark"],
+        ...palette,
         "--c-accent": theme.accent,
         "--c-accent-ink": chatInkOn(theme.accent),
         "--c-accent-soft": alpha(theme.accent, 0.14),
         "--c-accent2": theme.accent2,
         "--c-accent2-ink": chatInkOn(theme.accent2),
         "--c-highlight": theme.highlight,
-        "--c-highlight-soft": alpha(theme.highlight, theme.mode === "light" ? 0.16 : 0.13),
+        "--c-highlight-ink": highlightInk(theme.highlight, palette, highlightOpacity),
+        "--c-highlight-soft": alpha(theme.highlight, highlightOpacity),
         "--c-ring": `0 0 0 3px ${alpha(theme.highlight, 0.35)}`
     }
 }

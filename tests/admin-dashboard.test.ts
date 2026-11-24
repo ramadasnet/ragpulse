@@ -37,7 +37,7 @@ test("dashboard scopes each activity feed and its totals to the matching project
         ]),
         sources: collection([{_id: "docs-1", projectId: "docs", title: "Help center"}])
     }
-    const dashboard = await getDashboard(user, db as unknown as Parameters<typeof getDashboard>[1])
+    const dashboard = await getDashboard(user, db as unknown as Parameters<typeof getDashboard>[1], {chatAutoCloseDays: 0, syncHistoryDays: 30})
 
     expect(db.projects.find).toHaveBeenCalledWith({_id: {$in: ["support", "chat", "docs", "deleted"]}})
     const open = {projectId: {$in: ["support"]}, status: "open"}
@@ -65,7 +65,7 @@ test("dashboard does not query activity when an assistant lacks the matching per
         sources: collection()
     }
     const user = {role: "assistant", projects: [{projectId: "p", permissions: ["settings:edit"]}]} as User
-    expect(await getDashboard(user, db as unknown as Parameters<typeof getDashboard>[1])).toEqual({
+    expect(await getDashboard(user, db as unknown as Parameters<typeof getDashboard>[1], {chatAutoCloseDays: 0, syncHistoryDays: 30})).toEqual({
         projects: {total: 1, enabled: 1},
         questions: null,
         conversations: null,

@@ -56,7 +56,7 @@ const syncStatus = {
                 <div v-if="data.syncs" class="panel metric syncs">
                     <span class="metric-label"><RefreshCw :size="15" /> Failed syncs</span>
                     <strong>{{ formatNumber(data.syncs.failed7d) }}</strong>
-                    <span class="dim small">Runs in the last 7 days</span>
+                    <span class="dim small">Runs in the last {{ data.syncs.windowDays === 1 ? "day" : `${data.syncs.windowDays} days` }}</span>
                 </div>
             </section>
 

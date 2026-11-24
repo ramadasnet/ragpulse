@@ -2,7 +2,7 @@
 import {AlertTriangle, Globe, ImageUp, RotateCcw, Send, Trash2} from "lucide-vue-next"
 import type {IngestDetail, Project, ProjectPermission} from "#shared/types"
 import {DEFAULT_SUPPORT_DISPLAY_NAME, INGEST_DETAIL_INFO, INGEST_DETAILS, MANUAL_REFRESH, projectIngestDetail, REFRESH_PRESETS} from "#shared/types"
-import {defaultSystemInstructions} from "#shared/utils/instructions"
+import {SYSTEM_INSTRUCTION_TEMPLATES, systemInstructionTemplate} from "#shared/utils/instructions"
 import {DEFAULT_ESCALATION_WEBHOOK_BODY, ESCALATION_WEBHOOK_PLACEHOLDERS} from "#shared/utils/webhook"
 
 type ProjectWithPerms = Project & {permissions: ProjectPermission[]}
@@ -194,9 +194,18 @@ function discard() {
     if (project.value) form.value = toForm(project.value)
 }
 
-function insertTemplate() {
-    if (form.value) form.value.systemInstructions = defaultSystemInstructions(form.value.title, form.value.website)
-}
+const instructionTemplateOptions = [{value: "", label: "Choose a template", disabled: true}, ...SYSTEM_INSTRUCTION_TEMPLATES.map((name) => ({value: name, label: name}))]
+const instructionTemplate = computed({
+    get: () => {
+        const f = form.value
+        return f ? (SYSTEM_INSTRUCTION_TEMPLATES.find((name) => f.systemInstructions === systemInstructionTemplate(name, f.title, f.website)) ?? "") : ""
+    },
+    set: (value: string | number | null | undefined) => {
+        const name = SYSTEM_INSTRUCTION_TEMPLATES.find((name) => name === value)
+        const f = form.value
+        if (f && name) f.systemInstructions = systemInstructionTemplate(name, f.title, f.website)
+    }
+})
 
 function resetWebhookBody() {
     if (form.value) form.value.webhookBody = DEFAULT_ESCALATION_WEBHOOK_BODY
@@ -363,6 +372,8 @@ async function deleteProject() {
                         <input v-model.number="form.temperature" type="range" min="0" max="2" step="0.1" class="range" aria-label="Temperature" />
                     </UiField>
 
+                    <UiSelect v-model="instructionTemplate" label="System instruction template" :options="instructionTemplateOptions" hint="Selecting a template replaces the instructions below. You can edit them before saving." />
+
                     <UiTextarea
                         v-model="form.systemInstructions"
                         label="System instructions"
@@ -370,13 +381,13 @@ async function deleteProject() {
                         mono
                         maxlength="20000"
                         hint="Combined with retrieved knowledge on every answer. Describe tone, scope and boundaries. The global system instructions on Settings always apply too."
-                    >
-                        <template #aside>
-                            <button type="button" class="link-btn tiny" @click="insertTemplate"><RotateCcw :size="12" /> Use template</button>
-                        </template>
-                    </UiTextarea>
+                    />
 
-                    <UiToggle v-model="form.showCodeSources" label="Show source code references" description="Lists the source code files used for an answer below it. When off, answers can still link to code if the visitor asks about it." />
+                    <UiToggle
+                        v-model="form.showCodeSources"
+                        label="Show source code references"
+                        description="Lists the references and code used for an answer below it. When off, answers can still link to indexed references and code if the visitor asks about it."
+                    />
                 </div>
             </UiCard>
 

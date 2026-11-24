@@ -30,7 +30,8 @@ test("conversation can be given back only during an active takeover with an admi
         messages.push({role: "agent", author: {name: "Support", via: "admin"}, createdAt: new Date(now.getTime() - 60_000)})
         messages.push({role: "agent", author: {name: "Bot", via: "mcp"}, createdAt: now})
         expect((await read()).canGiveBack).toBe(false)
-        messages.push({role: "agent", author: {name: "Support", via: "admin"}, createdAt: now})
+        // A takeover started before this release stamped humanHandledAt just after saving the reply that started it.
+        messages.push({role: "agent", author: {name: "Support", via: "admin"}, createdAt: new Date(now.getTime() - 50)})
         expect(await read()).toMatchObject({canGiveBack: true, messages: []})
         session.endedAt = now
         expect((await read()).canGiveBack).toBe(false)

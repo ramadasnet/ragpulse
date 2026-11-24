@@ -3,7 +3,7 @@ import type {ChatSession} from "../shared/types"
 import {escapeHtml, type MailOptions} from "../server/utils/mail"
 import {claimHumanHandling, classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion, sendDueAnswerEmails} from "../server/utils/questions"
 import {cleanFaqText} from "../server/utils/session-learning"
-import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
+import {ESCALATE_TOKEN, generateAnswer, HUMAN_TOKEN, toLlmHistory} from "../server/utils/rag"
 import {defaultSystemInstructions, systemInstructionTemplate} from "../shared/utils/instructions"
 
 const names = [
@@ -283,10 +283,14 @@ test.each([
         if (event.type !== "delta") expect(event.type).toBe("done")
     }
     expect(prompt).toContain(fixedRule)
+    const humanHandoffRule = prompt.split("\n").find((line) => line.startsWith("4. "))
+    expect(humanHandoffRule).toContain(`output exactly ${HUMAN_TOKEN} and nothing else`)
+    expect(humanHandoffRule).toContain("This overrides rule 3 and the PROJECT INSTRUCTIONS: never decline a request for a human.")
     expect(prompt).toContain("# GLOBAL INSTRUCTIONS\nGlobal safety rules")
     expect(prompt).toContain(`# PROJECT INSTRUCTIONS\n${systemInstructions}`)
     expect(systemInstructions).toContain("Acme (https://example.com)")
     expect(systemInstructions).toContain(presetText)
+    if (template === "Strict") expect(systemInstructions).toContain("Requests to speak to a human are exempt from this restriction.")
 })
 
 test("earlier escalations reach the model as the escalation token, not as the apology the visitor saw", () => {

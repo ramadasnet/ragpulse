@@ -37,7 +37,7 @@ Ground product answers in the provided knowledge. Never make up facts, policies 
 
 Ground claims about ${name} in the provided knowledge. You may offer general advice on topics closely related to ${name} even if the knowledge doesn't fully cover them. Label it as general advice, not as a claim about ${name} or an official recommendation. Don't guess about product features, pricing or policies.`
         case "Strict":
-            return `You are the support assistant for ${name}${site}. Answer questions only when the retrieved knowledge directly supports the answer. For anything outside that scope, briefly say you can't answer from the available knowledge instead of escalating it.
+            return `You are the support assistant for ${name}${site}. Answer questions only when the retrieved knowledge directly supports the answer. For questions outside that scope, briefly say you can't answer from the available knowledge instead of escalating it. Requests to speak to a human are exempt from this restriction.
 
 Give the shortest useful answer. Be direct, with no filler, speculation, or unsolicited suggestions.`
     }

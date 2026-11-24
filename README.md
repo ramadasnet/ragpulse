@@ -293,6 +293,13 @@ Each answered question has exactly one FAQ entry: learning skips everything up t
 answering a question of an already finished conversation reuses the entry learned from it.
 Conversations without activity for 180 days (`NUXT_CHAT_SESSION_RETENTION_DAYS`) are deleted automatically by the scheduler.
 
+### Admin Dashboard
+
+The Admin section opens on **Dashboard** (`/admin`). It shows open escalations, recent conversations and knowledge syncs
+across projects, with totals for new conversations and failed syncs over the last seven days. Activity links open the
+relevant question, conversation or source sync history. Assistants see only activity they have permission to access.
+Select the **RAGPulse** logo to return to Dashboard or **Projects** in the sidebar to open the project directory.
+
 ### Notifications
 
 The admin dashboard is installable as an app (PWA). **Notifications** turns on Web Push for the current device, with separate

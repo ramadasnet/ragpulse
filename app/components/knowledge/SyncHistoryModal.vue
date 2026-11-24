@@ -118,7 +118,7 @@ function statusInfo(run: SyncRun): {dot: string; label: string} {
             <p v-if="total > runs.length" class="dim tiny" style="margin-top: 8px">Showing the latest {{ MAX_RUNS }} of {{ formatNumber(total) }} runs.</p>
             <p class="dim tiny runs-foot">
                 Runs are kept for {{ retentionDays }} day{{ retentionDays === 1 ? "" : "s" }}.
-                <NuxtLink v-if="isAdmin" to="/admin/settings" @click="open = false">Change on Global Settings</NuxtLink>
+                <NuxtLink v-if="isAdmin" to="/admin/settings">Change on Global Settings</NuxtLink>
             </p>
         </template>
     </UiModal>

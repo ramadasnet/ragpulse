@@ -130,6 +130,8 @@ async function ensureIndexes(c: Collections) {
         c.chunks.createIndex({embeddingModel: 1}),
         c.sessions.createIndex({projectId: 1, lastMessageAt: -1}),
         c.sessions.createIndex({projectId: 1, createdAt: -1}),
+        // Dashboard count of human-handled chats: only indexes chats a human has taken over
+        c.sessions.createIndex({projectId: 1, humanHandledAt: 1}, {partialFilterExpression: {humanHandledAt: {$type: "date"}}}),
         // Chat session retention cleanup
         c.sessions.createIndex({lastMessageAt: 1}),
         c.messages.createIndex({sessionId: 1, createdAt: 1}),

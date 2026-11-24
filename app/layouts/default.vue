@@ -415,5 +415,8 @@ async function logout() {
         backdrop-filter: blur(8px);
         z-index: 20;
     }
+    .mobile-bar a {
+        display: flex;
+    }
 }
 </style>

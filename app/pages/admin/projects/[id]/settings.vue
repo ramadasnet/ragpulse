@@ -308,7 +308,7 @@ async function deleteProject() {
     deleteOpen.value = false
     original.value = JSON.stringify(form.value)
     await refreshProjects().catch(() => {})
-    await navigateTo("/admin")
+    await navigateTo("/admin/projects")
 }
 </script>
 

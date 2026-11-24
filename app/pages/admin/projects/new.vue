@@ -88,7 +88,7 @@ async function submit() {
     <div class="page narrow">
         <header class="page-header">
             <div>
-                <NuxtLink to="/admin" class="back small muted"><ArrowLeft :size="14" /> Projects</NuxtLink>
+                <NuxtLink to="/admin/projects" class="back small muted"><ArrowLeft :size="14" /> Projects</NuxtLink>
                 <h1>New project</h1>
                 <p>Set up the basics. You'll add knowledge (FAQ, web pages, git repos) right after.</p>
             </div>
@@ -132,7 +132,7 @@ async function submit() {
             </UiCard>
 
             <div class="row end">
-                <UiButton variant="ghost" to="/admin">Cancel</UiButton>
+                <UiButton variant="ghost" to="/admin/projects">Cancel</UiButton>
                 <UiButton variant="primary" type="submit" :loading="pending">Create project</UiButton>
             </div>
         </form>

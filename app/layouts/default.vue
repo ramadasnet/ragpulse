@@ -126,7 +126,7 @@ async function logout() {
     <div class="shell" :class="{'mobile-open': mobileOpen}">
         <aside class="sidebar">
             <div class="sidebar-top">
-                <NuxtLink to="/admin" class="brand"><AppLogo /></NuxtLink>
+                <NuxtLink to="/admin" class="brand" aria-label="RAGPulse Dashboard" @click="mobileOpen = false"><AppLogo /></NuxtLink>
                 <button class="mobile-close btn-reset" aria-label="Close menu" @click="mobileOpen = false"><X :size="18" /></button>
             </div>
 
@@ -157,7 +157,7 @@ async function logout() {
                 </template>
 
                 <p class="nav-label">Workspace</p>
-                <NuxtLink to="/admin" class="nav-item" :class="{active: route.path === '/admin' || route.path === '/admin/projects/new'}"> <FolderKanban :size="16" /> <span>Projects</span> </NuxtLink>
+                <NuxtLink to="/admin/projects" class="nav-item" :class="{active: route.path === '/admin/projects' || route.path === '/admin/projects/new'}"> <FolderKanban :size="16" /> <span>Projects</span> </NuxtLink>
                 <NuxtLink v-if="isAdmin" to="/admin/users" class="nav-item" :class="{active: isActive('/admin/users')}"> <Users :size="16" /> <span>Users</span> </NuxtLink>
                 <NuxtLink to="/admin/notifications" class="nav-item" :class="{active: isActive('/admin/notifications')}"> <Bell :size="16" /> <span>Notifications</span> </NuxtLink>
                 <NuxtLink to="/admin/mcp" class="nav-item" :class="{active: isActive('/admin/mcp')}"> <Plug :size="16" /> <span>MCP &amp; API</span> </NuxtLink>
@@ -182,7 +182,7 @@ async function logout() {
         <main class="main">
             <header class="mobile-bar">
                 <button class="btn-reset icon-btn" aria-label="Open menu" @click="mobileOpen = true"><Menu :size="18" /></button>
-                <AppLogo />
+                <NuxtLink to="/admin" aria-label="RAGPulse Dashboard"><AppLogo /></NuxtLink>
             </header>
             <!-- Remounts the page once the account loads after an outage, so permission-gated pages run their guard and loads again -->
             <slot :key="me ? 'account' : 'no-account'" />

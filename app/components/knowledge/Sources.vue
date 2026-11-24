@@ -4,6 +4,8 @@ import {DEFAULT_REFRESH_HOURS, type SourceView} from "#shared/types"
 
 const props = defineProps<{projectId: string}>()
 
+const route = useRoute()
+const router = useRouter()
 const {projects, refresh: refreshProjects} = useProjects()
 const {confirm} = useConfirm()
 const {run} = useAction()
@@ -34,9 +36,13 @@ onBeforeUnmount(() => clearInterval(poll))
 const modalOpen = ref(false)
 const docsOpen = ref(false)
 const docsSource = ref<SourceView | null>(null)
-const historyOpen = ref(false)
-const historyId = ref<string | null>(null)
-const historySource = computed(() => sources.value.find((s) => s._id === historyId.value) ?? null)
+const historySource = computed(() => sources.value.find((s) => s._id === route.query.history) ?? null)
+const historyOpen = computed({
+    get: () => historySource.value !== null,
+    set: (open) => {
+        if (!open) router.replace({query: {...route.query, history: undefined}})
+    }
+})
 const expanded = ref<Set<string>>(new Set())
 const syncing = ref<Set<string>>(new Set())
 
@@ -48,8 +54,7 @@ function showDocs(s: SourceView) {
     docsOpen.value = true
 }
 function showHistory(s: SourceView) {
-    historyId.value = s._id
-    historyOpen.value = true
+    router.replace({query: {...route.query, history: s._id}})
 }
 function toggleError(id: string) {
     const next = new Set(expanded.value)

@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, test} from "bun:test"
 import type {ChatSession} from "../shared/types"
-import {claimHumanHandling, classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion} from "../server/utils/questions"
+import {escapeHtml, type MailOptions} from "../server/utils/mail"
+import {claimHumanHandling, classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion, sendDueAnswerEmails} from "../server/utils/questions"
 import {cleanFaqText} from "../server/utils/session-learning"
 import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
 
@@ -145,6 +146,72 @@ function mockEscalation(db: ReturnType<typeof fakeDb>, extra: Record<string, unk
 
 const project = {_id: "project", title: "Test", supportEmail: "support@example.test", model: "test"} as any
 const session = {_id: "session", visitorName: "Visitor"} as any
+
+describe("visitor answer emails", () => {
+    const question = {_id: "q1", projectId: "project", sessionId: "session", question: "How do I reset my password?", visitorEmail: "visitor@example.test", status: "open"}
+    const author = {name: "  Sam & Co  ", via: "admin"} as const
+    const chatUrl = "https://example.test/chat/project"
+    const chatPrompt = "You can also continue the conversation in the chat:"
+    const findSession =
+        (finished: boolean) =>
+        async (_: unknown, {projection}: {projection: {finishedAt?: number}}) => ({finishedAt: projection.finishedAt && finished ? new Date() : undefined})
+
+    test.each([
+        [true, false, false],
+        [true, true, true],
+        [false, false, true]
+    ])("immediate email for finished=%p and postToChat=%p has chat link: %p", async (finished, postToChat, hasLink) => {
+        const sent: MailOptions[] = []
+        Object.assign(globalThis, {
+            useCollections: async () => ({
+                questions: {findOne: async () => ({...question, answeredBy: {name: "Previous responder", via: "admin"}}), updateOne: async () => ({modifiedCount: 1}), countDocuments: async () => 0},
+                sessions: {findOne: findSession(finished), updateOne: async () => {}},
+                messages: {insertOne: async () => {}},
+                projects: {findOne: async () => ({...project, supportDisplayName: {useAdminName: true, customName: "Customer Care"}})}
+            }),
+            newId: () => "reply",
+            sessionEnded: async () => false,
+            getAppSettings: async () => ({answerEmailDelayMinutes: 0}),
+            publicUrl: () => chatUrl,
+            escapeHtml,
+            sendMail: async (mail: MailOptions) => (sent.push(mail), true)
+        })
+        const result = await replyToQuestion({questionId: question._id, answer: "Use the reset link.", author, addToFaq: false, postToChat})
+        expect(result.email).toBe("sent")
+        expect(sent).toHaveLength(1)
+        expect(sent[0]!.text).toContain("— Sam & Co\nTest")
+        expect(sent[0]!.html).toContain("— Sam &amp; Co<br>Test")
+        expect(sent[0]!.html?.includes(chatPrompt)).toBe(hasLink)
+        expect(sent[0]!.html?.includes(chatUrl)).toBe(hasLink)
+    })
+
+    test.each([
+        [false, author, true, "Customer Care"],
+        [true, author, false, "Sam & Co"],
+        [true, {name: "Private bot name", via: "mcp"}, true, "Customer Care"],
+        [true, undefined, false, "Customer Care"]
+    ] as const)("scheduled email respects the current display setting (enabled=%p, author=%p, finished=%p)", async (useAdminName, answeredBy, finished, signature) => {
+        const sent: MailOptions[] = []
+        Object.assign(globalThis, {
+            useCollections: async () => ({
+                questions: {
+                    findOneAndUpdate: async () => ({...question, status: "answered", answer: "Use the reset link.", answeredBy}),
+                    updateOne: async () => {}
+                },
+                sessions: {findOne: findSession(finished)},
+                projects: {findOne: async () => ({...project, supportDisplayName: {useAdminName, customName: "Customer Care"}})}
+            }),
+            publicUrl: () => chatUrl,
+            escapeHtml,
+            sendMail: async (mail: MailOptions) => (sent.push(mail), true)
+        })
+        expect(await sendDueAnswerEmails(1)).toEqual({sent: 1, skipped: 0, failed: 0})
+        expect(sent).toHaveLength(1)
+        expect(sent[0]!.text).toContain(`— ${signature}\nTest`)
+        expect(sent[0]!.html).toContain(`— ${escapeHtml(signature)}<br>Test`)
+        expect(sent[0]!.html?.includes(chatUrl)).toBe(!finished)
+    })
+})
 
 test.each([
     ["admin", 0, undefined, true],

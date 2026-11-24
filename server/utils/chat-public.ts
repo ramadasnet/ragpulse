@@ -1,7 +1,7 @@
 import type {H3Event} from "h3"
 import {timingSafeEqual} from "node:crypto"
 import type {ChatMessage, ChatSession, Project} from "#shared/types"
-import {DEFAULT_SUPPORT_DISPLAY_NAME, DEFAULT_THEME} from "#shared/types"
+import {DEFAULT_SUPPORT_DISPLAY_NAME, DEFAULT_THEME} from "../../shared/types"
 
 // Helpers shared by the public chat API (/api/chat/**), the chat page middleware and embed.js.
 
@@ -170,18 +170,23 @@ export function publicChatSession(session: ChatSession) {
     }
 }
 
+/** Name shown to the visitor for a support reply. */
+export function supportReplyName(project: Pick<Project, "supportDisplayName">, author?: ChatMessage["author"]): string {
+    const support = project.supportDisplayName
+    const adminName = support?.useAdminName && author?.via === "admin" ? author.name.trim() : ""
+    return adminName || support?.customName || DEFAULT_SUPPORT_DISPLAY_NAME
+}
+
 /** Message as shown to the visitor. Source code references are dropped when the project hides them. */
 export function publicChatMessage(message: ChatMessage, project: Pick<Project, "showCodeSources" | "supportDisplayName">) {
     // Sources stored before the `kind` field existed count as documents
     const all = message.sources?.map((s) => ({...s, kind: s.kind === "code" ? ("code" as const) : ("docs" as const)}))
     const sources = project.showCodeSources === false ? all?.filter((s) => s.kind !== "code") : all
-    const support = project.supportDisplayName
-    const adminName = support?.useAdminName && message.author?.via === "admin" ? message.author.name.trim() : ""
     return {
         _id: message._id,
         role: message.role,
         content: message.content,
-        supportName: message.role === "agent" ? adminName || support?.customName || DEFAULT_SUPPORT_DISPLAY_NAME : undefined,
+        supportName: message.role === "agent" ? supportReplyName(project, message.author) : undefined,
         sources: sources?.length ? sources : undefined,
         escalated: message.escalated || undefined,
         emailFallback: message.emailFallback || undefined,

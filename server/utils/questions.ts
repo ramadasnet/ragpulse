@@ -1,4 +1,5 @@
 import type {AnswerEmailStatus, ChatMessage, ChatSession, Faq, Project, Question, QuestionReason} from "#shared/types"
+import {supportReplyName} from "./chat-public"
 import logger from "./logger"
 
 export interface ReplyAuthor {
@@ -230,21 +231,23 @@ export async function markVisitorAway(sessionId: string): Promise<void> {
 }
 
 /** Emails the current answer of a question to the visitor. Returns true when the email was sent. */
-async function sendAnswerEmail(question: Question, project: Project): Promise<boolean> {
+async function sendAnswerEmail(question: Pick<Question, "visitorEmail" | "visitorName" | "question" | "answer" | "answeredBy">, project: Project, finished: boolean): Promise<boolean> {
     if (!question.visitorEmail || !question.answer) return false
     const answer = question.answer
-    const chatLink = publicUrl("chat", `/chat/${project._id}`)
+    const name = supportReplyName(project, question.answeredBy)
+    const chatLink = finished ? "" : escapeHtml(publicUrl("chat", `/chat/${project._id}`))
     return sendMail({
         to: question.visitorEmail,
         replyTo: project.supportEmail,
         subject: `Re: your question to ${project.title}`,
-        text: `Hi ${question.visitorName || "there"},\n\nYou asked:\n> ${question.question}\n\n${answer}\n\n— ${project.title}${project.website ? `\n${project.website}` : ""}`,
+        text: `Hi ${question.visitorName || "there"},\n\nYou asked:\n> ${question.question}\n\n${answer}\n\n— ${name}\n${project.title}${project.website ? `\n${project.website}` : ""}`,
         html: `<p>Hi ${escapeHtml(question.visitorName || "there")},</p>
 <p>You asked:</p>
 <blockquote style="border-left:3px solid #ccc;margin:0;padding:8px 12px;color:#555;white-space:pre-wrap">${escapeHtml(question.question)}</blockquote>
 <p style="white-space:pre-wrap">${escapeHtml(answer)}</p>
-<p>— ${escapeHtml(project.title)}${project.website ? `<br><a href="${escapeHtml(project.website)}">${escapeHtml(project.website)}</a>` : ""}</p>
-<p style="color:#888;font-size:12px">You can also continue the conversation in the chat: <a href="${escapeHtml(chatLink)}">${escapeHtml(chatLink)}</a></p>`
+<p>— ${escapeHtml(name)}<br>${escapeHtml(project.title)}${project.website ? `<br><a href="${escapeHtml(project.website)}">${escapeHtml(project.website)}</a>` : ""}</p>${
+            chatLink ? `\n<p style="color:#888;font-size:12px">You can also continue the conversation in the chat: <a href="${chatLink}">${chatLink}</a></p>` : ""
+        }`
     })
 }
 
@@ -288,7 +291,7 @@ export async function replyToQuestion(params: {
     const claimed = question.status === "open" ? (await questions.updateOne({_id: question._id, status: "open"}, {$set: update})).modifiedCount > 0 : false
     if (params.onlyOpen && !claimed) throw createError({statusCode: 409, statusMessage: "Question was already answered or dismissed"})
 
-    const session = await sessions.findOne({_id: question.sessionId}, {projection: {visitorSeenAt: 1, learnedFaqId: 1, endedAt: 1, endReason: 1, lastMessageAt: 1}})
+    const session = await sessions.findOne({_id: question.sessionId}, {projection: {visitorSeenAt: 1, learnedFaqId: 1, endedAt: 1, endReason: 1, lastMessageAt: 1, finishedAt: 1}})
     const ended = !!session && (await sessionEnded(session))
     let message: ChatMessage | undefined
     let counted = false
@@ -338,7 +341,7 @@ export async function replyToQuestion(params: {
             update.visitorEmailDueAt = new Date(now.getTime() + delayMinutes * 60_000)
             delete $unset.visitorEmailDueAt
             email = "scheduled"
-        } else if (await sendAnswerEmail({...question, answer}, project)) {
+        } else if (await sendAnswerEmail({...question, answer, answeredBy: params.author}, project, !message && !!session?.finishedAt)) {
             update.visitorNotifiedAt = now
             email = "sent"
         } else {
@@ -396,13 +399,13 @@ export async function sendDueAnswerEmails(limit = 50): Promise<{sent: number; sk
     for (let i = 0; i < limit; i++) {
         const question = await questions.findOneAndUpdate({visitorEmailDueAt: {$lte: new Date()}}, {$unset: {visitorEmailDueAt: ""}}, {returnDocument: "before"})
         if (!question) break
-        const [session, project] = await Promise.all([sessions.findOne({_id: question.sessionId}, {projection: {visitorSeenAt: 1}}), projects.findOne({_id: question.projectId})])
+        const [session, project] = await Promise.all([sessions.findOne({_id: question.sessionId}, {projection: {visitorSeenAt: 1, finishedAt: 1}}), projects.findOne({_id: question.projectId})])
         const seen = session?.visitorSeenAt && question.answeredAt && new Date(session.visitorSeenAt) >= new Date(question.answeredAt)
         if (seen || !project || question.status !== "answered") {
             result.skipped++
             continue
         }
-        if (await sendAnswerEmail(question, project)) {
+        if (await sendAnswerEmail(question, project, !!session?.finishedAt)) {
             await questions.updateOne({_id: question._id}, {$set: {visitorNotifiedAt: new Date()}})
             result.sent++
         } else {

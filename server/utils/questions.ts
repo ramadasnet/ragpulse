@@ -189,10 +189,14 @@ async function tagUserSpecific(project: Project, question: Question): Promise<bo
 /**
  * Pauses the assistant when a team member replies, without replacing an existing human handler.
  * The assistant resumes when the chat is given back to the agent or the last open question is resolved.
+ * `at` stamps the takeover with the time of the reply that started it, so that reply counts as part of it.
  */
-export async function claimHumanHandling(sessionId: string, author: ReplyAuthor, options?: {requireOpenQuestion?: boolean}): Promise<void> {
+export async function claimHumanHandling(sessionId: string, author: ReplyAuthor, options?: {requireOpenQuestion?: boolean; at?: Date}): Promise<void> {
     const {sessions} = await useCollections()
-    await sessions.updateOne({_id: sessionId, humanHandledAt: {$exists: false}, ...(options?.requireOpenQuestion ? {unansweredCount: {$gt: 0}} : {})}, {$set: {humanHandledAt: new Date(), humanHandledBy: {userId: author.userId, name: author.name}}})
+    await sessions.updateOne(
+        {_id: sessionId, humanHandledAt: {$exists: false}, ...(options?.requireOpenQuestion ? {unansweredCount: {$gt: 0}} : {})},
+        {$set: {humanHandledAt: options?.at ?? new Date(), humanHandledBy: {userId: author.userId, name: author.name}}}
+    )
 }
 
 /** Hands the session back to the assistant once none of its questions is open. */

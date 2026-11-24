@@ -5,10 +5,11 @@ test("conversation can be given back only during an active takeover with an admi
     const globals = globalThis as typeof globalThis & Record<string, unknown>
     const now = new Date()
     const session: Partial<ChatSession> = {_id: "session", projectId: "project"}
-    const messages: Pick<ChatMessage, "role" | "author">[] = []
+    const messages: Pick<ChatMessage, "role" | "author" | "createdAt">[] = []
     const collection = {
         find: () => ({sort: () => ({limit: () => ({toArray: () => []})})}),
-        findOne: ({sessionId, role, "author.via": via}: {sessionId: string; role: string; "author.via": string}) => (sessionId === session._id ? messages.find((m) => m.role === role && m.author?.via === via) : undefined)
+        findOne: ({sessionId, role, "author.via": via, createdAt}: {sessionId: string; role: string; "author.via": string; createdAt: {$gte: Date}}) =>
+            sessionId === session._id ? messages.find((m) => m.role === role && m.author?.via === via && m.createdAt >= createdAt.$gte) : undefined
     }
     const overrides = {
         defineEventHandler: (handler: unknown) => handler,
@@ -26,9 +27,10 @@ test("conversation can be given back only during an active takeover with an admi
 
         expect((await read()).canGiveBack).toBe(false)
         session.humanHandledAt = now
-        messages.push({role: "agent", author: {name: "Bot", via: "mcp"}})
+        messages.push({role: "agent", author: {name: "Support", via: "admin"}, createdAt: new Date(now.getTime() - 60_000)})
+        messages.push({role: "agent", author: {name: "Bot", via: "mcp"}, createdAt: now})
         expect((await read()).canGiveBack).toBe(false)
-        messages.push({role: "agent", author: {name: "Support", via: "admin"}})
+        messages.push({role: "agent", author: {name: "Support", via: "admin"}, createdAt: now})
         expect(await read()).toMatchObject({canGiveBack: true, messages: []})
         session.endedAt = now
         expect((await read()).canGiveBack).toBe(false)

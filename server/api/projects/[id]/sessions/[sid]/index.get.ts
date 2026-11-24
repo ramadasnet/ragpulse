@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     const [list, qs, humanReply] = await Promise.all([
         messages.find({sessionId: session._id}).sort({createdAt: 1}).limit(2000).toArray(),
         questions.find({sessionId: session._id}).sort({createdAt: 1}).toArray(),
-        session.humanHandledAt && !session.endedAt && !session.finishedAt ? messages.findOne({sessionId: session._id, role: "agent", "author.via": "admin"}, {projection: {_id: 1}}) : null
+        session.humanHandledAt && !session.endedAt && !session.finishedAt ? messages.findOne({sessionId: session._id, role: "agent", "author.via": "admin", createdAt: {$gte: session.humanHandledAt}}, {projection: {_id: 1}}) : null
     ])
     return {session, messages: list, questions: qs, canGiveBack: !!humanReply}
 })

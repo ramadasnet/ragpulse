@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
         createdAt: new Date()
     }
     await commitSessionMessage(message)
-    await claimHumanHandling(session._id, author)
+    await claimHumanHandling(session._id, author, {at: message.createdAt})
     logger.info("Sessions.message", `Session ${session._id}`, `Project ${project._id}`, `Agent message by ${user.name} (${user.email})`)
     setResponseStatus(event, 201)
     return message

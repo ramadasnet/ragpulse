@@ -1,22 +1,19 @@
 <script setup lang="ts">
 import {BookOpenText, Bot, ChevronLeft, ChevronRight, CircleQuestionMark, FileCode, FileText, FolderOpen, GitBranch, Github, Globe, MailQuestionMark, MessagesSquare, SendHorizontal, Server, Users, X} from "lucide-vue-next"
+import {comparisonHub, comparisonPath, comparisons, documentationUrl, faq, home, repositoryUrl} from "../../shared/marketing"
+import {marketingApplication, marketingOrganization, marketingWebsite, useMarketingSeo} from "../composables/useMarketingSeo"
 
 definePageMeta({layout: "blank"})
 
-useHead({
-    title: "RAGPulse · Self-hosted AI support chat",
-    meta: [
-        {name: "description", content: "RAGPulse indexes your own data, embeds a fast chat on your sites and hands the questions it can't answer to your team, or your agents over MCP."},
-        {property: "og:title", content: "RAGPulse · Self-hosted AI support chat"},
-        {property: "og:description", content: "Index your knowledge, embed a fast chat, escalate what the AI can't answer. All on your own servers."},
-        {property: "og:type", content: "website"},
-        {property: "og:url", content: "https://ragpulse.dev"}
-    ],
-    link: [{rel: "canonical", href: "https://ragpulse.dev"}]
-})
-
-const repo = "https://github.com/ramadasnet/ragpulse"
-const docs = "https://deepwiki.com/ramadasnet/ragpulse"
+useMarketingSeo(home, [
+    marketingOrganization,
+    marketingWebsite,
+    marketingApplication,
+    {
+        "@type": "FAQPage",
+        mainEntity: faq.map(({question, answer}) => ({"@type": "Question", name: question, acceptedAnswer: {"@type": "Answer", text: answer}}))
+    }
+])
 
 // Live chat: the floating launcher is served by the chat instance (NUXT_PUBLIC_CHAT_URL / NUXT_PUBLIC_CHAT_PROJECT at build time)
 const chatProject = String(useRuntimeConfig().public.chatProject || "")
@@ -72,7 +69,7 @@ const sources = [
 const features = [
     {
         icon: BookOpenText,
-        title: "Data sources",
+        title: "Knowledge from websites, Git and Drive",
         text: "FAQ pairs, crawled pages, repo docs and code, Drive folders and Office files. Everything gets parsed, indexed and embedded for fast retrieval."
     },
     {
@@ -82,13 +79,13 @@ const features = [
     },
     {
         icon: MailQuestionMark,
-        title: "Nothing falls through",
-        text: "What the AI can't answer gets escalated so a human can take over. Escalations are used to improve future chat sessions."
+        title: "Human handoff and FAQ learning",
+        text: "Questions the AI can't answer go to an escalation inbox. Your team can take over the chat and turn eligible resolutions into FAQs."
     },
     {
         icon: Bot,
-        title: "MCP for your agents",
-        text: "Dedicated MCP endpoint that lets your own bots and agents handle the system and conversations for you and your team."
+        title: "MCP server for your agents",
+        text: "Use a scoped personal token to connect MCP clients to conversations, escalations and project knowledge."
     },
     {
         icon: Users,
@@ -113,7 +110,7 @@ const steps = [
     },
     {
         title: "Answer and escalate",
-        text: "The AI answers strictly from your knowledge. Whatever it can't solve is escalated so your team (or your AI agents) can take over."
+        text: "The AI answers using retrieved passages and links to its sources. If it can’t answer, it sends the question to your team’s escalation inbox."
     }
 ]
 
@@ -127,11 +124,9 @@ const shots = [
     {label: "System", src: "/admin-system.webp", mobile: "/admin-system-mobile.webp", alt: "System page: database usage, vector search status, sync scheduler and configuration health."}
 ]
 const active = ref(0)
-const loaded = ref(new Set<number>())
 const scroller = ref<HTMLElement>()
 const lightbox = ref<number | null>(null)
 const lightboxShot = computed(() => (lightbox.value === null ? undefined : shots[lightbox.value]))
-let loadIO: IntersectionObserver | undefined
 let activeIO: IntersectionObserver | undefined
 
 watch(lightbox, (open) => {
@@ -151,15 +146,10 @@ onMounted(() => {
     const el = scroller.value
     if (!el) return
     const items = el.querySelectorAll<HTMLElement>(".shot-item")
-    loadIO = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && loaded.value.add(Number((e.target as HTMLElement).dataset.i))), {root: el, rootMargin: "0px 50% 0px 50%"})
     activeIO = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && (active.value = Number((e.target as HTMLElement).dataset.i))), {root: el, threshold: 0.6})
-    items.forEach((n) => {
-        loadIO!.observe(n)
-        activeIO!.observe(n)
-    })
+    items.forEach((n) => activeIO?.observe(n))
 })
 onBeforeUnmount(() => {
-    loadIO?.disconnect()
     activeIO?.disconnect()
     document.documentElement.style.overflow = ""
 })
@@ -177,17 +167,27 @@ function go(i: number) {
         <div class="glow glow-top" aria-hidden="true" />
         <div class="glow glow-side" aria-hidden="true" />
 
+        <header class="site-header">
+            <nav aria-label="Main navigation">
+                <a href="#features">Features</a>
+                <NuxtLink :to="comparisonHub.path">Comparisons</NuxtLink>
+                <a href="#faq">FAQ</a>
+            </nav>
+        </header>
+
         <main>
             <!-- Hero -->
             <section class="hero">
                 <AppLogo class="brand" />
-                <h1>Support chat that answers from <em>your own</em> knowledge</h1>
-                <p class="sub">
-                    RAGPulse is a self-hosted AI support chat for your apps and services. It indexes the relevant data into a private knowledge base, and self learns with its own chat sessions. It's fast, reliable, free and open source.
-                </p>
+                <h1>Self-hosted AI support chat for <em>your own</em> knowledge</h1>
+                <p class="sub">RAGPulse answers customer questions from your websites, Git repositories, Google Drive and FAQs. Run the chat on your infrastructure, give visitors answers they can verify, and let your team take over when needed.</p>
+                <div class="hero-actions">
+                    <a :href="documentationUrl" class="hero-setup">Self-host RAGPulse</a>
+                    <NuxtLink :to="comparisonHub.path">Compare support tools</NuxtLink>
+                </div>
 
                 <!-- Chat mock -->
-                <div class="mock panel" role="img" aria-label="Example RAGPulse conversation: a visitor asks about a free trial, the AI answers from indexed sources and a team member follows up.">
+                <div class="mock panel" role="group" aria-label="Example conversation">
                     <div class="mock-head">
                         <span class="mock-avatar" aria-hidden="true">A</span>
                         <div class="mock-id">
@@ -196,10 +196,10 @@ function go(i: number) {
                         </div>
                     </div>
                     <div class="mock-body">
-                        <div class="msg user">Do you offer a free trial?</div>
+                        <div class="msg user">How do I invite a teammate?</div>
                         <div class="msg bot">
-                            <p>Yes! Every plan starts with a <strong>14-day free trial</strong>, no credit card required.</p>
-                            <p class="sources"><span>Pricing</span><span>Getting started</span></p>
+                            <p>Open <strong>Settings → Team</strong> and select <strong>Invite teammate</strong>.</p>
+                            <p class="sources"><span>Team setup guide</span></p>
                         </div>
                         <div class="msg agent">
                             <p>Happy to help you set things up!</p>
@@ -216,7 +216,7 @@ function go(i: number) {
             <!-- Features -->
             <section id="features" class="band">
                 <p class="section-title">Features</p>
-                <h2>Your support chat on auto pilot</h2>
+                <h2>Knowledge retrieval, chat and human support</h2>
                 <div class="grid-3 feat-grid">
                     <article v-for="f in features" :key="f.title" class="feat panel">
                         <span class="feat-icon" aria-hidden="true"><component :is="f.icon" :size="18" /></span>
@@ -229,14 +229,14 @@ function go(i: number) {
             <!-- Admin dashboard -->
             <section class="band">
                 <p class="section-title">Dashboard</p>
-                <h2>Management at a glance</h2>
+                <h2>See the RAGPulse admin dashboard</h2>
                 <div class="shots-nav">
                     <button v-for="(s, i) in shots" :key="s.src" class="shot-tab" :class="{on: i === active}" :aria-pressed="i === active" @click="go(i)">{{ s.label }}</button>
                 </div>
                 <div class="shots-wrap">
                     <div ref="scroller" class="shots" role="group" aria-label="Admin dashboard screenshots">
                         <figure v-for="(s, i) in shots" :key="s.src" class="shot-item panel" :data-i="i">
-                            <button v-if="loaded.has(i)" class="shot-open" :aria-label="`Enlarge screenshot: ${s.label}`" @click="lightbox = i">
+                            <button class="shot-open" :aria-label="`Enlarge screenshot: ${s.label}`" @click="lightbox = i">
                                 <picture>
                                     <source :srcset="s.mobile" media="(max-width: 720px)" />
                                     <img :src="s.src" width="1920" height="1125" :alt="s.alt" loading="lazy" decoding="async" />
@@ -252,7 +252,7 @@ function go(i: number) {
             <!-- How it works -->
             <section id="how" class="band">
                 <p class="section-title">How it works</p>
-                <h2>Zero to hero in three steps</h2>
+                <h2>How RAGPulse answers a customer question</h2>
                 <ol class="steps">
                     <li v-for="(s, i) in steps" :key="s.title" class="step">
                         <span class="step-n" aria-hidden="true">0{{ i + 1 }}</span>
@@ -262,6 +262,32 @@ function go(i: number) {
                         </div>
                     </li>
                 </ol>
+            </section>
+
+            <section id="compare" class="band">
+                <p class="section-title">Comparison guides</p>
+                <h2>RAGPulse vs hosted AI support tools</h2>
+                <p class="section-intro muted">Self-host RAGPulse when deployment control and technical knowledge matter most. If you need a managed inbox, more channels or tighter helpdesk integration, compare the trade-offs before choosing.</p>
+                <ul class="landing-comparisons">
+                    <li v-for="item in comparisons" :key="item.slug">
+                        <NuxtLink :to="comparisonPath(item.slug)">
+                            <strong>RAGPulse vs {{ item.name }}</strong>
+                            <span class="muted">{{ item.category }}</span>
+                            <ChevronRight :size="16" aria-hidden="true" />
+                        </NuxtLink>
+                    </li>
+                </ul>
+            </section>
+
+            <section id="faq" class="band">
+                <p class="section-title">FAQ</p>
+                <h2>Frequently asked questions about RAGPulse</h2>
+                <div class="landing-faq">
+                    <article v-for="{question, answer} in faq" :key="question">
+                        <h3>{{ question }}</h3>
+                        <p class="muted">{{ answer }}</p>
+                    </article>
+                </div>
             </section>
         </main>
 
@@ -284,8 +310,9 @@ function go(i: number) {
                     <p class="foot-by muted">by <a href="https://ramadas.net" target="_blank" rel="noopener">Ramadas.net</a></p>
                 </div>
                 <nav class="foot-links" aria-label="Project links">
-                    <a :href="repo" target="_blank" rel="noopener"><Github :size="14" aria-hidden="true" />GitHub</a>
-                    <a :href="docs" target="_blank" rel="noopener"><BookOpenText :size="14" aria-hidden="true" />Docs</a>
+                    <NuxtLink :to="comparisonHub.path">Comparisons</NuxtLink>
+                    <a :href="repositoryUrl" target="_blank" rel="noopener"><Github :size="14" aria-hidden="true" />GitHub</a>
+                    <a :href="documentationUrl" target="_blank" rel="noopener"><BookOpenText :size="14" aria-hidden="true" />Docs</a>
                 </nav>
             </div>
         </footer>
@@ -321,6 +348,49 @@ function go(i: number) {
 
 main {
     padding-bottom: 104px;
+}
+.site-header {
+    position: relative;
+    border-bottom: 1px solid var(--border);
+}
+.site-header nav,
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 14px;
+}
+.site-header a,
+.hero-actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 10px;
+    font-weight: 600;
+}
+.site-header a {
+    color: var(--text-muted);
+}
+.site-header a:hover,
+.hero-actions a:not(.hero-setup):hover {
+    color: var(--accent);
+}
+.hero-actions {
+    margin-top: 24px;
+    gap: 8px;
+}
+.hero-actions a {
+    padding-inline: 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+}
+.hero-actions .hero-setup {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--accent-ink);
+}
+.hero-actions .hero-setup:hover {
+    background: var(--text);
 }
 
 /* ---------- Hero ---------- */
@@ -519,6 +589,50 @@ h1 em {
     font-size: clamp(24px, 3.4vw, 32px);
     letter-spacing: -0.02em;
     margin: 8px 0 30px;
+}
+.section-intro {
+    max-width: 68ch;
+    margin: -14px 0 20px;
+}
+.landing-comparisons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.landing-comparisons a {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 12px;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.landing-comparisons a:hover {
+    border-color: var(--accent);
+}
+.landing-comparisons svg {
+    grid-area: 1 / 2 / 3;
+    color: var(--accent);
+}
+.landing-faq {
+    max-width: 74ch;
+}
+.landing-faq article {
+    padding-block: 18px;
+    border-top: 1px solid var(--border-strong);
+}
+.landing-faq h3 {
+    margin: 0 0 5px;
+    font-size: 1rem;
+}
+.landing-faq p {
+    margin: 0;
+    line-height: 1.65;
 }
 .feat-grid {
     gap: 14px;
@@ -872,6 +986,8 @@ h1 em {
 }
 .foot-links {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
     gap: 8px;
 }
@@ -879,6 +995,7 @@ h1 em {
     display: inline-flex;
     align-items: center;
     gap: 7px;
+    min-height: 44px;
     padding: 8px 14px;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);

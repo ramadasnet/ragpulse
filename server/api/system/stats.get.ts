@@ -116,7 +116,6 @@ export default defineEventHandler(async (event) => {
         .sort((a, b) => b.estimatedBytes - a.estimatedBytes)
 
     const status = new Map(schedulerRows.map((r) => [r._id, r.n]))
-    const oauth: any = config.oauth || {}
     let googleDrive: string | null = null
     try {
         googleDrive = config.googleServiceAccountKey ? parseServiceAccountKey(config.googleServiceAccountKey).client_email : null
@@ -146,8 +145,7 @@ export default defineEventHandler(async (event) => {
             embeddingProvider: enabledProviders.some((p) => p.embeddings),
             aiProviders: enabledProviders.map((p) => ({id: p.id, name: p.name, embeddings: p.embeddings, verified: providerVerified(settings, p.id)})),
             smtp: isMailConfigured(),
-            google: !!(oauth.google?.clientId && oauth.google?.clientSecret),
-            microsoft: !!(oauth.microsoft?.clientId && oauth.microsoft?.clientSecret),
+            ...configuredSignInProviders(config.oauth),
             googleDrive,
             adminUrl: String(config.public.adminUrl || ""),
             chatUrl: String(config.public.chatUrl || "")

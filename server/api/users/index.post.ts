@@ -1,5 +1,6 @@
 import {z} from "zod"
 import type {User} from "#shared/types"
+import {signInProviderNames} from "#shared/utils/sign-in"
 import logger from "../../utils/logger"
 
 const schema = z.object({
@@ -33,18 +34,20 @@ export default defineEventHandler(async (event) => {
         throw err
     }
 
-    const {public: pub} = useRuntimeConfig()
+    const {oauth, public: pub} = useRuntimeConfig(event)
     const appName = String(pub.appName || "RAGPulse")
     let inviteSent = false
     if (isMailConfigured()) {
         const link = publicUrl("admin", "/login")
+        const providers = signInProviderNames(configuredSignInProviders(oauth))
+        const signIn = providers ? `Sign in with your ${providers} account using this email address (${user.email}):` : `Your invitation is for ${user.email}. Contact an admin for sign-in help.`
         inviteSent = await sendMail({
             to: user.email,
             subject: `You've been invited to ${appName}`,
-            text: `Hi ${user.name},\n\n${admin.name} invited you to ${appName} as ${user.role === "admin" ? "an admin" : "an assistant"}.\n\nSign in with your Google or Microsoft account using this email address (${user.email}):\n${link}\n`,
+            text: `Hi ${user.name},\n\n${admin.name} invited you to ${appName} as ${user.role === "admin" ? "an admin" : "an assistant"}.\n\n${signIn}\n${link}\n`,
             html: `<p>Hi ${escapeHtml(user.name)},</p>
 <p>${escapeHtml(admin.name)} invited you to <strong>${escapeHtml(appName)}</strong> as ${user.role === "admin" ? "an admin" : "an assistant"}.</p>
-<p>Sign in with your Google or Microsoft account using this email address (${escapeHtml(user.email)}):</p>
+<p>${escapeHtml(signIn)}</p>
 <p><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>`
         })
     }

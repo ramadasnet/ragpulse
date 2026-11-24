@@ -450,6 +450,7 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
     padding: 20px;
 }
 .table-scroll {
+    position: relative;
     overflow-x: auto;
 }
 .table-scroll .table th {

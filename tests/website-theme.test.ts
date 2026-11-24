@@ -87,7 +87,7 @@ describe("website theme matching", () => {
         expect(pickThemePreset({primary: "#533afd"})).toMatchObject({preset: {name: "Aurora"}, mode: "light"})
     })
 
-    test.each(["Jade", "Dusk", "Marigold", "Terracotta", "Mulberry"])("matches the %s preset to its brand colours", (name) => {
+    test.each(["Jade", "Dusk", "Marigold", "Terracotta", "Sandstone"])("matches the %s preset to its brand colours", (name) => {
         const preset = CHAT_THEME_PRESETS.find((p) => p.name === name)!
         expect(pickThemePreset({primary: preset.accent, secondary: preset.accent2, mode: preset.mode})).toEqual({preset, mode: preset.mode})
     })

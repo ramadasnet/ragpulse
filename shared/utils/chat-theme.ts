@@ -21,5 +21,5 @@ export const CHAT_THEME_PRESETS: ChatThemePreset[] = [
     {name: "Dusk", accent: "#a21caf", accent2: "#d946ef", highlight: "#99f6e4", mode: "dark"},
     {name: "Marigold", accent: "#facc15", accent2: "#fbbf24", highlight: "#fca5a5", mode: "dark"},
     {name: "Terracotta", accent: "#9a3412", accent2: "#92400e", highlight: "#166534", mode: "light"},
-    {name: "Mulberry", accent: "#9d174d", accent2: "#7e22ce", highlight: "#0f766e", mode: "light"}
+    {name: "Sandstone", accent: "#735c36", accent2: "#85734e", highlight: "#356a68", mode: "light"}
 ]

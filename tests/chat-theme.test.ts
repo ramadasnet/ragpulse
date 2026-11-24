@@ -19,7 +19,7 @@ function contrast(ink: number[], background: number[]) {
     return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
 }
 
-test.each(["Jade", "Dusk", "Marigold", "Terracotta", "Mulberry"])("%s source and support icons meet 3:1 contrast in both modes", (name) => {
+test.each(["Jade", "Dusk", "Marigold", "Terracotta", "Sandstone"])("%s source and support icons meet 3:1 contrast in both modes", (name) => {
     const preset = CHAT_THEME_PRESETS.find((theme) => theme.name === name)!
     for (const mode of ["light", "dark"] as const) {
         const vars = chatThemeVars(resolveChatTheme({...preset, mode}))

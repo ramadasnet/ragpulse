@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {comparisonHub, documentationUrl, repositoryUrl} from "../../shared/marketing"
+import {comparisonHub, documentationUrl, repositoryUrl} from "#shared/marketing"
 </script>
 
 <template>

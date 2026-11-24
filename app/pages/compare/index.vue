@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ArrowUpRight} from "lucide-vue-next"
-import {comparisonHub, comparisonPath, comparisons} from "../../../shared/marketing"
+import {comparisonHub, comparisonPath, comparisons} from "#shared/marketing"
 import {marketingBreadcrumbs, useMarketingSeo} from "../../composables/useMarketingSeo"
 
 definePageMeta({layout: "marketing"})

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {BookOpenText, Bot, ChevronLeft, ChevronRight, CircleQuestionMark, FileCode, FileText, FolderOpen, GitBranch, Github, Globe, MailQuestionMark, MessagesSquare, SendHorizontal, Server, Users, X} from "lucide-vue-next"
-import {comparisonHub, comparisonPath, comparisons, documentationUrl, faq, home, repositoryUrl} from "../../shared/marketing"
+import {comparisonHub, comparisonPath, comparisons, documentationUrl, faq, home, repositoryUrl} from "#shared/marketing"
 import {marketingApplication, marketingOrganization, marketingWebsite, useMarketingSeo} from "../composables/useMarketingSeo"
 
 definePageMeta({layout: "blank"})

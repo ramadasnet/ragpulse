@@ -1,4 +1,4 @@
-import {home, repositoryUrl, siteUrl} from "../../shared/marketing"
+import {home, repositoryUrl, siteUrl} from "#shared/marketing"
 
 type MarketingPage = {path: string; title: string; description: string}
 

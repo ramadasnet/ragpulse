@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ArrowUpRight, Check} from "lucide-vue-next"
-import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl} from "../../../shared/marketing"
+import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl} from "#shared/marketing"
 import {marketingBreadcrumbs, useMarketingSeo} from "../../composables/useMarketingSeo"
 
 definePageMeta({

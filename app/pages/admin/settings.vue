@@ -352,7 +352,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", onBeforeUnload)
                         hint="Leave empty to disable. The default protects credentials, secrets and personal information, and resists prompt injection."
                     >
                         <template #aside>
-                            <UiButton size="sm" :disabled="form.globalInstructions === DEFAULT_GLOBAL_INSTRUCTIONS" @click="form.globalInstructions = DEFAULT_GLOBAL_INSTRUCTIONS">Reset to default</UiButton>
+                            <UiButton size="sm" :disabled="form.globalInstructions.trim() === DEFAULT_GLOBAL_INSTRUCTIONS.trim()" @click="form.globalInstructions = DEFAULT_GLOBAL_INSTRUCTIONS">Reset to default</UiButton>
                         </template>
                     </UiTextarea>
                 </div>

@@ -386,7 +386,7 @@ async function deleteProject() {
                     <UiToggle
                         v-model="form.showCodeSources"
                         label="Show source code references"
-                        description="Lists the references and code used for an answer below it. When off, answers can still link to indexed references and code if the visitor asks about it."
+                        description="Lists the source code used for an answer below it. When off, only the code list is hidden: references stay listed, and answers can still link to code if the visitor asks about it."
                     />
                 </div>
             </UiCard>

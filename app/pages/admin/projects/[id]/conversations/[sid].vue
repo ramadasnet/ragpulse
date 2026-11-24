@@ -6,6 +6,7 @@ interface Detail {
     session: Omit<ChatSession, "tokenHash" | "ipHash">
     messages: ChatMessage[]
     questions: Question[]
+    canGiveBack: boolean
 }
 
 const route = useRoute()
@@ -63,7 +64,8 @@ let draftRequest = 0
  * Escalated view: a single reply as is, several replies composed by the AI. Without open questions the chat is given back right away.
  */
 function startGiveBack() {
-    const open = data.value?.questions.filter((q) => q.status === "open") ?? []
+    if (!data.value?.canGiveBack) return
+    const open = data.value.questions.filter((q) => q.status === "open")
     if (!open.length) return giveBack()
     const id = ++draftRequest
     drafts.value = open.map((question) => ({question, answer: "", replies: 0, loading: true, saved: false}))
@@ -242,7 +244,7 @@ function dayLabel(i: number): string | null {
                     </template>
                 </div>
 
-                <p v-if="data.session.humanHandledAt" class="handoff small">
+                <p v-if="data.session.humanHandledAt && !data.session.endedAt" class="handoff small">
                     <UserRound :size="14" />
                     <span
                         >Handled by {{ data.session.humanHandledBy?.name || "a human" }}: the assistant won't reply until the question is answered or you give the chat back to the agent.
@@ -251,7 +253,13 @@ function dayLabel(i: number): string | null {
                 </p>
                 <p v-if="data.session.endedAt" class="ended small muted">
                     <LogOut :size="14" />
-                    <span>{{ endedText }} {{ timeAgo(data.session.endedAt) }}: it can't receive new messages.</span>
+                    <span>
+                        {{ endedText }} {{ timeAgo(data.session.endedAt) }}: it can't receive new messages.
+                        <template v-if="openQuestion">
+                            An escalated question still has no answer.
+                            <NuxtLink v-if="canReply" :to="`/admin/projects/${projectId}/questions?q=${openQuestion._id}`" class="link">Set the answer</NuxtLink>
+                        </template>
+                    </span>
                 </p>
                 <form v-else-if="canReply" class="composer" @submit.prevent="send">
                     <label class="sr-only" for="reply">Reply as support</label>
@@ -261,7 +269,14 @@ function dayLabel(i: number): string | null {
                             Shown in the visitor's chat. <span class="kbd">{{ modifierKey }}</span> + <span class="kbd">Enter</span> to send
                         </span>
                         <div class="composer-actions">
-                            <UiButton v-if="!data.session.finishedAt" size="sm" :loading="giveBackPending" title="End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies" @click="startGiveBack">
+                            <UiButton
+                                v-if="!data.session.finishedAt"
+                                size="sm"
+                                :loading="giveBackPending"
+                                :disabled="!data.canGiveBack"
+                                :title="data.canGiveBack ? 'End the human takeover: the assistant answers the visitor again, and a FAQ is learned from your replies' : 'Available after a human replies and takes over'"
+                                @click="startGiveBack"
+                            >
                                 <Bot :size="14" /> Give back to agent
                             </UiButton>
                             <UiButton type="submit" variant="primary" size="sm" :loading="pending" :disabled="!reply.trim()"><Send :size="14" /> Send reply</UiButton>

@@ -34,9 +34,12 @@ async function copy() {
 .multiline {
     display: block;
 }
+.multiline .code-block {
+    margin-top: 0;
+}
 .multiline .copy-btn {
     position: absolute;
-    top: 8px;
+    top: 10px;
     right: 8px;
 }
 </style>

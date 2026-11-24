@@ -122,13 +122,12 @@ async function revoke(token: TokenRow) {
     }
 }
 
-type SnippetKey = "json" | "claude" | "codex" | "grok" | "curl"
+type SnippetKey = "json" | "claude" | "codex" | "grok"
 const snippetTabs: Array<{key: SnippetKey; label: string; hint: string}> = [
-    {key: "json", label: "MCP config", hint: "For clients with remote (HTTP) MCP support: Claude, Cursor, VS Code, Duet, Muse and most agent frameworks."},
+    {key: "json", label: "Config", hint: "For clients with remote (HTTP) MCP support: Claude, Cursor, VS Code, Duet, Muse and most agent frameworks."},
     {key: "claude", label: "Claude", hint: "Adds the server to Claude Code from your terminal."},
     {key: "codex", label: "Codex", hint: "Add this to your personal ~/.codex/config.toml. Do not commit your token."},
-    {key: "grok", label: "Grok", hint: "For the Grok CLI, add this to your personal ~/.grok/config.toml. Do not commit your token."},
-    {key: "curl", label: "curl", hint: "Quick connectivity test: lists the available tools."}
+    {key: "grok", label: "Grok", hint: "For the Grok CLI, add this to your personal ~/.grok/config.toml. Do not commit your token."}
 ]
 
 function snippet(key: SnippetKey, token: string): string {
@@ -141,8 +140,6 @@ function snippet(key: SnippetKey, token: string): string {
         case "codex":
         case "grok":
             return `[mcp_servers.ragpulse]\nurl = ${JSON.stringify(url)}\n${key === "codex" ? "http_headers" : "headers"} = { Authorization = ${JSON.stringify(`Bearer ${token}`)} }`
-        case "curl":
-            return `curl -X POST ${url} \\\n  -H 'Authorization: Bearer ${token}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'Accept: application/json, text/event-stream' \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
     }
 }
 
@@ -500,6 +497,11 @@ const tools: Array<{name: string; description: string; permission?: ProjectPermi
     position: absolute;
     inset: auto 8px 0;
     border-block-end: 2px solid var(--accent);
+}
+@media (max-width: 360px) {
+    .tab {
+        padding-inline: 9px;
+    }
 }
 
 .scope-box {

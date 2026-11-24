@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {Activity, ArrowUpRight, FolderKanban, Headphones, Inbox, MessagesSquare, Plus, RefreshCw} from "lucide-vue-next"
+import {Activity, ArrowUpRight, FolderKanban, Headphones, Inbox, MessagesSquare, RefreshCw} from "lucide-vue-next"
 
 useHead({title: "Dashboard · RAGPulse"})
 
@@ -16,12 +16,8 @@ const syncStatus = {
 <template>
     <div class="page">
         <header class="dashboard-head panel">
-            <div>
-                <p class="eyebrow"><Activity :size="15" /> Workspace overview</p>
-                <h1>Dashboard</h1>
-                <p class="muted">Support activity and knowledge syncs across your projects.</p>
-            </div>
-            <UiButton v-if="isAdmin" variant="secondary" to="/admin/projects/new"><Plus :size="16" /> New project</UiButton>
+            <p class="eyebrow"><Activity :size="15" /> Workspace overview</p>
+            <h1>Dashboard</h1>
         </header>
 
         <UiEmpty v-if="error" :icon="Activity" title="Could not load dashboard" :description="errorMessage(error)">
@@ -159,11 +155,6 @@ const syncStatus = {
 
 <style scoped>
 .dashboard-head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
     padding: clamp(18px, 3vw, 30px);
     margin-bottom: 16px;
     background: radial-gradient(ellipse at top right, var(--accent-soft), transparent 65%), var(--bg-elev);

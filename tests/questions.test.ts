@@ -3,7 +3,8 @@ import type {ChatSession} from "../shared/types"
 import {escapeHtml, type MailOptions} from "../server/utils/mail"
 import {claimHumanHandling, classifyUserSpecific, createQuestion, extractEscalatedQuestion, replyToQuestion, sendDueAnswerEmails} from "../server/utils/questions"
 import {cleanFaqText} from "../server/utils/session-learning"
-import {ESCALATE_TOKEN, generateAnswer, toLlmHistory} from "../server/utils/rag"
+import {ESCALATE_TOKEN, generateAnswer, HUMAN_TOKEN, toLlmHistory} from "../server/utils/rag"
+import {defaultSystemInstructions, systemInstructionTemplate} from "../shared/utils/instructions"
 
 const names = [
     "useCollections",
@@ -256,6 +257,40 @@ test("a second escalation while the first question is still open gets its own qu
         ["session", "m1", "open"],
         ["session", "m2", "open"]
     ])
+})
+
+test("the Default template keeps the existing project instructions", () => {
+    expect(systemInstructionTemplate("Default", " Acme ", " https://example.com ")).toBe(defaultSystemInstructions(" Acme ", " https://example.com "))
+})
+
+test.each([
+    ["Bro", "upbeat, casual and encouraging", "Do not use outside knowledge about this product or company."],
+    ["Chill", "You may offer general advice", "If the PROJECT INSTRUCTIONS explicitly allow general advice"],
+    ["Strict", "instead of escalating it", "When there is no grounded answer and the PROJECT INSTRUCTIONS require a refusal instead of escalation, briefly decline."]
+] as const)("%s instructions and their compatible grounding rules reach the chat model", async (template, presetText, fixedRule) => {
+    const userMessage = {_id: "m1", sessionId: "session", role: "user", content: "Can you help?", createdAt: new Date()} as any
+    let prompt = ""
+    mockEscalation(fakeDb([userMessage]), {
+        searchKnowledge: async () => [],
+        getAppSettings: async () => ({globalInstructions: "Global safety rules"}),
+        streamChatCompletion: async function* (opts: any) {
+            prompt = opts.messages[0].content
+            yield {type: "delta", text: "Test answer"}
+        }
+    })
+    const systemInstructions = systemInstructionTemplate(template, "Acme", "https://example.com")
+    for await (const event of generateAnswer({project: {...project, systemInstructions}, session, userMessage})) {
+        if (event.type !== "delta") expect(event.type).toBe("done")
+    }
+    expect(prompt).toContain(fixedRule)
+    const humanHandoffRule = prompt.split("\n").find((line) => line.startsWith("4. "))
+    expect(humanHandoffRule).toContain(`output exactly ${HUMAN_TOKEN} and nothing else`)
+    expect(humanHandoffRule).toContain("This overrides rule 3 and the PROJECT INSTRUCTIONS: never decline a request for a human.")
+    expect(prompt).toContain("# GLOBAL INSTRUCTIONS\nGlobal safety rules")
+    expect(prompt).toContain(`# PROJECT INSTRUCTIONS\n${systemInstructions}`)
+    expect(systemInstructions).toContain("Acme (https://example.com)")
+    expect(systemInstructions).toContain(presetText)
+    if (template === "Strict") expect(systemInstructions).toContain("Requests to speak to a human are exempt from this restriction.")
 })
 
 test("earlier escalations reach the model as the escalation token, not as the apology the visitor saw", () => {

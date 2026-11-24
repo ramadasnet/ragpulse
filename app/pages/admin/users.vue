@@ -2,6 +2,7 @@
 import {Ban, CheckCircle2, MailPlus, Pencil, Trash2, Users} from "lucide-vue-next"
 import type {ProjectAccess, ProjectPermission, Role} from "#shared/types"
 import {PERMISSION_INFO, PROJECT_PERMISSIONS} from "#shared/types"
+import {signInProviderNames} from "#shared/utils/sign-in"
 
 interface UserRow {
     _id: string
@@ -25,6 +26,9 @@ const {confirm} = useConfirm()
 const {run} = useAction()
 
 const {data: users, error, refresh} = useFetch<UserRow[]>("/api/users", {lazy: true, server: false, immediate: isAdmin.value})
+const {data: providers} = useFetch("/auth/providers", {immediate: isAdmin.value})
+const providerNames = computed(() => signInProviderNames(providers.value))
+const inviteDescription = computed(() => `${providerNames.value ? `They can sign in with ${providerNames.value} using this email. ` : ""}We email them an invite if SMTP is configured.`)
 onMounted(ensure)
 
 const projectTitle = (id: string) => projects.value.find((p) => p._id === id)?.title || "Deleted project"
@@ -138,7 +142,9 @@ function accessSummary(user: UserRow) {
             <div>
                 <p class="eyebrow">Workspace</p>
                 <h1>Users</h1>
-                <p>Invite teammates. Admins manage everything; assistants get per-project permissions. Sign-in is via Google or Microsoft with the invited email.</p>
+                <p>
+                    Invite teammates. Admins manage everything; assistants get per-project permissions.<template v-if="providerNames"> Sign-in is via {{ providerNames }} with the invited email.</template>
+                </p>
             </div>
             <UiButton variant="primary" @click="openInvite"><MailPlus :size="16" /> Invite user</UiButton>
         </header>
@@ -205,12 +211,7 @@ function accessSummary(user: UserRow) {
             </table>
         </div>
 
-        <UiModal
-            v-model:open="modalOpen"
-            :title="editing ? `Edit ${editing.name}` : 'Invite user'"
-            :description="editing ? editing.email : 'They can sign in with Google or Microsoft using this email. We email them an invite if SMTP is configured.'"
-            width="760px"
-        >
+        <UiModal v-model:open="modalOpen" :title="editing ? `Edit ${editing.name}` : 'Invite user'" :description="editing ? editing.email : inviteDescription" width="760px">
             <form id="user-form" class="stack" style="--gap: 16px" novalidate @submit.prevent="submit">
                 <div class="grid-2">
                     <UiInput v-if="!editing" v-model="form.email" type="email" label="Email" placeholder="jane@company.com" :error="emailError" autofocus />

@@ -11,6 +11,14 @@ export function randomToken(bytes = 32): string {
     return randomBytes(bytes).toString("base64url")
 }
 
+/** Reports OAuth availability without exposing provider credentials. */
+export function configuredSignInProviders(oauth?: ReturnType<typeof useRuntimeConfig>["oauth"]) {
+    return {
+        google: !!(oauth?.google?.clientId && oauth.google.clientSecret),
+        microsoft: !!(oauth?.microsoft?.clientId && oauth.microsoft.clientSecret)
+    }
+}
+
 /** Revokes a signed-out session, so a renewed cookie from a request that was still running (in any tab) stays invalid. */
 export async function revokeSession(sessionId: string): Promise<void> {
     const {maxAge} = useRuntimeConfig().session

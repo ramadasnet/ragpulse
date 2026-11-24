@@ -122,11 +122,12 @@ async function revoke(token: TokenRow) {
     }
 }
 
-type SnippetKey = "json" | "claude" | "remote" | "curl"
+type SnippetKey = "json" | "claude" | "codex" | "grok" | "curl"
 const snippetTabs: Array<{key: SnippetKey; label: string; hint: string}> = [
-    {key: "json", label: "MCP config", hint: "For clients with remote (HTTP) MCP support: Claude, Cursor, VS Code, Grok, Duet, Muse and most agent frameworks."},
-    {key: "claude", label: "Claude Code", hint: "Adds the server to Claude Code from your terminal."},
-    {key: "remote", label: "stdio (mcp-remote)", hint: "For clients that only support local stdio servers. Requires Node.js."},
+    {key: "json", label: "MCP config", hint: "For clients with remote (HTTP) MCP support: Claude, Cursor, VS Code, Duet, Muse and most agent frameworks."},
+    {key: "claude", label: "Claude", hint: "Adds the server to Claude Code from your terminal."},
+    {key: "codex", label: "Codex", hint: "Add this to your personal ~/.codex/config.toml. Do not commit your token."},
+    {key: "grok", label: "Grok", hint: "For the Grok CLI, add this to your personal ~/.grok/config.toml. Do not commit your token."},
     {key: "curl", label: "curl", hint: "Quick connectivity test: lists the available tools."}
 ]
 
@@ -137,20 +138,9 @@ function snippet(key: SnippetKey, token: string): string {
             return JSON.stringify({mcpServers: {ragpulse: {type: "http", url, headers: {Authorization: `Bearer ${token}`}}}}, null, 2)
         case "claude":
             return `claude mcp add --transport http ragpulse ${url} \\\n  --header "Authorization: Bearer ${token}"`
-        case "remote":
-            return JSON.stringify(
-                {
-                    mcpServers: {
-                        ragpulse: {
-                            command: "npx",
-                            args: ["-y", "mcp-remote", url, "--header", "Authorization:${AUTH_HEADER}"],
-                            env: {AUTH_HEADER: `Bearer ${token}`}
-                        }
-                    }
-                },
-                null,
-                2
-            )
+        case "codex":
+        case "grok":
+            return `[mcp_servers.ragpulse]\nurl = ${JSON.stringify(url)}\n${key === "codex" ? "http_headers" : "headers"} = { Authorization = ${JSON.stringify(`Bearer ${token}`)} }`
         case "curl":
             return `curl -X POST ${url} \\\n  -H 'Authorization: Bearer ${token}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'Accept: application/json, text/event-stream' \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
     }

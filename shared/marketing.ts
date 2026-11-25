@@ -12,7 +12,7 @@ export const home = {
 export const comparisonHub = {
     path: "/compare",
     title: "Compare AI support chat tools | RAGPulse",
-    description: "Compare self-hosted RAGPulse and its MCP server with the managed agents, ready-made connectors and support workflows of six popular tools."
+    description: "Compare self-hosted RAGPulse with managed AI support tools. See how hosting, integrations, and human handoff differ."
 }
 
 export const mcpSupport = {
@@ -36,45 +36,6 @@ export const mcpSupport = {
         "Once an answer is documented and approved, the agent replies through RAGPulse and adds or updates a general FAQ entry if it is reusable and contains no visitor-specific details."
     ]
 }
-
-export const faq = [
-    {
-        question: "What is RAGPulse?",
-        answer: "RAGPulse is a self-hosted AI support chat that answers customer questions using your own documentation. It comes with an embeddable chat widget, a support inbox and a Model Context Protocol (MCP) server."
-    },
-    {
-        question: "What knowledge sources can RAGPulse use?",
-        answer: "RAGPulse indexes FAQs, websites, Git repositories and Google Drive folders. It can extract text from PDFs and Office documents found in supported sources and can optionally use a vision model for images and scanned PDFs. Chat answers show links to the sources they used."
-    },
-    {
-        question: "Where does RAGPulse store knowledge and conversations?",
-        answer: "RAGPulse stores indexed knowledge, embeddings and conversations in the MongoDB database you configure. You choose where to run the single-tenant application and which AI providers to use. If you configure external AI providers, the content needed for embedding or inference is sent to those providers."
-    },
-    {
-        question: "Can a human take over from the AI?",
-        answer: "Yes. Unanswered questions and requests for a human go to an escalation inbox. When a team member takes over an open escalation, AI replies pause. When SMTP is configured, the team can follow up by email if the visitor misses the reply."
-    },
-    {
-        question: "Does RAGPulse learn from support conversations?",
-        answer: "Yes. RAGPulse can turn reusable answers and finished conversations with human replies into FAQ entries. Escalations identified as user-specific are excluded from FAQ learning, and learned conversation summaries are scrubbed of personal information."
-    },
-    {
-        question: "What can an MCP client do with RAGPulse?",
-        answer: "An authorized MCP client can view project statistics, triage escalations, read and reply to conversations, search the knowledge base, maintain FAQs and trigger source sync. Access is limited by the user’s permissions and any scope set on the personal API token."
-    },
-    {
-        question: "Can I connect RAGPulse to a tool without a native connector?",
-        answer: "Yes, if your AI agent or automation can access both systems. Connect the agent to RAGPulse over MCP and configure access to the other tool separately. The agent coordinates the workflow; RAGPulse does not need credentials for that tool or a direct connection to it. Managed platforms can be simpler if your team prefers ready-made connectors."
-    },
-    {
-        question: "Do I need to run an external AI agent to use RAGPulse?",
-        answer: "No. The dashboard, embeddable AI chat, escalation inbox and knowledge management work without an external MCP client. Connect your own agent if you want to automate admin workflows or coordinate support with other tools."
-    },
-    {
-        question: "What does it take to self-host RAGPulse?",
-        answer: "To self-host RAGPulse, run the provided Docker images or build the repository, connect MongoDB, and configure models for chat and embeddings. You operate the deployment and cover any infrastructure and model-provider costs."
-    }
-]
 
 export const comparisonRows = [
     {key: "agent", topic: "Who runs the agent workflow?", ragpulse: "Your team defines the workflow in its own MCP-capable agent. The dashboard works without an external agent."},
@@ -289,43 +250,6 @@ export const comparisons: Comparison[] = [
             {label: "Crisp product overview", url: "https://crisp.chat/en/"},
             {label: "Crisp integrations", url: "https://crisp.chat/en/integrations/"},
             {label: "Crisp AI knowledge sources", url: "https://crisp.chat/en/ai/"}
-        ]
-    },
-    {
-        slug: "zendesk-ai",
-        name: "Zendesk AI",
-        category: "AI for service desks",
-        description: "Compare RAGPulse and Zendesk AI: self-hosted support chat and technical knowledge indexing versus AI agents and Copilot for ticket-based support.",
-        verdict: "Choose RAGPulse for self-hosted website support that your own agent can coordinate over MCP. Choose Zendesk AI if support already runs on Zendesk tickets, routing and the agent workspace.",
-        strengths: [
-            "Run an embeddable chat and escalation inbox without migrating into a ticketing suite.",
-            "Index Git code and documentation, websites and Google Drive in the MongoDB database you configure.",
-            "Use project-scoped agent access to answer escalations and maintain FAQs without moving the workflow into a ticketing suite."
-        ],
-        fit: [
-            "Zendesk AI is a better fit for service teams that already depend on Zendesk’s ticket queues, help center and agent workspace. AI agents can answer customer inquiries while Copilot helps teammates in their existing workspace.",
-            "If your team needs structured routing and ticket operations, using the built-in platform and marketplace integrations can be simpler than adding website chat and coordinating a separate agent. A team without a ticketing suite may prefer RAGPulse’s lighter inbox and choose separately which tools to connect."
-        ],
-        cells: {
-            agent: "Zendesk’s AI agents handle customer requests; Copilot assists human agents in the workspace.",
-            connectors: "Native to the Zendesk support ecosystem, with marketplace apps and documented API integrations.",
-            hosting: "Managed AI within Zendesk’s service platform.",
-            knowledge: "AI agents use connected knowledge to respond to customer inquiries.",
-            sync: "Evaluate how AI agents use your help center and connected content, including refresh and channel behavior.",
-            channels: "Works within Zendesk’s supported service channels and routing.",
-            widget: "Zendesk offers website messaging through its Web Widget.",
-            handoff: "Route conversations to human agents in the Zendesk workspace.",
-            escalations: "Use ticket queues, assignment and routing rules to continue support requests.",
-            learning: "Use help center and AI agent content management to maintain answers in your service operations.",
-            api: "Configure AI agent actions and connected workflows around Zendesk’s ticketing and API integrations.",
-            models: "Use managed Zendesk AI capabilities; assess the available configuration for your requirements.",
-            setup: "A good fit for established service desks that want AI inside their ticketing and routing workflows."
-        },
-        reviewed,
-        sources: [
-            {label: "About Zendesk AI agents", url: "https://support.zendesk.com/hc/en-us/articles/6970583409690-About-AI-agents"},
-            {label: "About Zendesk Copilot", url: "https://support.zendesk.com/hc/en-us/articles/5524125586330-About-Zendesk-Copilot"},
-            {label: "Zendesk Marketplace", url: "https://www.zendesk.com/marketplace/"}
         ]
     }
 ]

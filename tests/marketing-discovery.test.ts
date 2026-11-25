@@ -1,5 +1,17 @@
 import {expect, test} from "bun:test"
+import {parseRobotsTxt} from "../server/utils/ingest/url"
 import {comparisonPath, comparisons, faq, siteUrl} from "../shared/marketing"
+
+test("marketing robots rules block admin routes but allow public admin screenshots", async () => {
+    const text = await Bun.file(new URL("../landing/public/robots.txt", import.meta.url)).text()
+    for (const agent of ["Googlebot", "GPTBot", "ClaudeBot", "PerplexityBot", "example"]) {
+        const {rules, sitemaps} = parseRobotsTxt(text, agent.toLowerCase())
+        const allowed = (path: string) => rules.filter(({regex}) => regex.test(path)).sort((a, b) => b.length - a.length)[0]?.allow ?? true
+        for (const path of ["/admin", "/admin?project=example", "/admin/projects", "/api/chat", "/chat/example"]) expect(allowed(path)).toBe(false)
+        for (const path of ["/admin-overview.webp", "/admin-knowledge-mobile.webp", "/compare/chatbase"]) expect(allowed(path)).toBe(true)
+        expect(sitemaps).toContain(siteUrl + "/sitemap.xml")
+    }
+})
 
 test("marketing discovery includes every public page and excludes application routes", async () => {
     const globals = globalThis as typeof globalThis & Record<string, unknown>

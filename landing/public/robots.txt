@@ -10,7 +10,9 @@ User-agent: Perplexity-User
 User-agent: Google-Extended
 User-agent: Googlebot
 Allow: /
-Disallow: /admin
+Disallow: /admin$
+Disallow: /admin?
+Disallow: /admin/
 Disallow: /api
 Disallow: /chat
 Disallow: /auth

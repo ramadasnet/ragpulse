@@ -17,7 +17,6 @@ useMarketingSeo(comparisonHub, [marketingBreadcrumbs({path: comparisonHub.path, 
             </ol>
         </nav>
         <header>
-            <p class="compare-eyebrow">Support software buyer’s guide</p>
             <h1>Compare RAGPulse with other AI support tools</h1>
             <p class="compare-lede">
                 RAGPulse gives you a self-hosted support inbox and lets your own agent connect it to other tools through MCP. A managed platform is often simpler if you want ready-made connectors, more visitor channels, or an agent your support team
@@ -29,9 +28,8 @@ useMarketingSeo(comparisonHub, [marketingBreadcrumbs({path: comparisonHub.path, 
         <section class="compare-section" aria-labelledby="guides">
             <h2 id="guides">Side-by-side comparisons</h2>
             <ul class="comparison-list">
-                <li v-for="(item, index) in comparisons" :key="item.slug">
+                <li v-for="item in comparisons" :key="item.slug">
                     <NuxtLink :to="comparisonPath(item.slug)" class="comparison-item">
-                        <span class="comparison-index" aria-hidden="true">{{ String(index + 1).padStart(2, "0") }}</span>
                         <span>
                             <strong>RAGPulse vs {{ item.name }}</strong>
                             <span class="comparison-category">{{ item.category }}</span>
@@ -43,7 +41,6 @@ useMarketingSeo(comparisonHub, [marketingBreadcrumbs({path: comparisonHub.path, 
         </section>
 
         <section :id="mcpSupport.id" class="compare-section mcp-guide" aria-labelledby="mcp-heading">
-            <p class="compare-eyebrow">Integration approach</p>
             <h2 id="mcp-heading">{{ mcpSupport.title }}</h2>
             <p class="mcp-copy">{{ mcpSupport.summary }}</p>
             <p class="mcp-copy">{{ mcpSupport.setup }}</p>
@@ -80,7 +77,7 @@ useMarketingSeo(comparisonHub, [marketingBreadcrumbs({path: comparisonHub.path, 
 }
 .comparison-item {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: 1fr auto;
     gap: 14px;
     align-items: center;
     padding: 18px;
@@ -92,12 +89,8 @@ useMarketingSeo(comparisonHub, [marketingBreadcrumbs({path: comparisonHub.path, 
     border-color: var(--accent);
     background: var(--surface-2);
 }
-.comparison-item svg,
-.comparison-index {
+.comparison-item svg {
     color: var(--accent);
-}
-.comparison-index {
-    font-family: var(--font-mono);
 }
 .comparison-category {
     display: block;

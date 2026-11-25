@@ -1,19 +1,11 @@
 <script setup lang="ts">
 import {BookOpenText, Bot, ChevronLeft, ChevronRight, CircleQuestionMark, FileCode, FileText, FolderOpen, GitBranch, Github, Globe, MailQuestionMark, MessagesSquare, SendHorizontal, Server, Users, X} from "lucide-vue-next"
-import {comparisonHub, comparisonPath, comparisons, documentationUrl, faq, home, mcpSupport, repositoryUrl} from "#shared/marketing"
+import {comparisonHub, home, repositoryUrl} from "#shared/marketing"
 import {marketingApplication, marketingOrganization, marketingWebsite, useMarketingSeo} from "../composables/useMarketingSeo"
 
 definePageMeta({layout: "blank"})
 
-useMarketingSeo(home, [
-    marketingOrganization,
-    marketingWebsite,
-    marketingApplication,
-    {
-        "@type": "FAQPage",
-        mainEntity: faq.map(({question, answer}) => ({"@type": "Question", name: question, acceptedAnswer: {"@type": "Answer", text: answer}}))
-    }
-])
+useMarketingSeo(home, [marketingOrganization, marketingWebsite, marketingApplication])
 
 // Live chat: the floating launcher is served by the chat instance (NUXT_PUBLIC_CHAT_URL / NUXT_PUBLIC_CHAT_PROJECT at build time)
 const chatProject = String(useRuntimeConfig().public.chatProject || "")
@@ -167,25 +159,12 @@ function go(i: number) {
         <div class="glow glow-top" aria-hidden="true" />
         <div class="glow glow-side" aria-hidden="true" />
 
-        <header class="site-header">
-            <nav aria-label="Main navigation">
-                <a href="#features">Features</a>
-                <NuxtLink :to="comparisonHub.path">Comparisons</NuxtLink>
-                <a href="#faq">FAQ</a>
-            </nav>
-        </header>
-
         <main>
             <!-- Hero -->
             <section class="hero">
                 <AppLogo class="brand" />
                 <h1>Self-hosted AI support chat for <em>your own</em> knowledge</h1>
                 <p class="sub">RAGPulse answers customer questions from your websites, Git repositories, Google Drive and FAQs. Run the chat on your infrastructure, give visitors answers they can verify, and let your team take over when needed.</p>
-                <div class="hero-actions">
-                    <a :href="documentationUrl" class="hero-setup">Self-host RAGPulse</a>
-                    <NuxtLink :to="comparisonHub.path">Compare support tools</NuxtLink>
-                </div>
-
                 <!-- Chat mock -->
                 <div class="mock panel" role="group" aria-label="Example conversation">
                     <div class="mock-head">
@@ -262,39 +241,7 @@ function go(i: number) {
                         </div>
                     </li>
                 </ol>
-            </section>
-
-            <section :id="mcpSupport.id" class="band mcp-band">
-                <p class="section-title">Bring your own agent</p>
-                <h2>{{ mcpSupport.title }}</h2>
-                <p class="section-intro muted">{{ mcpSupport.summary }}</p>
-                <NuxtLink class="mcp-workflow" :to="{path: comparisonHub.path, hash: `#${mcpSupport.id}`}">See an example workflow and the MCP tools <ChevronRight :size="16" aria-hidden="true" /></NuxtLink>
-            </section>
-
-            <section id="compare" class="band">
-                <p class="section-title">Comparison guides</p>
-                <h2>RAGPulse vs hosted AI support tools</h2>
-                <p class="section-intro muted">Self-host RAGPulse when you want your own agent to coordinate support. If you prefer a managed inbox, ready-made connectors or a no-code agent builder, compare the trade-offs before choosing.</p>
-                <ul class="landing-comparisons">
-                    <li v-for="item in comparisons" :key="item.slug">
-                        <NuxtLink :to="comparisonPath(item.slug)">
-                            <strong>RAGPulse vs {{ item.name }}</strong>
-                            <span class="muted">{{ item.category }}</span>
-                            <ChevronRight :size="16" aria-hidden="true" />
-                        </NuxtLink>
-                    </li>
-                </ul>
-            </section>
-
-            <section id="faq" class="band">
-                <p class="section-title">FAQ</p>
-                <h2>Frequently asked questions about RAGPulse</h2>
-                <div class="landing-faq">
-                    <article v-for="{question, answer} in faq" :key="question">
-                        <h3>{{ question }}</h3>
-                        <p class="muted">{{ answer }}</p>
-                    </article>
-                </div>
+                <NuxtLink class="compare-link" :to="comparisonHub.path">Compare RAGPulse with other support tools</NuxtLink>
             </section>
         </main>
 
@@ -316,11 +263,7 @@ function go(i: number) {
                     <AppLogo />
                     <p class="foot-by muted">by <a href="https://ramadas.net" target="_blank" rel="noopener">Ramadas.net</a></p>
                 </div>
-                <nav class="foot-links" aria-label="Project links">
-                    <NuxtLink :to="comparisonHub.path">Comparisons</NuxtLink>
-                    <a :href="repositoryUrl" target="_blank" rel="noopener"><Github :size="14" aria-hidden="true" />GitHub</a>
-                    <a :href="documentationUrl" target="_blank" rel="noopener"><BookOpenText :size="14" aria-hidden="true" />Docs</a>
-                </nav>
+                <a class="foot-github" :href="repositoryUrl" target="_blank" rel="noopener" aria-label="View RAGPulse on GitHub"><Github :size="20" aria-hidden="true" /></a>
             </div>
         </footer>
     </div>
@@ -355,49 +298,6 @@ function go(i: number) {
 
 main {
     padding-bottom: 104px;
-}
-.site-header {
-    position: relative;
-    border-bottom: 1px solid var(--border);
-}
-.site-header nav,
-.hero-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px 14px;
-}
-.site-header a,
-.hero-actions a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    padding-inline: 10px;
-    font-weight: 600;
-}
-.site-header a {
-    color: var(--text-muted);
-}
-.site-header a:hover,
-.hero-actions a:not(.hero-setup):hover {
-    color: var(--accent);
-}
-.hero-actions {
-    margin-top: 24px;
-    gap: 8px;
-}
-.hero-actions a {
-    padding-inline: 14px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-}
-.hero-actions .hero-setup {
-    background: var(--accent);
-    border-color: transparent;
-    color: var(--accent-ink);
-}
-.hero-actions .hero-setup:hover {
-    background: var(--text);
 }
 
 /* ---------- Hero ---------- */
@@ -597,64 +497,14 @@ h1 em {
     letter-spacing: -0.02em;
     margin: 8px 0 30px;
 }
-.section-intro {
-    max-width: 68ch;
-    margin: -14px 0 20px;
-}
-.mcp-band .section-intro {
-    margin-bottom: 8px;
-}
-.mcp-workflow {
+.compare-link {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
     min-height: 44px;
+    margin-top: 12px;
     color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 0.2em;
-}
-.mcp-workflow svg {
-    flex: 0 0 auto;
-}
-.landing-comparisons {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-    gap: 10px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-.landing-comparisons a {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 2px 12px;
-    align-items: center;
-    padding: 14px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-}
-.landing-comparisons a:hover {
-    border-color: var(--accent);
-}
-.landing-comparisons svg {
-    grid-area: 1 / 2 / 3;
-    color: var(--accent);
-}
-.landing-faq {
-    max-width: 74ch;
-}
-.landing-faq article {
-    padding-block: 18px;
-    border-top: 1px solid var(--border-strong);
-}
-.landing-faq h3 {
-    margin: 0 0 5px;
-    font-size: 1rem;
-}
-.landing-faq p {
-    margin: 0;
-    line-height: 1.65;
 }
 .feat-grid {
     gap: 14px;
@@ -1006,33 +856,17 @@ h1 em {
 .foot-by a:hover {
     color: var(--text);
 }
-.foot-links {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-}
-.foot-links a {
+.foot-github {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    justify-content: center;
+    min-width: 44px;
     min-height: 44px;
-    padding: 8px 14px;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    background: var(--surface-2);
     color: var(--text-muted);
-    font-size: 13px;
-    transition:
-        color 0.15s var(--ease),
-        background 0.15s var(--ease),
-        border-color 0.15s var(--ease);
+    transition: color 0.15s var(--ease);
 }
-.foot-links a:hover {
+.foot-github:hover {
     color: var(--text);
-    background: var(--surface-3);
-    border-color: #3a4150;
 }
 
 @media (max-width: 720px) {

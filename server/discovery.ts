@@ -1,4 +1,4 @@
-import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl, faq, home, marketingPaths, mcpSupport, siteUrl} from "../shared/marketing"
+import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl, home, marketingPaths, mcpSupport, siteUrl} from "../shared/marketing"
 
 export default defineEventHandler((event) => {
     const path = getRequestURL(event).pathname
@@ -15,7 +15,7 @@ export default defineEventHandler((event) => {
         `- [RAGPulse homepage](${siteUrl}/): How the chat, knowledge retrieval and human handoff work.`,
         `- [Setup and configuration](${documentationUrl}): Docker deployment, MongoDB, AI providers, embedding and MCP.`,
         `- [MCP-first support workflow](${siteUrl}${comparisonHub.path}#${mcpSupport.id}): Bring your own agent to triage escalations and connect tools without a direct integration.`,
-        `- [Full text reference](${siteUrl}/llms-full.txt): FAQ and comparison summaries in Markdown.`,
+        `- [Full text reference](${siteUrl}/llms-full.txt): MCP workflow and comparison details in Markdown.`,
         "## Compare AI support systems",
         `- [Comparison hub](${siteUrl}${comparisonHub.path}): Compare agent-controlled workflows with managed agents and ready-made connectors.`,
         ...comparisons.map(({name, slug, category}) => `- [RAGPulse vs ${name}](${siteUrl}${comparisonPath(slug)}): ${category}.`)
@@ -32,8 +32,6 @@ export default defineEventHandler((event) => {
         "### What the MCP server exposes",
         ...mcpSupport.tools.map(({area, detail, names}) => `- ${area}: ${detail} Tools: ${names.map((name) => `\`${name}\``).join(", ")}.`),
         mcpSupport.prompt,
-        "## Frequently asked questions",
-        ...faq.map(({question, answer}) => `### ${question}\n\n${answer}`),
         "## Comparison details",
         ...comparisons.map(({name, slug, verdict, strengths, fit, cells, reviewed, sources}) =>
             [

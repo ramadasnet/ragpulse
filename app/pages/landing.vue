@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import {BookOpenText, Bot, ChevronLeft, ChevronRight, CircleQuestionMark, FileCode, FileText, FolderOpen, GitBranch, Github, Globe, MailQuestionMark, MessagesSquare, SendHorizontal, Server, Users, X} from "lucide-vue-next"
-import {comparisonHub, home, repositoryUrl} from "#shared/marketing"
+import {BookOpenText, Bot, ChevronLeft, ChevronRight, CircleQuestionMark, FileCode, FileText, FolderOpen, GitBranch, Globe, MailQuestionMark, MessagesSquare, SendHorizontal, Server, Users, X} from "lucide-vue-next"
+import {comparisonHub, home} from "#shared/marketing"
 import {marketingApplication, marketingOrganization, marketingWebsite, useMarketingSeo} from "../composables/useMarketingSeo"
 
 definePageMeta({layout: "blank"})
@@ -241,7 +241,7 @@ function go(i: number) {
                         </div>
                     </li>
                 </ol>
-                <NuxtLink class="compare-link" :to="comparisonHub.path">Compare RAGPulse with other support tools</NuxtLink>
+                <NuxtLink class="compare-link" :to="comparisonHub.path">Compare RAGPulse with other AI chat support tools</NuxtLink>
             </section>
         </main>
 
@@ -257,15 +257,7 @@ function go(i: number) {
         </Teleport>
 
         <!-- Footer -->
-        <footer class="foot">
-            <div class="foot-in">
-                <div class="foot-brand">
-                    <AppLogo />
-                    <p class="foot-by muted">by <a href="https://ramadas.net" target="_blank" rel="noopener">Ramadas.net</a></p>
-                </div>
-                <a class="foot-github" :href="repositoryUrl" target="_blank" rel="noopener" aria-label="View RAGPulse on GitHub"><Github :size="20" aria-hidden="true" /></a>
-            </div>
-        </footer>
+        <MarketingFooter />
     </div>
 </template>
 
@@ -823,58 +815,11 @@ h1 em {
     border-color: #3a4150;
 }
 
-/* ---------- Footer ---------- */
-.foot {
-    border-top: 1px solid var(--border);
-    background: var(--bg-elev);
-}
-.foot-in {
-    max-width: 1080px;
-    margin: 0 auto;
-    padding: 44px 24px calc(44px + env(safe-area-inset-bottom, 0px));
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-}
-.foot-brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-.foot-by {
-    position: relative;
-    top: 3px;
-    font-size: 13px;
-}
-.foot-by a {
-    text-decoration: underline;
-    text-decoration-color: var(--border-strong);
-    text-underline-offset: 3px;
-    transition: color 0.15s var(--ease);
-}
-.foot-by a:hover {
-    color: var(--text);
-}
-.foot-github {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 44px;
-    min-height: 44px;
-    color: var(--text-muted);
-    transition: color 0.15s var(--ease);
-}
-.foot-github:hover {
-    color: var(--text);
-}
-
 @media (max-width: 720px) {
-    .foot-in {
-        flex-direction: column;
-        align-items: center;
+    .compare-link {
+        display: flex;
+        justify-content: center;
         text-align: center;
-        gap: 18px;
     }
     .hero {
         padding-top: 64px;

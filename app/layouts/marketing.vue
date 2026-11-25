@@ -1,7 +1,3 @@
-<script setup lang="ts">
-import {repositoryUrl} from "#shared/marketing"
-</script>
-
 <template>
     <div class="comparison-shell">
         <header class="comparison-header">
@@ -10,15 +6,7 @@ import {repositoryUrl} from "#shared/marketing"
             </div>
         </header>
         <slot />
-        <footer class="comparison-footer">
-            <div class="comparison-inner">
-                <p>Self-hosted AI support chat by <a href="https://ramadas.net">Ramadas.net</a></p>
-                <nav aria-label="Project links">
-                    <NuxtLink :to="{name: 'landing'}">RAGPulse home</NuxtLink>
-                    <a :href="repositoryUrl">GitHub</a>
-                </nav>
-            </div>
-        </footer>
+        <MarketingFooter />
     </div>
 </template>
 
@@ -42,8 +30,7 @@ body:has(.comparison-shell) > div[data-ragpulse] {
 .comparison-header {
     border-bottom: 1px solid var(--border);
 }
-.comparison-header .comparison-inner,
-.comparison-footer .comparison-inner {
+.comparison-header .comparison-inner {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
@@ -51,26 +38,14 @@ body:has(.comparison-shell) > div[data-ragpulse] {
     gap: 8px 24px;
     padding-block: 14px;
 }
-.comparison-footer nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 18px;
-}
-.comparison-header a,
-.comparison-footer a {
+.comparison-header a {
     color: var(--text-muted);
     display: inline-flex;
     align-items: center;
     min-height: 44px;
 }
-.comparison-header a:hover,
-.comparison-footer a:hover {
+.comparison-header a:hover {
     color: var(--accent);
-}
-.comparison-footer {
-    margin-top: auto;
-    color: var(--text-muted);
-    border-top: 1px solid var(--border);
 }
 .compare-main {
     padding-block: clamp(24px, 6vw, 64px);

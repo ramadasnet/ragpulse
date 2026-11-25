@@ -172,7 +172,7 @@ export default defineNuxtConfig({
         // Cloudflare Pages/Workers headers for the static landing build
         publicAssets: landing ? [{dir: "landing/public", baseURL: "/"}] : [],
         ...(landing && {
-            handlers: discoveryRoutes.map((route) => ({route, handler: fileURLToPath(new URL("./landing/discovery.ts", import.meta.url))})),
+            handlers: discoveryRoutes.map((route) => ({route, handler: fileURLToPath(new URL("./server/discovery.ts", import.meta.url))})),
             prerender: {routes: [...marketingPaths, ...discoveryRoutes]}
         })
     },

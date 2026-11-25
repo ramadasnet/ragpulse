@@ -24,7 +24,7 @@ test("marketing discovery includes every public page and excludes application ro
         globals.getRequestURL = () => new URL(path, "http://localhost")
         globals.setHeader = (_event: unknown, name: string, value: string) => headers.set(name, value)
 
-        const {default: discover} = await import("../landing/discovery")
+        const {default: discover} = await import("../server/discovery")
         const event = {} as Parameters<typeof discover>[0]
         const sitemap = discover(event)
         const comparisonUrls = comparisons.map(({slug}) => siteUrl + comparisonPath(slug))

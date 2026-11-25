@@ -1,4 +1,4 @@
-import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl, faq, home, marketingPaths, siteUrl} from "../shared/marketing"
+import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl, faq, home, marketingPaths, mcpSupport, siteUrl} from "../shared/marketing"
 
 export default defineEventHandler((event) => {
     const path = getRequestURL(event).pathname
@@ -14,15 +14,24 @@ export default defineEventHandler((event) => {
         "## Product and documentation",
         `- [RAGPulse homepage](${siteUrl}/): How the chat, knowledge retrieval and human handoff work.`,
         `- [Setup and configuration](${documentationUrl}): Docker deployment, MongoDB, AI providers, embedding and MCP.`,
+        `- [MCP-first support workflow](${siteUrl}${comparisonHub.path}#${mcpSupport.id}): Bring your own agent to triage escalations and connect tools without a direct integration.`,
         `- [Full text reference](${siteUrl}/llms-full.txt): FAQ and comparison summaries in Markdown.`,
         "## Compare AI support systems",
-        `- [Comparison hub](${siteUrl}${comparisonHub.path}): Choose between self-hosted chat and a managed support platform.`,
+        `- [Comparison hub](${siteUrl}${comparisonHub.path}): Compare agent-controlled workflows with managed agents and ready-made connectors.`,
         ...comparisons.map(({name, slug, category}) => `- [RAGPulse vs ${name}](${siteUrl}${comparisonPath(slug)}): ${category}.`)
     ].join("\n\n")
     if (path === "/llms.txt") return index
 
     return [
         index,
+        `## ${mcpSupport.title}`,
+        mcpSupport.summary,
+        mcpSupport.setup,
+        "### Example: triage a support escalation",
+        ...mcpSupport.example.map((step, i) => `${i + 1}. ${step}`),
+        "### What the MCP server exposes",
+        ...mcpSupport.tools.map(({area, detail, names}) => `- ${area}: ${detail} Tools: ${names.map((name) => `\`${name}\``).join(", ")}.`),
+        mcpSupport.prompt,
         "## Frequently asked questions",
         ...faq.map(({question, answer}) => `### ${question}\n\n${answer}`),
         "## Comparison details",
@@ -31,8 +40,9 @@ export default defineEventHandler((event) => {
                 `### [RAGPulse vs ${name}](${siteUrl}${comparisonPath(slug)})`,
                 verdict,
                 ...strengths.map((strength) => `- ${strength}`),
-                `When ${name} may be a better fit: ${fit}`,
-                ...comparisonRows.map(({topic, ragpulse}, i) => `- ${topic}: RAGPulse: ${ragpulse} ${name}: ${cells[i]}`),
+                `When ${name} may be a better fit:`,
+                ...fit,
+                ...comparisonRows.map(({key, topic, ragpulse}) => `- ${topic}: RAGPulse: ${ragpulse} ${name}: ${cells[key]}`),
                 `Last reviewed: ${reviewed}. Sources: ${sources.map(({label, url}) => `[${label}](${url})`).join(", ")}.`
             ].join("\n\n")
         )

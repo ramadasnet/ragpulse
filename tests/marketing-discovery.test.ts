@@ -1,6 +1,6 @@
 import {expect, test} from "bun:test"
 import {parseRobotsTxt} from "../server/utils/ingest/url"
-import {comparisonPath, comparisons, faq, siteUrl} from "../shared/marketing"
+import {comparisonPath, comparisonRows, comparisons, faq, mcpSupport, siteUrl} from "../shared/marketing"
 
 test("marketing robots rules block admin routes but allow public admin screenshots", async () => {
     const text = await Bun.file(new URL("../landing/public/robots.txt", import.meta.url)).text()
@@ -36,14 +36,19 @@ test("marketing discovery includes every public page and excludes application ro
         const index = discover(event)
         expect(headers.get("content-type")).toBe("text/plain; charset=utf-8")
         for (const url of comparisonUrls) expect(index).toContain(url)
+        expect(index).toContain(`${siteUrl}/compare#${mcpSupport.id}`)
 
         path = "/llms-full.txt"
         const full = discover(event)
         for (const {question, answer} of faq) expect(full).toContain(`### ${question}\n\n${answer}`)
-        for (const {verdict, fit} of comparisons) {
+        for (const {name, verdict, fit, cells} of comparisons) {
             expect(full).toContain(verdict)
-            expect(full).toContain(fit)
+            for (const paragraph of fit) expect(full).toContain(paragraph)
+            for (const {key, topic, ragpulse} of comparisonRows) expect(full).toContain(`- ${topic}: RAGPulse: ${ragpulse} ${name}: ${cells[key]}`)
         }
+        expect(full).toContain(mcpSupport.summary)
+        for (const step of mcpSupport.example) expect(full).toContain(step)
+        for (const {names} of mcpSupport.tools) for (const name of names) expect(full).toContain(`\`${name}\``)
     } finally {
         for (const [name, value] of Object.entries(original)) {
             if (value === undefined) delete globals[name]

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {ArrowUpRight, Check} from "lucide-vue-next"
-import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl} from "#shared/marketing"
+import {comparisonHub, comparisonPath, comparisonRows, comparisons, documentationUrl, mcpSupport} from "#shared/marketing"
 import {marketingBreadcrumbs, useMarketingSeo} from "../../composables/useMarketingSeo"
 
 definePageMeta({
@@ -44,11 +44,15 @@ useMarketingSeo({path, title: `RAGPulse vs ${comparison.name} | AI support compa
                         <Check :size="18" aria-hidden="true" /><span>{{ strength }}</span>
                     </li>
                 </ul>
-                <a class="compare-text-link" :href="documentationUrl">Read the self-hosting guide <ArrowUpRight :size="16" aria-hidden="true" /></a>
+                <div class="strengths-links">
+                    <NuxtLink class="compare-text-link" :to="{path: comparisonHub.path, hash: `#${mcpSupport.id}`}">See the MCP workflow <ArrowUpRight :size="16" aria-hidden="true" /></NuxtLink>
+                    <a class="compare-text-link" :href="documentationUrl">Read the self-hosting guide <ArrowUpRight :size="16" aria-hidden="true" /></a>
+                </div>
             </section>
 
             <section class="compare-section" aria-labelledby="features">
-                <h2 id="features">Features at a glance</h2>
+                <h2 id="features">Feature-by-feature comparison</h2>
+                <p class="table-intro muted">Start with how each product connects to your tools, then compare the day-to-day support workflows.</p>
                 <table class="feature-table" aria-labelledby="features">
                     <thead>
                         <tr>
@@ -56,13 +60,13 @@ useMarketingSeo({path, title: `RAGPulse vs ${comparison.name} | AI support compa
                             <th scope="col">{{ comparison.name }}</th>
                         </tr>
                     </thead>
-                    <tbody v-for="({topic, ragpulse}, i) in comparisonRows" :key="topic">
+                    <tbody v-for="{key, topic, ragpulse} in comparisonRows" :key="key">
                         <tr>
                             <th scope="rowgroup" colspan="2">{{ topic }}</th>
                         </tr>
                         <tr>
                             <td>{{ ragpulse }}</td>
-                            <td>{{ comparison.cells[i] }}</td>
+                            <td>{{ comparison.cells[key] }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -76,7 +80,7 @@ useMarketingSeo({path, title: `RAGPulse vs ${comparison.name} | AI support compa
 
             <section class="compare-section" aria-labelledby="better-fit">
                 <h2 id="better-fit">When {{ comparison.name }} may be a better fit</h2>
-                <p class="fit">{{ comparison.fit }}</p>
+                <p v-for="paragraph in comparison.fit" :key="paragraph" class="fit">{{ paragraph }}</p>
             </section>
         </article>
 
@@ -122,12 +126,20 @@ useMarketingSeo({path, title: `RAGPulse vs ${comparison.name} | AI support compa
     flex: 0 0 auto;
     margin-top: 3px;
 }
+.strengths-links {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 20px;
+}
 .strengths a,
 .related a {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
     gap: 6px;
+}
+.table-intro {
+    margin-bottom: 16px;
 }
 .feature-table {
     table-layout: fixed;
@@ -167,6 +179,9 @@ useMarketingSeo({path, title: `RAGPulse vs ${comparison.name} | AI support compa
     max-width: 70ch;
     font-size: 1rem;
     color: var(--text-muted);
+}
+.fit + .fit {
+    margin-top: 12px;
 }
 .related {
     border-top: 1px solid var(--border);

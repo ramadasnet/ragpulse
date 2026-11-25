@@ -59,7 +59,7 @@ export const marketingApplication = {
     sameAs: repositoryUrl,
     publisher: {"@id": marketingOrganization["@id"]},
     screenshot: siteUrl + "/admin-overview.webp",
-    featureList: ["Self-hosted AI support chat", "Website, Git and Google Drive indexing", "Embeddable chat widget", "Human takeover", "FAQ learning", "MCP server"]
+    featureList: ["Self-hosted AI support chat", "Website, Git and Google Drive indexing", "Embeddable chat widget", "Human takeover", "FAQ learning", "MCP server for agent-managed escalations, conversations and knowledge"]
 }
 
 export function marketingBreadcrumbs(...pages: {path: string; name: string}[]) {

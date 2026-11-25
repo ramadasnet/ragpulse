@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {BookOpenText, Bot, ChevronLeft, ChevronRight, CircleQuestionMark, FileCode, FileText, FolderOpen, GitBranch, Github, Globe, MailQuestionMark, MessagesSquare, SendHorizontal, Server, Users, X} from "lucide-vue-next"
-import {comparisonHub, comparisonPath, comparisons, documentationUrl, faq, home, repositoryUrl} from "#shared/marketing"
+import {comparisonHub, comparisonPath, comparisons, documentationUrl, faq, home, mcpSupport, repositoryUrl} from "#shared/marketing"
 import {marketingApplication, marketingOrganization, marketingWebsite, useMarketingSeo} from "../composables/useMarketingSeo"
 
 definePageMeta({layout: "blank"})
@@ -85,7 +85,7 @@ const features = [
     {
         icon: Bot,
         title: "MCP server for your agents",
-        text: "Use a scoped personal token to connect MCP clients to conversations, escalations and project knowledge."
+        text: "Let your own agent work across escalations, conversations, knowledge and other tools without needing a RAGPulse connector for each one."
     },
     {
         icon: Users,
@@ -264,10 +264,17 @@ function go(i: number) {
                 </ol>
             </section>
 
+            <section :id="mcpSupport.id" class="band mcp-band">
+                <p class="section-title">Bring your own agent</p>
+                <h2>{{ mcpSupport.title }}</h2>
+                <p class="section-intro muted">{{ mcpSupport.summary }}</p>
+                <NuxtLink class="mcp-workflow" :to="{path: comparisonHub.path, hash: `#${mcpSupport.id}`}">See an example workflow and the MCP tools <ChevronRight :size="16" aria-hidden="true" /></NuxtLink>
+            </section>
+
             <section id="compare" class="band">
                 <p class="section-title">Comparison guides</p>
                 <h2>RAGPulse vs hosted AI support tools</h2>
-                <p class="section-intro muted">Self-host RAGPulse when deployment control and technical knowledge matter most. If you need a managed inbox, more channels or tighter helpdesk integration, compare the trade-offs before choosing.</p>
+                <p class="section-intro muted">Self-host RAGPulse when you want your own agent to coordinate support. If you prefer a managed inbox, ready-made connectors or a no-code agent builder, compare the trade-offs before choosing.</p>
                 <ul class="landing-comparisons">
                     <li v-for="item in comparisons" :key="item.slug">
                         <NuxtLink :to="comparisonPath(item.slug)">
@@ -593,6 +600,21 @@ h1 em {
 .section-intro {
     max-width: 68ch;
     margin: -14px 0 20px;
+}
+.mcp-band .section-intro {
+    margin-bottom: 8px;
+}
+.mcp-workflow {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 44px;
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+.mcp-workflow svg {
+    flex: 0 0 auto;
 }
 .landing-comparisons {
     display: grid;

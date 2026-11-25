@@ -85,7 +85,7 @@ useMarketingSeo({path, title: `RAGPulse vs ${comparison.name} | AI support compa
         </article>
 
         <section class="compare-section related" aria-labelledby="related">
-            <h2 id="related">Compare other AI chat support tools</h2>
+            <h2 id="related">Compare other chat support tools</h2>
             <ul>
                 <li v-for="item in otherComparisons" :key="item.slug">
                     <NuxtLink :to="comparisonPath(item.slug)">RAGPulse vs {{ item.name }} <ArrowUpRight :size="14" aria-hidden="true" /></NuxtLink>

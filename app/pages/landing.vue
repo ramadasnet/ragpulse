@@ -241,7 +241,7 @@ function go(i: number) {
                         </div>
                     </li>
                 </ol>
-                <NuxtLink class="compare-link" :to="comparisonHub.path">Compare RAGPulse with other AI chat support tools</NuxtLink>
+                <NuxtLink class="compare-link" :to="comparisonHub.path">Compare RAGPulse with other chat support tools</NuxtLink>
             </section>
         </main>
 

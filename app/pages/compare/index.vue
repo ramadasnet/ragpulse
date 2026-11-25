@@ -17,7 +17,7 @@ useMarketingSeo(comparisonHub, [marketingBreadcrumbs({path: comparisonHub.path, 
             </ol>
         </nav>
         <header>
-            <h1>Compare RAGPulse with other AI support tools</h1>
+            <h1>Compare RAGPulse with other chat support tools</h1>
             <p class="compare-lede">
                 RAGPulse gives you a self-hosted support inbox and lets your own agent connect it to other tools through MCP. A managed platform is often simpler if you want ready-made connectors, more visitor channels, or an agent your support team
                 can configure without code.

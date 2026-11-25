@@ -1,4 +1,5 @@
 import {fileURLToPath} from "node:url"
+import {marketingPaths} from "./shared/marketing"
 
 // Build target: `admin` (dashboard, admin API, MCP, sync scheduler), `chat` (public chat page, chat API, embed.js),
 // `landing` (static landing site, no server) or unset to serve everything from one server (development).
@@ -24,7 +25,8 @@ const adminOnly = [
     "server/routes/mcp.ts",
     "server/plugins/scheduler.ts"
 ]
-const landingOnly = ["app/pages/landing.vue"]
+const landingOnly = ["app/pages/landing.vue", "app/pages/compare/**"]
+const discoveryRoutes = ["/sitemap.xml", "/llms.txt", "/llms-full.txt"]
 
 /** Baseline headers for routes that must never be framed (dashboard, login) — chat pages set their own CSP in server/middleware/chat-security.ts */
 const noFrameHeaders = {
@@ -168,7 +170,11 @@ export default defineNuxtConfig({
     nitro: {
         preset: landing ? "static" : "bun",
         // Cloudflare Pages/Workers headers for the static landing build
-        publicAssets: landing ? [{dir: "landing/public", baseURL: "/"}] : []
+        publicAssets: landing ? [{dir: "landing/public", baseURL: "/"}] : [],
+        ...(landing && {
+            handlers: discoveryRoutes.map((route) => ({route, handler: fileURLToPath(new URL("./server/discovery.ts", import.meta.url))})),
+            prerender: {routes: [...marketingPaths, ...discoveryRoutes]}
+        })
     },
 
     vite: {

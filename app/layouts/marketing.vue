@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {comparisonHub, documentationUrl, repositoryUrl} from "#shared/marketing"
+import {repositoryUrl} from "#shared/marketing"
 </script>
 
 <template>
@@ -7,10 +7,6 @@ import {comparisonHub, documentationUrl, repositoryUrl} from "#shared/marketing"
         <header class="comparison-header">
             <div class="comparison-inner">
                 <NuxtLink :to="{name: 'landing'}" aria-label="RAGPulse home"><AppLogo /></NuxtLink>
-                <nav aria-label="Main navigation">
-                    <NuxtLink :to="comparisonHub.path">Comparisons</NuxtLink>
-                    <a :href="documentationUrl">Setup guide</a>
-                </nav>
             </div>
         </header>
         <slot />
@@ -55,7 +51,6 @@ body:has(.comparison-shell) > div[data-ragpulse] {
     gap: 8px 24px;
     padding-block: 14px;
 }
-.comparison-header nav,
 .comparison-footer nav {
     display: flex;
     flex-wrap: wrap;

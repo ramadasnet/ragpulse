@@ -27,6 +27,10 @@ import {comparisonHub, documentationUrl, repositoryUrl} from "#shared/marketing"
 </template>
 
 <style>
+body:has(.comparison-shell) > div[data-ragpulse] {
+    display: none;
+}
+
 .comparison-shell {
     --compare-width: 1060px;
     min-height: 100dvh;

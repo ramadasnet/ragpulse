@@ -40,7 +40,10 @@ const SCRIPT = /* js */ `(function () {
     var a = safe(t.accent, '#7c5cff'), b = safe(t.accent2, a), hl = safe(t.highlight, a);
     var side = (s.getAttribute('data-position') || t.position) === 'left' ? 'left' : 'right';
     // Launcher and panel corner radii per chat style
-    var sq = t.style === 'square', lr = sq ? '0' : '50%', pr = sq ? '0' : t.style === 'round' ? '28px' : t.style === 'glass' ? '24px' : '20px';
+    var st = t.style, ua;
+    // "auto" follows the platform, like the chat page
+    if (st === 'auto') ua = navigator.userAgent, st = /iPhone|iPad|iPod|Macintosh|Mac OS X/i.test(ua) ? 'glass' : /Android/i.test(ua) ? 'round' : /Windows/i.test(ua) ? 'square' : 'classic';
+    var sq = st === 'square', lr = sq ? '0' : '50%', pr = sq ? '0' : st === 'round' ? '28px' : st === 'glass' ? '24px' : '20px';
     var host = document.createElement('div');
     host.setAttribute('data-ragpulse', '');
     host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;' + side + ':0;width:0;height:0';

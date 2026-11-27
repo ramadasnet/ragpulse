@@ -50,7 +50,12 @@ if (!config.value && !preview) throw createError({statusCode: 404, statusMessage
 // ---------- Theme ----------
 const themeOverride = ref<Partial<ChatTheme> | null>(null)
 const titleOverride = ref("")
-const theme = computed(() => resolveChatTheme({...config.value?.theme, ...themeOverride.value}))
+// User agent of the visitor (request header during SSR), resolves the "auto" style without a flash on hydration
+const userAgent = import.meta.server ? useRequestHeaders(["user-agent"])["user-agent"] || "" : navigator.userAgent
+const theme = computed(() => {
+    const t = resolveChatTheme({...config.value?.theme, ...themeOverride.value})
+    return t.style === "auto" ? {...t, style: platformChatStyle(userAgent)} : t
+})
 const vars = computed(() => chatThemeVars(theme.value))
 const title = computed(() => titleOverride.value || config.value?.title || "Chat")
 const botName = computed(() => theme.value.botName || title.value)

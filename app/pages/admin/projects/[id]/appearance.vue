@@ -96,6 +96,9 @@ function onMessage(e: MessageEvent) {
 onMounted(() => window.addEventListener("message", onMessage))
 onBeforeUnmount(() => window.removeEventListener("message", onMessage))
 
+// Style the preview iframe renders: "auto" resolves to this browser's platform, like for visitors
+const previewStyle = computed(() => (form.value?.style === "auto" ? platformChatStyle(navigator.userAgent) : form.value?.style))
+
 const launcherInk = computed(() => chatInkOn(form.value?.accent || "#000000"))
 
 async function save() {
@@ -144,7 +147,7 @@ async function save() {
                             type="button"
                             role="radio"
                             class="style-tile"
-                            :class="[`st-${st.id}`, {active: form.style === st.id}]"
+                            :class="[`st-${st.id === 'auto' ? previewStyle : st.id}`, {active: form.style === st.id, auto: st.id === 'auto'}]"
                             :aria-checked="form.style === st.id"
                             :tabindex="form.style === st.id ? 0 : -1"
                             @click="form.style = st.id"
@@ -212,11 +215,11 @@ async function save() {
                     <p class="section-title" style="margin: 0">Live preview</p>
                     <UiBadge v-if="dirty" tone="warning">Unsaved</UiBadge>
                 </div>
-                <div class="device" :class="`st-${form.style}`">
+                <div class="device" :class="`st-${previewStyle}`">
                     <iframe ref="frame" :src="previewSrc" title="Chat preview" class="preview-frame" @load="postTheme" />
                 </div>
                 <div class="launcher-row" :class="form.position">
-                    <span class="launcher" :class="`st-${form.style}`" :style="{background: `linear-gradient(135deg, ${form.accent}, ${form.accent2})`, color: launcherInk}" aria-hidden="true">
+                    <span class="launcher" :class="`st-${previewStyle}`" :style="{background: `linear-gradient(135deg, ${form.accent}, ${form.accent2})`, color: launcherInk}" aria-hidden="true">
                         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 20.5l1.5-4.6A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z" />
                         </svg>
@@ -338,12 +341,15 @@ async function save() {
 
 .styles {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
 }
 @media (max-width: 720px) {
     .styles {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .style-tile.auto {
+        grid-column: span 2;
     }
 }
 .style-tile {

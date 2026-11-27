@@ -58,7 +58,7 @@ export function resolveChatTheme(theme?: Partial<ChatTheme> | null): ChatTheme {
 }
 
 /** Corner radii per chat style: bubble, bubble tail, card, composer, field, button, icon, avatar mark, chip, inline code. */
-const RADII: Record<ChatStyle, [string, string, string, string, string, string, string, string, string, string]> = {
+const RADII: Record<Exclude<ChatStyle, "auto">, [string, string, string, string, string, string, string, string, string, string]> = {
     classic: ["16px", "6px", "18px", "20px", "12px", "12px", "12px", "9px", "8px", "5px"],
     square: ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0"],
     round: ["24px", "6px", "28px", "28px", "18px", "999px", "50%", "50%", "999px", "6px"],
@@ -138,7 +138,7 @@ function highlightInk(hex: string, palette: (typeof PALETTES)[ChatTheme["mode"]]
     return palette["--c-text"]
 }
 
-/** CSS variables for the chat root element. */
+/** CSS variables for the chat root element. The `auto` style must be resolved to a concrete one beforehand. */
 export function chatThemeVars(theme: ChatTheme): Record<string, string> {
     const palette = PALETTES[theme.mode === "light" ? "light" : "dark"]
     const highlightOpacity = theme.mode === "light" ? 0.16 : 0.13
@@ -153,8 +153,8 @@ export function chatThemeVars(theme: ChatTheme): Record<string, string> {
         "--c-highlight-ink": highlightInk(theme.highlight, palette, highlightOpacity),
         "--c-highlight-soft": alpha(theme.highlight, highlightOpacity),
         "--c-ring": `0 0 0 3px ${alpha(theme.highlight, 0.35)}`,
-        ...Object.fromEntries((RADII[theme.style] || RADII.classic).map((r, i) => [`--c-r-${RADIUS_VARS[i]}`, r])),
-        ...(theme.style === "classic" || !RADII[theme.style] ? PULSE_RADII : {}),
+        ...Object.fromEntries((RADII[theme.style as keyof typeof RADII] || RADII.classic).map((r, i) => [`--c-r-${RADIUS_VARS[i]}`, r])),
+        ...(theme.style === "classic" || !RADII[theme.style as keyof typeof RADII] ? PULSE_RADII : {}),
         // After the highlight ink above, which needs the solid surfaces
         ...(theme.style === "glass" ? glassVars(theme) : {})
     }

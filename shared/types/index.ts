@@ -66,7 +66,8 @@ export interface ChatTheme {
     showPoweredBy: boolean
 }
 
-export const CHAT_STYLE_IDS = ["classic", "square", "round", "glass"] as const
+/** `auto` picks a style from the visitor's platform (see `platformChatStyle`) */
+export const CHAT_STYLE_IDS = ["classic", "square", "round", "glass", "auto"] as const
 export type ChatStyle = (typeof CHAT_STYLE_IDS)[number]
 
 export interface Project {

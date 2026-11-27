@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
     height: 26px;
     padding: 0 7px;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--c-r-chip);
     background: transparent;
     color: var(--c-muted);
     font-size: 11.5px;
@@ -155,8 +155,9 @@ onBeforeUnmount(() => {
     min-width: 180px;
     max-width: min(300px, calc(100vw - 48px));
     padding: 6px;
-    border-radius: 12px;
+    border-radius: var(--c-r-field);
     background: var(--c-surface);
+    backdrop-filter: var(--c-blur, none);
     border: 1px solid var(--c-border);
     box-shadow: 0 10px 30px -8px rgb(0 0 0 / 0.35);
     animation: src-in 0.14s var(--ease) both;
@@ -195,7 +196,7 @@ onBeforeUnmount(() => {
     gap: 8px;
     min-height: 34px;
     padding: 0 8px;
-    border-radius: 8px;
+    border-radius: var(--c-r-chip);
     font-size: 13px;
     color: var(--c-text);
 }

@@ -64,8 +64,9 @@ defineExpose({focus: () => el.value?.focus()})
     padding: 6px 6px 6px 14px;
     background: var(--c-surface);
     border: 1px solid var(--c-border);
-    border-radius: 20px;
+    border-radius: var(--c-r-composer);
     box-shadow: var(--c-shadow);
+    backdrop-filter: var(--c-blur, none);
     transition:
         border-color 0.15s,
         box-shadow 0.15s;
@@ -124,7 +125,7 @@ textarea:focus-visible {
 .send {
     width: 38px;
     height: 38px;
-    border-radius: 14px;
+    border-radius: var(--c-r-icon);
     border: 0;
     display: grid;
     place-items: center;

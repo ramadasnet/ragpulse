@@ -96,12 +96,12 @@ onMounted(() => {
     font-size: 0.88em;
     background: var(--c-surface-2);
     padding: 0.1em 0.35em;
-    border-radius: 5px;
+    border-radius: var(--c-r-xs);
 }
 .md :deep(pre) {
     background: var(--c-surface-2);
     padding: 10px 12px;
-    border-radius: 10px;
+    border-radius: var(--c-r-field);
     overflow-x: auto;
 }
 .md :deep(pre code) {

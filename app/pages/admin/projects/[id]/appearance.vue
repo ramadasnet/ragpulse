@@ -119,6 +119,20 @@ async function save() {
 
         <div v-else class="layout">
             <div class="stack" style="--gap: 16px">
+                <UiCard title="Style" description="The shape and feel of the chat window.">
+                    <div class="styles" role="radiogroup" aria-label="Chat style">
+                        <button v-for="st in CHAT_STYLES" :key="st.id" type="button" role="radio" class="style-tile" :class="[`st-${st.id}`, {active: form.style === st.id}]" :aria-checked="form.style === st.id" @click="form.style = st.id">
+                            <span class="style-demo" :style="{'--a': form.accent, '--b': form.accent2}" aria-hidden="true">
+                                <i class="sd-bot" />
+                                <i class="sd-user" />
+                                <i class="sd-input" />
+                            </span>
+                            <span class="style-name">{{ st.name }}</span>
+                            <span class="tiny dim">{{ st.description }}</span>
+                        </button>
+                    </div>
+                </UiCard>
+
                 <UiCard title="Colours" description="Pick a preset or fine-tune each colour.">
                     <div class="stack" style="--gap: 18px">
                         <div class="presets" role="list">
@@ -160,6 +174,7 @@ async function save() {
                             </div>
                             <p class="field-hint">Applies to the JavaScript embed. Can be overridden per page with <code>data-position</code>.</p>
                         </div>
+                        <UiToggle v-model="form.showPoweredBy" label="Show “Powered by RAGPulse”" description="The small credit line under the message box." />
                     </div>
                 </UiCard>
             </div>
@@ -169,11 +184,11 @@ async function save() {
                     <p class="section-title" style="margin: 0">Live preview</p>
                     <UiBadge v-if="dirty" tone="warning">Unsaved</UiBadge>
                 </div>
-                <div class="device">
+                <div class="device" :class="`st-${form.style}`">
                     <iframe ref="frame" :src="previewSrc" title="Chat preview" class="preview-frame" @load="postTheme" />
                 </div>
                 <div class="launcher-row" :class="form.position">
-                    <span class="launcher" :style="{background: `linear-gradient(135deg, ${form.accent}, ${form.accent2})`, color: launcherInk}" aria-hidden="true">
+                    <span class="launcher" :class="`st-${form.style}`" :style="{background: `linear-gradient(135deg, ${form.accent}, ${form.accent2})`, color: launcherInk}" aria-hidden="true">
                         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.9-.9L3 20.5l1.5-4.6A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z" />
                         </svg>
@@ -293,6 +308,96 @@ async function save() {
     text-transform: lowercase;
 }
 
+.styles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+@media (max-width: 720px) {
+    .styles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+.style-tile {
+    --r: 8px;
+    --r-pill: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 10px;
+    border-radius: var(--radius);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-align: left;
+    transition: border-color 0.15s var(--ease);
+}
+.style-tile:hover {
+    border-color: var(--border-strong);
+}
+.style-tile.active {
+    border-color: var(--accent);
+    box-shadow: var(--ring);
+}
+.st-square {
+    --r: 0;
+    --r-pill: 0;
+}
+.st-round {
+    --r: 12px;
+    --r-pill: 999px;
+}
+.st-glass {
+    --r: 10px;
+    --r-pill: 999px;
+}
+.style-demo {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    background: var(--surface-3);
+}
+.st-glass .style-demo {
+    background: radial-gradient(70% 60% at 0% 0%, color-mix(in srgb, var(--a) 45%, transparent), transparent), radial-gradient(70% 60% at 100% 100%, color-mix(in srgb, var(--b) 40%, transparent), transparent), var(--surface-3);
+}
+.style-demo i {
+    display: block;
+    height: 14px;
+    border-radius: var(--r);
+}
+.sd-bot {
+    width: 70%;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+}
+.sd-user {
+    width: 50%;
+    align-self: flex-end;
+    background: var(--a);
+}
+.style-demo .sd-input {
+    height: 16px;
+    margin-top: 3px;
+    border-radius: var(--r-pill);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+}
+.st-glass .sd-bot,
+.st-glass .sd-input {
+    background: rgb(255 255 255 / 0.14);
+    border-color: rgb(255 255 255 / 0.25);
+    backdrop-filter: blur(6px);
+}
+.style-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .preview-col {
     position: sticky;
     top: 20px;
@@ -339,6 +444,17 @@ async function save() {
     display: grid;
     place-items: center;
     box-shadow: 0 10px 28px -8px rgb(0 0 0 / 0.6);
+}
+/* Launcher and preview frame follow the chat style, like the JS embed */
+.launcher.st-square,
+.device.st-square {
+    border-radius: 0;
+}
+.device.st-round {
+    border-radius: 28px;
+}
+.device.st-glass {
+    border-radius: 24px;
 }
 @media (max-width: 1080px) {
     .preview-col {

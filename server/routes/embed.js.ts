@@ -39,6 +39,8 @@ const SCRIPT = /* js */ `(function () {
     var t = cfg.theme || {};
     var a = safe(t.accent, '#7c5cff'), b = safe(t.accent2, a), hl = safe(t.highlight, a);
     var side = (s.getAttribute('data-position') || t.position) === 'left' ? 'left' : 'right';
+    // Launcher and panel corner radii per chat style
+    var sq = t.style === 'square', lr = sq ? '0' : '50%', pr = sq ? '0' : t.style === 'round' ? '28px' : t.style === 'glass' ? '24px' : '20px';
     var host = document.createElement('div');
     host.setAttribute('data-ragpulse', '');
     host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;' + side + ':0;width:0;height:0';
@@ -46,12 +48,12 @@ const SCRIPT = /* js */ `(function () {
     var e = 'cubic-bezier(.2,.8,.2,1)';
     root.innerHTML = '<style>' +
       '.w{all:initial;font-family:system-ui,sans-serif}' +
-      '.l{position:fixed;bottom:20px;' + side + ':20px;width:58px;height:58px;border-radius:50%;border:0;padding:0;margin:0;cursor:pointer;display:grid;place-items:center;' +
+      '.l{position:fixed;bottom:20px;' + side + ':20px;width:58px;height:58px;border-radius:' + lr + ';border:0;padding:0;margin:0;cursor:pointer;display:grid;place-items:center;' +
       'background:linear-gradient(135deg,' + a + ',' + b + ');color:' + ink(a) + ';box-shadow:0 12px 32px -8px rgba(0,0,0,.4),0 2px 6px rgba(0,0,0,.14);transition:transform .25s ' + e + '}' +
       '.l:hover{transform:scale(1.06)}.l:active{transform:scale(.95)}.l:focus-visible{outline:3px solid ' + hl + ';outline-offset:3px}' +
       '.l svg{position:absolute;width:26px;height:26px;transition:transform .35s ' + e + ',opacity .2s}' +
       '.x,.o .c{opacity:0;transform:rotate(-90deg) scale(.4)}.o .c{transform:rotate(90deg) scale(.4)}.o .x{opacity:1;transform:none}' +
-      '.p{position:fixed;bottom:90px;' + side + ':20px;width:400px;height:640px;max-height:calc(100vh - 110px);border-radius:20px;overflow:hidden;' +
+      '.p{position:fixed;bottom:90px;' + side + ':20px;width:400px;height:640px;max-height:calc(100vh - 110px);border-radius:' + pr + ';overflow:hidden;' +
       'background:' + (t.mode === 'light' ? '#fff' : '#0d0f14') + ';box-shadow:0 28px 80px -16px rgba(0,0,0,.5),0 0 0 1px rgba(127,127,127,.15);' +
       'opacity:0;visibility:hidden;transform:translateY(14px) scale(.97);transform-origin:bottom ' + side + ';' +
       'transition:opacity .2s,transform .3s ' + e + ',visibility 0s .3s}' +

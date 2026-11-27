@@ -1,4 +1,12 @@
-import type {ChatTheme} from "#shared/types"
+import type {ChatStyle, ChatTheme} from "#shared/types"
+
+/** Chat UI styles offered in the appearance editor. */
+export const CHAT_STYLES: Array<{id: ChatStyle; name: string; description: string}> = [
+    {id: "classic", name: "Pulse", description: "Balanced, softly rounded"},
+    {id: "square", name: "Edge", description: "Sharp corners, no rounding"},
+    {id: "round", name: "Pebble", description: "Pill shapes, extra round"},
+    {id: "glass", name: "Frost", description: "Translucent, blurred glass"}
+]
 
 export interface ChatThemePreset {
     name: string

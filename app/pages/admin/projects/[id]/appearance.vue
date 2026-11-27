@@ -30,6 +30,22 @@ watch(
 
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== original.value)
 
+// Radio-group keyboard behaviour for the style tiles: one tab stop, arrow keys move and select
+const styleTiles = ref<HTMLButtonElement[]>([])
+function onStyleKeydown(e: KeyboardEvent, index: number) {
+    if (!form.value) return
+    const n = CHAT_STYLES.length
+    let next: number
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (index + 1) % n
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (index - 1 + n) % n
+    else if (e.key === "Home") next = 0
+    else if (e.key === "End") next = n - 1
+    else return
+    e.preventDefault()
+    form.value.style = CHAT_STYLES[next]!.id
+    styleTiles.value[next]?.focus()
+}
+
 const colorFields = [
     {key: "accent", label: "Accent", hint: "User messages, send button, launcher"},
     {key: "accent2", label: "Secondary", hint: "Gradients and links"},
@@ -121,7 +137,19 @@ async function save() {
             <div class="stack" style="--gap: 16px">
                 <UiCard title="Style" description="The shape and feel of the chat window.">
                     <div class="styles" role="radiogroup" aria-label="Chat style">
-                        <button v-for="st in CHAT_STYLES" :key="st.id" type="button" role="radio" class="style-tile" :class="[`st-${st.id}`, {active: form.style === st.id}]" :aria-checked="form.style === st.id" @click="form.style = st.id">
+                        <button
+                            v-for="(st, i) in CHAT_STYLES"
+                            :key="st.id"
+                            ref="styleTiles"
+                            type="button"
+                            role="radio"
+                            class="style-tile"
+                            :class="[`st-${st.id}`, {active: form.style === st.id}]"
+                            :aria-checked="form.style === st.id"
+                            :tabindex="form.style === st.id ? 0 : -1"
+                            @click="form.style = st.id"
+                            @keydown="onStyleKeydown($event, i)"
+                        >
                             <span class="style-demo" :style="{'--a': form.accent, '--b': form.accent2}" aria-hidden="true">
                                 <i class="sd-bot" />
                                 <i class="sd-user" />

@@ -125,7 +125,7 @@ textarea:focus-visible {
 .send {
     width: 38px;
     height: 38px;
-    border-radius: var(--c-r-icon);
+    border-radius: var(--c-r-send, var(--c-r-icon));
     border: 0;
     display: grid;
     place-items: center;

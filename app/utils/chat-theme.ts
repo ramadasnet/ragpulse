@@ -66,6 +66,15 @@ const RADII: Record<ChatStyle, [string, string, string, string, string, string, 
 }
 const RADIUS_VARS = ["bubble", "tail", "card", "composer", "field", "btn", "icon", "mark", "chip", "xs"]
 
+/** Pulse keeps its original per-element radii; other styles fall back to the shared tokens above. */
+const PULSE_RADII: Record<string, string> = {
+    "--c-r-send": "14px",
+    "--c-r-avatar": "13px",
+    "--c-r-icon-btn": "11px",
+    "--c-r-loading": "14px",
+    "--c-r-pre": "10px"
+}
+
 /** Translucent surfaces and the coloured backdrop behind them for the glass style. */
 function glassVars(theme: ChatTheme): Record<string, string> {
     const light = theme.mode === "light"
@@ -145,6 +154,7 @@ export function chatThemeVars(theme: ChatTheme): Record<string, string> {
         "--c-highlight-soft": alpha(theme.highlight, highlightOpacity),
         "--c-ring": `0 0 0 3px ${alpha(theme.highlight, 0.35)}`,
         ...Object.fromEntries((RADII[theme.style] || RADII.classic).map((r, i) => [`--c-r-${RADIUS_VARS[i]}`, r])),
+        ...(theme.style === "classic" || !RADII[theme.style] ? PULSE_RADII : {}),
         // After the highlight ink above, which needs the solid surfaces
         ...(theme.style === "glass" ? glassVars(theme) : {})
     }

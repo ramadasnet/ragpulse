@@ -101,7 +101,7 @@ onMounted(() => {
 .md :deep(pre) {
     background: var(--c-surface-2);
     padding: 10px 12px;
-    border-radius: var(--c-r-field);
+    border-radius: var(--c-r-pre, var(--c-r-field));
     overflow-x: auto;
 }
 .md :deep(pre code) {

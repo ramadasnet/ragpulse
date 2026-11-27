@@ -873,7 +873,7 @@ onBeforeUnmount(() => {
 .rp-avatar {
     width: 40px;
     height: 40px;
-    border-radius: var(--c-r-icon);
+    border-radius: var(--c-r-avatar, var(--c-r-icon));
     flex-shrink: 0;
     display: grid;
     place-items: center;
@@ -947,7 +947,7 @@ onBeforeUnmount(() => {
 .rp-icon {
     width: 36px;
     height: 36px;
-    border-radius: var(--c-r-icon);
+    border-radius: var(--c-r-icon-btn, var(--c-r-icon));
     border: 0;
     background: transparent;
     color: var(--c-muted);
@@ -998,7 +998,7 @@ onBeforeUnmount(() => {
 }
 .rp-loading span {
     height: 40px;
-    border-radius: var(--c-r-bubble);
+    border-radius: var(--c-r-loading, var(--c-r-bubble));
     background: var(--c-surface);
     animation: rp-fade 1.2s ease-in-out infinite alternate;
 }

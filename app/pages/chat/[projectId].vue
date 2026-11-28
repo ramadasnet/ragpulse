@@ -50,7 +50,12 @@ if (!config.value && !preview) throw createError({statusCode: 404, statusMessage
 // ---------- Theme ----------
 const themeOverride = ref<Partial<ChatTheme> | null>(null)
 const titleOverride = ref("")
-const theme = computed(() => resolveChatTheme({...config.value?.theme, ...themeOverride.value}))
+// User agent of the visitor (request header during SSR), resolves the "auto" style without a flash on hydration
+const userAgent = import.meta.server ? useRequestHeaders(["user-agent"])["user-agent"] || "" : navigator.userAgent
+const theme = computed(() => {
+    const t = resolveChatTheme({...config.value?.theme, ...themeOverride.value})
+    return t.style === "auto" ? {...t, style: platformChatStyle(userAgent)} : t
+})
 const vars = computed(() => chatThemeVars(theme.value))
 const title = computed(() => titleOverride.value || config.value?.title || "Chat")
 const botName = computed(() => theme.value.botName || title.value)
@@ -654,7 +659,7 @@ onBeforeUnmount(() => {
             <div class="rp-col">
                 <p v-if="banner" class="rp-banner" role="alert">{{ banner }}</p>
                 <ChatComposer v-if="phase === 'chat' && !showLimit && !ended" ref="composer" v-model="draft" :placeholder="theme.placeholder" :busy="streaming" :max="MAX_CHARS" :hint="composerHint" @send="send" />
-                <p class="rp-powered">Powered by <a href="https://ragpulse.dev" target="_blank" rel="noopener">RAGPulse</a></p>
+                <p v-if="theme.showPoweredBy" class="rp-powered">Powered by <a href="https://ragpulse.dev" target="_blank" rel="noopener">RAGPulse</a></p>
             </div>
         </footer>
 
@@ -676,9 +681,10 @@ onBeforeUnmount(() => {
 .rp .c-card {
     background: var(--c-surface);
     border: 1px solid var(--c-border);
-    border-radius: 18px;
+    border-radius: var(--c-r-card);
     padding: 18px;
     box-shadow: var(--c-shadow);
+    backdrop-filter: var(--c-blur, none);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -688,7 +694,7 @@ onBeforeUnmount(() => {
 .rp .c-card.compact {
     margin: 2px 0 0;
     padding: 12px;
-    border-radius: 14px;
+    border-radius: max(0px, calc(var(--c-r-card) - 4px));
     gap: 8px;
 }
 .rp .c-card-title {
@@ -723,7 +729,7 @@ onBeforeUnmount(() => {
     background: var(--c-bg);
     color: var(--c-text);
     border: 1px solid var(--c-border);
-    border-radius: 12px;
+    border-radius: var(--c-r-field);
     padding: 10px 12px;
     font-size: 14.5px;
     outline: none;
@@ -752,7 +758,7 @@ onBeforeUnmount(() => {
     height: 42px;
     padding: 0 16px;
     border: 0;
-    border-radius: 12px;
+    border-radius: var(--c-r-btn);
     background: var(--c-accent);
     color: var(--c-accent-ink);
     font-weight: 600;
@@ -836,7 +842,8 @@ onBeforeUnmount(() => {
     container-type: size;
     display: flex;
     flex-direction: column;
-    background: var(--c-bg);
+    background-color: var(--c-bg);
+    background-image: var(--c-backdrop, none);
     color: var(--c-text);
     font-family: var(--font-sans);
     font-size: 14.5px;
@@ -859,6 +866,7 @@ onBeforeUnmount(() => {
     padding: calc(12px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right), calc((100% - 760px) / 2)) 12px max(16px, env(safe-area-inset-left), calc((100% - 760px) / 2));
     background: var(--c-surface);
     border-bottom: 1px solid var(--c-border);
+    backdrop-filter: var(--c-blur, none);
 }
 .rp-head::before {
     content: "";
@@ -870,7 +878,7 @@ onBeforeUnmount(() => {
 .rp-avatar {
     width: 40px;
     height: 40px;
-    border-radius: 13px;
+    border-radius: var(--c-r-avatar, var(--c-r-icon));
     flex-shrink: 0;
     display: grid;
     place-items: center;
@@ -944,7 +952,7 @@ onBeforeUnmount(() => {
 .rp-icon {
     width: 36px;
     height: 36px;
-    border-radius: 11px;
+    border-radius: var(--c-r-icon-btn, var(--c-r-icon));
     border: 0;
     background: transparent;
     color: var(--c-muted);
@@ -995,7 +1003,7 @@ onBeforeUnmount(() => {
 }
 .rp-loading span {
     height: 40px;
-    border-radius: 14px;
+    border-radius: var(--c-r-loading, var(--c-r-bubble));
     background: var(--c-surface);
     animation: rp-fade 1.2s ease-in-out infinite alternate;
 }
@@ -1019,7 +1027,7 @@ onBeforeUnmount(() => {
 .rp-banner {
     margin: 0 0 8px;
     padding: 8px 12px;
-    border-radius: 12px;
+    border-radius: var(--c-r-field);
     font-size: 13px;
     background: rgb(248 113 113 / 0.12);
     color: #f87171;
@@ -1044,8 +1052,9 @@ onBeforeUnmount(() => {
     width: min(340px, calc(100% - 32px));
     padding: 0;
     border: 1px solid var(--c-border);
-    border-radius: 18px;
+    border-radius: var(--c-r-card);
     background: var(--c-surface);
+    backdrop-filter: var(--c-blur, none);
     color: var(--c-text);
     box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.45);
 }

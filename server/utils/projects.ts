@@ -1,7 +1,7 @@
 import type {H3Event} from "h3"
 import {z} from "zod"
 import type {ChatTheme, Project, ProjectAccess, ProjectPermission, User} from "#shared/types"
-import {DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, isRefreshInterval, PROJECT_PERMISSIONS} from "#shared/types"
+import {CHAT_STYLE_IDS, DEFAULT_REFRESH_HOURS, DEFAULT_THEME, INGEST_DETAILS, isRefreshInterval, PROJECT_PERMISSIONS} from "#shared/types"
 import {defaultSystemInstructions} from "#shared/utils/instructions"
 import {DEFAULT_ESCALATION_WEBHOOK_BODY} from "#shared/utils/webhook"
 import {publicUrlIssue} from "./public-url"
@@ -152,7 +152,9 @@ export const themePatchSchema = z
         botName: z.string().trim().min(1, "Bot name is required").max(60),
         welcomeMessage: z.string().max(1000),
         placeholder: z.string().max(120),
-        position: z.enum(["right", "left"])
+        position: z.enum(["right", "left"]),
+        style: z.enum(CHAT_STYLE_IDS),
+        showPoweredBy: z.boolean()
     })
     .partial()
 

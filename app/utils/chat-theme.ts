@@ -1,5 +1,5 @@
-import type {ChatTheme} from "#shared/types"
-import {DEFAULT_THEME} from "#shared/types"
+import type {ChatStyle, ChatTheme} from "#shared/types"
+import {CHAT_STYLE_IDS, DEFAULT_THEME} from "#shared/types"
 
 // Chat widget theming and message helpers (used by the public chat page and the appearance editor).
 
@@ -51,7 +51,40 @@ export function resolveChatTheme(theme?: Partial<ChatTheme> | null): ChatTheme {
         accent: isHexColor(t.accent) ? t.accent : DEFAULT_THEME.accent,
         accent2: isHexColor(t.accent2) ? t.accent2 : DEFAULT_THEME.accent2,
         highlight: isHexColor(t.highlight) ? t.highlight : DEFAULT_THEME.highlight,
-        position: t.position === "left" ? "left" : "right"
+        position: t.position === "left" ? "left" : "right",
+        style: CHAT_STYLE_IDS.includes(t.style) ? t.style : DEFAULT_THEME.style,
+        showPoweredBy: t.showPoweredBy !== false
+    }
+}
+
+/** Corner radii per chat style: bubble, bubble tail, card, composer, field, button, icon, avatar mark, chip, inline code. */
+const RADII: Record<Exclude<ChatStyle, "auto">, [string, string, string, string, string, string, string, string, string, string]> = {
+    classic: ["16px", "6px", "18px", "20px", "12px", "12px", "12px", "9px", "8px", "5px"],
+    square: ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0"],
+    round: ["24px", "6px", "28px", "28px", "18px", "999px", "50%", "50%", "999px", "6px"],
+    glass: ["20px", "8px", "24px", "24px", "14px", "999px", "50%", "50%", "999px", "6px"]
+}
+const RADIUS_VARS = ["bubble", "tail", "card", "composer", "field", "btn", "icon", "mark", "chip", "xs"]
+
+/** Pulse keeps its original per-element radii; other styles fall back to the shared tokens above. */
+const PULSE_RADII: Record<string, string> = {
+    "--c-r-send": "14px",
+    "--c-r-avatar": "13px",
+    "--c-r-icon-btn": "11px",
+    "--c-r-loading": "14px",
+    "--c-r-pre": "10px"
+}
+
+/** Translucent surfaces and the coloured backdrop behind them for the glass style. */
+function glassVars(theme: ChatTheme): Record<string, string> {
+    const light = theme.mode === "light"
+    return {
+        "--c-surface": light ? "rgb(255 255 255 / 0.55)" : "rgb(255 255 255 / 0.07)",
+        "--c-surface-2": light ? "rgb(255 255 255 / 0.75)" : "rgb(255 255 255 / 0.12)",
+        "--c-border": light ? "rgb(255 255 255 / 0.8)" : "rgb(255 255 255 / 0.14)",
+        "--c-shadow": light ? "inset 0 1px 0 rgb(255 255 255 / 0.9), 0 8px 24px -12px rgb(20 22 30 / 0.18)" : "inset 0 1px 0 rgb(255 255 255 / 0.12), 0 8px 24px -12px rgb(0 0 0 / 0.5)",
+        "--c-blur": "blur(20px) saturate(1.8)",
+        "--c-backdrop": `radial-gradient(60% 45% at 0% 0%, ${alpha(theme.accent, light ? 0.28 : 0.32)}, transparent), radial-gradient(55% 45% at 100% 35%, ${alpha(theme.accent2, light ? 0.24 : 0.26)}, transparent), radial-gradient(50% 40% at 30% 100%, ${alpha(theme.highlight, light ? 0.2 : 0.16)}, transparent)`
     }
 }
 
@@ -105,7 +138,7 @@ function highlightInk(hex: string, palette: (typeof PALETTES)[ChatTheme["mode"]]
     return palette["--c-text"]
 }
 
-/** CSS variables for the chat root element. */
+/** CSS variables for the chat root element. The `auto` style must be resolved to a concrete one beforehand. */
 export function chatThemeVars(theme: ChatTheme): Record<string, string> {
     const palette = PALETTES[theme.mode === "light" ? "light" : "dark"]
     const highlightOpacity = theme.mode === "light" ? 0.16 : 0.13
@@ -119,7 +152,11 @@ export function chatThemeVars(theme: ChatTheme): Record<string, string> {
         "--c-highlight": theme.highlight,
         "--c-highlight-ink": highlightInk(theme.highlight, palette, highlightOpacity),
         "--c-highlight-soft": alpha(theme.highlight, highlightOpacity),
-        "--c-ring": `0 0 0 3px ${alpha(theme.highlight, 0.35)}`
+        "--c-ring": `0 0 0 3px ${alpha(theme.highlight, 0.35)}`,
+        ...Object.fromEntries((RADII[theme.style as keyof typeof RADII] || RADII.classic).map((r, i) => [`--c-r-${RADIUS_VARS[i]}`, r])),
+        ...(theme.style === "classic" || !RADII[theme.style as keyof typeof RADII] ? PULSE_RADII : {}),
+        // After the highlight ink above, which needs the solid surfaces
+        ...(theme.style === "glass" ? glassVars(theme) : {})
     }
 }
 

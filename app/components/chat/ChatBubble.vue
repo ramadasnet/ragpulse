@@ -53,7 +53,7 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 .who-mark {
     width: 28px;
     height: 28px;
-    border-radius: 9px;
+    border-radius: var(--c-r-mark);
     display: grid;
     place-items: center;
     font-size: 12.5px;
@@ -86,7 +86,7 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 
 .bubble {
     padding: 10px 14px;
-    border-radius: 16px;
+    border-radius: var(--c-r-bubble);
     font-size: 14.5px;
     line-height: 1.55;
 }
@@ -96,7 +96,8 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
     color: var(--c-text);
     border: 1px solid var(--c-border);
     box-shadow: var(--c-shadow);
-    border-top-left-radius: 6px;
+    backdrop-filter: var(--c-blur, none);
+    border-top-left-radius: var(--c-r-tail);
 }
 .msg-agent .bubble {
     border-left: 3px solid var(--c-highlight);
@@ -110,7 +111,7 @@ const linkSources = computed(() => (props.message.sources || []).filter((s) => s
 .msg-user .bubble {
     background: var(--c-accent);
     color: var(--c-accent-ink);
-    border-top-right-radius: 6px;
+    border-top-right-radius: var(--c-r-tail);
 }
 .plain {
     white-space: pre-wrap;

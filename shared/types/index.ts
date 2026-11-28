@@ -60,7 +60,15 @@ export interface ChatTheme {
     placeholder: string
     /** Launcher position for the JS embed */
     position: "right" | "left"
+    /** Shape and surface style of the chat UI (see `CHAT_STYLES`) */
+    style: ChatStyle
+    /** Show the "Powered by RAGPulse" line under the composer */
+    showPoweredBy: boolean
 }
+
+/** `auto` picks a style from the visitor's platform (see `platformChatStyle`) */
+export const CHAT_STYLE_IDS = ["classic", "square", "round", "glass", "auto"] as const
+export type ChatStyle = (typeof CHAT_STYLE_IDS)[number]
 
 export interface Project {
     _id: string
@@ -508,5 +516,7 @@ export const DEFAULT_THEME: ChatTheme = {
     botName: "Assistant",
     welcomeMessage: "Hi! 👋 How can I help you today?",
     placeholder: "Ask anything…",
-    position: "right"
+    position: "right",
+    style: "classic",
+    showPoweredBy: true
 }

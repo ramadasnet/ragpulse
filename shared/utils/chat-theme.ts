@@ -1,4 +1,21 @@
-import type {ChatTheme} from "#shared/types"
+import type {ChatStyle, ChatTheme} from "#shared/types"
+
+/** Chat UI styles offered in the appearance editor. */
+export const CHAT_STYLES: Array<{id: ChatStyle; name: string; description: string}> = [
+    {id: "classic", name: "Pulse", description: "Balanced, softly rounded"},
+    {id: "square", name: "Edge", description: "Sharp corners, no rounding"},
+    {id: "round", name: "Pebble", description: "Pill shapes, extra round"},
+    {id: "glass", name: "Frost", description: "Translucent, blurred glass"},
+    {id: "auto", name: "Auto", description: "Frost on Apple, Pebble on Android, Edge on Windows"}
+]
+
+/** Concrete chat style for the visitor's platform, from the user agent: Frost on iOS / macOS, Pebble on Android, Edge on Windows, Pulse elsewhere. */
+export function platformChatStyle(userAgent: string): Exclude<ChatStyle, "auto"> {
+    if (/iPhone|iPad|iPod|Macintosh|Mac OS X/i.test(userAgent)) return "glass"
+    if (/Android/i.test(userAgent)) return "round"
+    if (/Windows/i.test(userAgent)) return "square"
+    return "classic"
+}
 
 export interface ChatThemePreset {
     name: string
